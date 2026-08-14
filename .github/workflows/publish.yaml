@@ -33,7 +33,7 @@ jobs:
       # committer is what GitHub verifies against, so this must be an email tied to the
       # account owning PUBLIC_SYNC_SIGNING_KEY.
       signer-name: Jackson Wearn
-      signer-email: 2472105+jcwearn@users.noreply.github.com
+      signer-email: jcwearn@users.noreply.github.com
     secrets:
       DEPLOY_KEY: ${{ secrets.PUBLIC_SYNC_DEPLOY_KEY }}
       SIGNING_KEY: ${{ secrets.PUBLIC_SYNC_SIGNING_KEY }}
