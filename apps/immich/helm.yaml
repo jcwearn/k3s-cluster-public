@@ -1,0 +1,98 @@
+apiVersion: source.toolkit.fluxcd.io/v1
+kind: HelmRepository
+metadata:
+  name: immich
+  namespace: flux-system
+spec:
+  type: oci
+  url: oci://ghcr.io/immich-app/immich-charts
+  interval: 10m
+---
+apiVersion: helm.toolkit.fluxcd.io/v2
+kind: HelmRelease
+metadata:
+  name: immich
+  namespace: immich
+spec:
+  interval: 10m
+  chart:
+    spec:
+      chart: immich
+      version: 0.13.1
+      sourceRef:
+        kind: HelmRepository
+        name: immich
+        namespace: flux-system
+  install:
+    createNamespace: true
+    crds: Create
+  upgrade:
+    crds: CreateReplace
+  values:
+    controllers:
+      main:
+        containers:
+          main:
+            image:
+              repository: ghcr.io/immich-app/immich-server
+              tag: v3.1.0
+            resources:
+              requests:
+                cpu: 100m
+                memory: 512Mi
+              limits:
+                cpu: 2000m
+                memory: 2Gi
+            env:
+              DB_HOSTNAME: immich-database-rw
+              DB_PORT: "5432"
+              DB_USERNAME:
+                valueFrom:
+                  secretKeyRef:
+                    name: immich-database-credentials
+                    key: username
+              DB_PASSWORD:
+                valueFrom:
+                  secretKeyRef:
+                    name: immich-database-credentials
+                    key: password
+              DB_DATABASE_NAME:
+                valueFrom:
+                  secretKeyRef:
+                    name: immich-database-credentials
+                    key: database
+    immich:
+      persistence:
+        library:
+          existingClaim: immich-library
+    valkey:
+      enabled: true
+    server:
+      controllers:
+        main:
+          annotations:
+            reloader.stakater.com/auto: "true"
+      ingress:
+        main:
+          enabled: false
+      service:
+        main:
+          type: LoadBalancer
+          annotations:
+            tailscale.com/expose: "true"
+            tailscale.com/hostname: "immich"
+            kube-vip.io/loadbalancerIPs: "${LAN_PREFIX}.25"
+    machine-learning:
+      controllers:
+        main:
+          annotations:
+            reloader.stakater.com/auto: "true"
+          containers:
+            main:
+              resources:
+                requests:
+                  cpu: 100m
+                  memory: 512Mi
+                limits:
+                  cpu: 2000m
+                  memory: 4Gi

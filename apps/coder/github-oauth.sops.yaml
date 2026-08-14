@@ -1,0 +1,28 @@
+apiVersion: v1
+kind: Secret
+metadata:
+    name: coder-github-oauth
+    namespace: coder
+type: Opaque
+stringData:
+    #ENC[AES256_GCM,data:HyqMTIAyqD31Rk1IBWNoXOOCNfJAKgvg9q4+gyZvNviK2roSGYE1rDyY0htbTb/foDLUa6BeG2ggfA0F3Po0kNMW,iv:YZCy4Qjx26UyxzpuB6r4V0kUaHNQbQ2hq2sTKMtfVmg=,tag:9W74iMHLFm/FOY1bqbjgSw==,type:comment]
+    #ENC[AES256_GCM,data:9lqLTFD6BvMHpRGGCVgc6cj1/BWypzR5,iv:ogtRTdGJeVkhwyMZLPOlxUyIS4Ox2wfx/qHWYKycogU=,tag:lfVOeawmrIynNSRzti+epQ==,type:comment]
+    #ENC[AES256_GCM,data:CZJhA/cXXgQL4wasBvcWinvBnRVYw7fH0tdTughabB/7waLnxQ==,iv:4C567nEcPblgLmjj8RJLDyQ21fwnXHldBvD/s0sirRk=,tag:eJh3EXBY0itYbNAyKlQSww==,type:comment]
+    #ENC[AES256_GCM,data:KGSNs9sEzH03xm8+yADEOsr3Ou0A2RVQ4clyW44R1L5FYoslP8QPk4W7fHD63G3kWcFEv7Q77x5GTXhl/EJxNtNAJg==,iv:kAtZ5Vn9gGeGS9szC/DVsxUf4lh9QeaVsk1aRxVVcYI=,tag:R/+eHmTHscTj9UNUJie62w==,type:comment]
+    client-id: ENC[AES256_GCM,data:itGL8DyGl654zJ5sT9GdRG8N79o=,iv:QbINoMsv7tDkgROOlh/opan2N1JE6kVt5JWk6cBBTmQ=,tag:IBzrdphCDFWIJxbV57ZD4A==,type:str]
+    client-secret: ENC[AES256_GCM,data:PH5gxm3ItjNobwwKOwfFBkdD4G6UHYOpOytZAVIi1kuedtdOoxxuIw==,iv:/lJdQXNGd1KUZAJG1kDF+fescJOAfZH4OHqn7NGwwU4=,tag:GUJI3/T1Q9eC3m3l4cRc1A==,type:str]
+sops:
+    age:
+        - recipient: age1ssrlddcqe0jrh2g3038538wuk6uzegz49gyvak2elm7rh2ccj3pq8vnz7t
+          enc: |
+            -----BEGIN AGE ENCRYPTED FILE-----
+            YWdlLWVuY3J5cHRpb24ub3JnL3YxCi0+IFgyNTUxOSBOdDdsZnpIcG1jejd0c05Z
+            cWR5VTVqOS9jU3ovbUxabUJDVG9jVi9OUVZVClJsQlNYU1oxWEh6SWpISVRoRGtp
+            YWh0bUthWFFINHQ0VDNoUzVhOExWTWsKLS0tIEgzVHpuWC8xMkYrR0NjeVpZK2sz
+            YmhjNzBPdnE0UlBlZlZQQ0RJTGZFV1UK2VoLS0iIc9UkXZbIFFe7Fz98uM2+5bTA
+            /mXdXwUi3+9XDEIxu/Alef/F3p4+EpHjpmbNpGJUZfSGKKGhyT+itw==
+            -----END AGE ENCRYPTED FILE-----
+    lastmodified: "2026-02-03T04:01:58Z"
+    mac: ENC[AES256_GCM,data:5bUq8mON8I/v/uUFs21n2oZs4VbZJVBa5FnZ/EOeQl9W6CTbm6qkzsHHE2qPLkHvHcxLYN6wS5VxXQBGmlu0zhUO5FReiFp3jMDn+D6L/7FdoOnAfChrT/OHi51REh4dPo7tr8+uAjK6pIRUmXng5tm6j2I0SWz/PgBZjGhe2Fg=,iv:uaozr2Vd0Iw+P/ZEsivbuo5pBHY6RYf6UqOM99Rtn/4=,tag:7JuBOwAF/8JtgSBn6Gs6NQ==,type:str]
+    encrypted_regex: ^(data|stringData)$
+    version: 3.10.2

@@ -1,0 +1,12 @@
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: llama-cpp-models
+  namespace: llama-cpp
+spec:
+  accessModes:
+    - ReadWriteMany
+  storageClassName: truenas-nfs-rwx
+  resources:
+    requests:
+      storage: 20Gi

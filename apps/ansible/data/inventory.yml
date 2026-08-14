@@ -1,0 +1,24 @@
+all:
+  children:
+    linux_servers:
+      children:
+        proxmox:
+          hosts:
+            proxmox-01:
+              ansible_host: ${LAN_PREFIX}.21
+            proxmox-02:
+              ansible_host: ${LAN_PREFIX}.22
+            proxmox-03:
+              ansible_host: ${LAN_PREFIX}.23
+        k3s:
+          hosts:
+            k3s-01:
+              ansible_host: ${LAN_PREFIX}.11
+            k3s-02:
+              ansible_host: ${LAN_PREFIX}.12
+            k3s-03:
+              ansible_host: ${LAN_PREFIX}.13
+  vars:
+    ansible_user: ansible
+    ansible_ssh_private_key_file: /secrets/ssh-private-key
+    ansible_become: true

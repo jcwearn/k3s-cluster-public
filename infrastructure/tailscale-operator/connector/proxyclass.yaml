@@ -1,0 +1,19 @@
+apiVersion: tailscale.com/v1alpha1
+kind: ProxyClass
+metadata:
+  name: exit-node-dns
+spec:
+  statefulSet:
+    pod:
+      dnsPolicy: "None"
+      dnsConfig:
+        nameservers:
+          - "${LAN_PREFIX}.2"
+          - "${LAN_PREFIX}.102"
+        searches:
+          - "tailscale.svc.cluster.local"
+          - "svc.cluster.local"
+          - "cluster.local"
+        options:
+          - name: ndots
+            value: "5"

@@ -1,0 +1,29 @@
+apiVersion: gateway.envoyproxy.io/v1alpha1
+kind: Backend
+metadata:
+  name: adguardhome
+  namespace: adguardhome
+spec:
+  endpoints:
+    - fqdn:
+        hostname: adguardhome.adguardhome.svc.cluster.local
+        port: 10443
+  tls:
+    insecureSkipVerify: true
+    alpnProtocols:
+      - http/1.1
+---
+apiVersion: gateway.envoyproxy.io/v1alpha1
+kind: Backend
+metadata:
+  name: adguardhome-secondary
+  namespace: adguardhome
+spec:
+  endpoints:
+    - fqdn:
+        hostname: adguardhome-secondary.adguardhome.svc.cluster.local
+        port: 10443
+  tls:
+    insecureSkipVerify: true
+    alpnProtocols:
+      - http/1.1

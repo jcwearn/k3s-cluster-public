@@ -1,0 +1,82 @@
+apiVersion: source.toolkit.fluxcd.io/v1
+kind: HelmRepository
+metadata:
+  name: coder
+  namespace: flux-system
+spec:
+  type: default
+  url: https://helm.coder.com/v2
+  interval: 10m
+---
+apiVersion: helm.toolkit.fluxcd.io/v2
+kind: HelmRelease
+metadata:
+  name: coder
+  namespace: coder
+spec:
+  interval: 10m
+  chart:
+    spec:
+      chart: coder
+      version: 2.36.0
+      sourceRef:
+        kind: HelmRepository
+        name: coder
+        namespace: flux-system
+  install:
+    createNamespace: true
+    crds: Create
+  upgrade:
+    crds: CreateReplace
+  values:
+    coder:
+      env:
+        - name: CODER_PG_CONNECTION_URL
+          valueFrom:
+            secretKeyRef:
+              name: coder-database-credentials
+              key: url
+        - name: CODER_ACCESS_URL
+          value: "https://code.${DOMAIN}"
+        - name: CODER_OAUTH2_GITHUB_DEFAULT_PROVIDER_ENABLE
+          value: "false"
+        # GitHub External Auth for workspace git operations
+        - name: CODER_EXTERNAL_AUTH_0_ID
+          value: "github"
+        - name: CODER_EXTERNAL_AUTH_0_TYPE
+          value: "github"
+        - name: CODER_EXTERNAL_AUTH_0_CLIENT_ID
+          valueFrom:
+            secretKeyRef:
+              name: coder-github-oauth
+              key: client-id
+        - name: CODER_EXTERNAL_AUTH_0_CLIENT_SECRET
+          valueFrom:
+            secretKeyRef:
+              name: coder-github-oauth
+              key: client-secret
+        - name: CODER_MAX_TOKEN_LIFETIME
+          value: "87600h"
+        - name: CODER_MAX_ADMIN_TOKEN_LIFETIME
+          value: "87600h"
+        # Anthropic API key for AI task naming
+        - name: ANTHROPIC_API_KEY
+          valueFrom:
+            secretKeyRef:
+              name: coder-anthropic
+              key: api-key
+      resources:
+        requests:
+          cpu: 100m
+          memory: 128Mi
+        limits:
+          cpu: 1000m
+          memory: 512Mi
+      service:
+        type: LoadBalancer
+        annotations:
+          tailscale.com/expose: "true"
+          tailscale.com/hostname: "coder"
+          kube-vip.io/loadbalancerIPs: "${LAN_PREFIX}.26"
+      ingress:
+        enable: false

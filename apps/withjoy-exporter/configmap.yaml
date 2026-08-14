@@ -1,0 +1,37 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: withjoy-exporter-config
+  namespace: withjoy-exporter
+data:
+  # Pins which columns are taken from WithJoy's CSV, in this order, so a schema
+  # change on their end can't shift them (they added "title"/"suffix" and then
+  # removed them). A listed column missing from the CSV is written empty rather
+  # than dropped. Newlines separate entries.
+  #
+  # Generated "<tag> (tag)" columns are NOT listed here — they're appended after
+  # these automatically, so new tags need no change to this file. But "tags"
+  # must stay listed, since that's the column the expansion reads.
+  EXPORT_COLUMNS: |
+    first name
+    last name
+    mailing address
+    phone number
+    email
+    envelope name
+    address 1
+    address 2
+    city
+    state
+    postal code
+    country
+    tags
+    party
+    pellikuthuru
+    sangeet
+    muhurtham
+    dietary restrictions
+    reception
+    optional trip
+    golkonda guest covered
+    golkonda guest own

@@ -1,0 +1,11 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+resources:
+  - namespace.yaml
+  - pvc.yaml
+  - deployment-1.7b.yaml
+  - service-1.7b.yaml
+  - deployment-4b.yaml
+  - service-4b.yaml
+  - deployment-8b.yaml
+  - service-8b.yaml

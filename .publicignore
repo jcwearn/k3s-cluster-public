@@ -1,0 +1,42 @@
+# rsync exclude patterns for the public snapshot.
+#
+# actions/checkout only materializes tracked files, so anything already in .gitignore will
+# not be present anyway. Listing those paths here regardless is deliberate: it makes the
+# filter correct when run locally against a dirty working tree, and it survives a file being
+# accidentally committed later.
+#
+# Patterns are rsync filter rules, not gitignore rules. A trailing / matches directories
+# only; a leading / anchors to the repo root.
+
+# Never publish VCS or CI-local state
+.git/
+.github/public-README.md
+
+# Agent state. Three of these skills carry the domain and the LAN prefix in their scaffolding
+# examples, and unlike manifests they are never substituted -- postBuild only reaches the
+# kustomize build output. Excluding the directory is simpler and more durable than editing
+# them, since a future skill would reintroduce the problem silently.
+.claude/
+
+# Editor state
+.vscode/
+.idea/
+.DS_Store
+
+# Extra needles for scripts/public-gate.sh. Kept out of the mirror because the values it
+# checks for are exactly the values that must not be published -- a gate that names them in
+# its own source defeats itself. The script works without this file.
+.publicgate-extra
+
+# Local Coder CLI state. .coder/pprof is a unix socket, which rsync cannot copy and warns
+# about noisily.
+.coder/
+
+# Local Terraform provider and module cache under the Coder templates. Not present in CI,
+# where checkout only materializes tracked files, but a local dry run copies a few hundred
+# MB of provider binaries without this and tells you nothing useful.
+.terraform/
+
+# Internal planning notes. These discuss the cluster's real addresses, the hostname inventory
+# and this publishing effort itself. They are working documents, not portfolio material.
+docs/plans/

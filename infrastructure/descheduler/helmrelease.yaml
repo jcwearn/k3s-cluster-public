@@ -1,0 +1,70 @@
+apiVersion: helm.toolkit.fluxcd.io/v2
+kind: HelmRelease
+metadata:
+  name: descheduler
+  namespace: descheduler
+spec:
+  interval: 10m
+  chart:
+    spec:
+      chart: descheduler
+      version: 0.36.0
+      sourceRef:
+        kind: HelmRepository
+        name: descheduler
+        namespace: flux-system
+  install:
+    createNamespace: true
+    crds: Create
+  upgrade:
+    crds: CreateReplace
+  values:
+    kind: CronJob
+    schedule: "0 * * * *"
+    resources:
+      requests:
+        cpu: 50m
+        memory: 64Mi
+      limits:
+        cpu: 500m
+        memory: 256Mi
+
+
+    deschedulerPolicy:
+      maxNoOfPodsToEvictPerNode: 10
+      maxNoOfPodsToEvictPerNamespace: 10
+
+      profiles:
+        - name: default
+          pluginConfig:
+            - name: DefaultEvictor
+              args:
+                ignorePvcPods: false
+                evictSystemCriticalPods: false
+                evictFailedBarePods: false
+                evictLocalStoragePods: false
+                nodeFit: true
+                priorityThreshold:
+                  value: 2000000000
+            - name: LowNodeUtilization
+              args:
+                useDeviationThresholds: true
+                evictableNamespaces:
+                  exclude:
+                    - kube-system
+                    - kube-public
+                    - kube-node-lease
+                    - flux-system
+                    - cnpg-system
+                    - descheduler
+                thresholds:
+                  pods: 5
+                  memory: 10
+                targetThresholds:
+                  pods: 15
+                  memory: 15
+
+          plugins:
+            balance:
+              enabled:
+                - LowNodeUtilization

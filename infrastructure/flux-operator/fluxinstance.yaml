@@ -1,0 +1,38 @@
+apiVersion: fluxcd.controlplane.io/v1
+kind: FluxInstance
+metadata:
+  name: flux
+  namespace: flux-system
+spec:
+  distribution:
+    version: "2.7.5"
+    registry: "ghcr.io/fluxcd"
+  components:
+    - source-controller
+    - kustomize-controller
+    - helm-controller
+    - notification-controller
+  cluster:
+    type: kubernetes
+    multitenant: false
+    networkPolicy: true
+    domain: "cluster.local"
+  kustomize:
+    patches:
+      - patch: |
+          - op: add
+            path: /spec/template/spec/containers/0/args/-
+            value: --concurrent=10
+          - op: add
+            path: /spec/template/spec/containers/0/args/-
+            value: --requeue-dependency=5s
+        target:
+          kind: Deployment
+          name: "(kustomize-controller|helm-controller)"
+  sync:
+    kind: GitRepository
+    provider: github
+    url: "https://github.com/jcwearn/k3s-cluster.git"
+    ref: "refs/heads/main"
+    path: "clusters/prod"
+    pullSecret: "flux-system"

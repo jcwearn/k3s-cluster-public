@@ -1,0 +1,41 @@
+default_provider = "gemini"
+default_model = "gemini-2.5-flash-lite"
+
+[[model_routes]]
+hint = "fast"
+provider = "gemini"
+model = "gemini-2.5-flash-lite"
+
+[[model_routes]]
+hint = "reasoning"
+provider = "gemini"
+model = "gemini-2.5-pro"
+
+[query_classification]
+enabled = true
+
+[[query_classification.rules]]
+hint = "reasoning"
+keywords = ["analyze", "explain", "compare", "debug", "write code"]
+priority = 10
+
+[[query_classification.rules]]
+hint = "fast"
+priority = 0
+
+[gateway]
+host = "0.0.0.0"
+allow_public_bind = true
+require_pairing = false
+
+[secrets]
+encrypt = true
+
+[channels_config]
+cli = true
+message_timeout_secs = 60
+
+[channels_config.telegram]
+bot_token = "__SECRET_TELEGRAM_BOT_TOKEN__"
+allowed_users = ["__SECRET_TELEGRAM_ALLOWED_USER__"]
+mention_only = false

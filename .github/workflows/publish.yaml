@@ -1,0 +1,39 @@
+name: Publish Public Snapshot
+
+# Mirrors a filtered snapshot of this repo to jcwearn/k3s-cluster-public.
+#
+# What keeps this safe is not this file, it is the three layers under it. The manifests carry
+# no literal domain, LAN prefix or tailnet name -- those resolve from the cluster-vars Secret
+# at reconcile time. .publicignore drops the paths that were never substitutable. And the
+# reusable workflow runs a pinned gitleaks scan over the rendered tree and refuses to push on
+# a finding.
+#
+# scripts/public-gate.sh checks the layer none of that covers: that the actual values in
+# cluster-vars do not appear in the tree about to be published. It needs cluster access to
+# read the Secret, so it cannot run here -- run it locally after any change that touches a
+# substituted path.
+
+on:
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+
+jobs:
+  publish:
+    uses: jcwearn/workflows/.github/workflows/public-sync.yaml@main
+    with:
+      target-repo: jcwearn/k3s-cluster-public
+      readme-override: .github/public-README.md
+      # Commit messages are replayed onto the mirror verbatim. CLAUDE.md records the
+      # consequence: do not name hostnames or addresses in a commit message, because unlike
+      # the manifests there is no substitution step for them.
+      message-mode: passthrough
+      # Committer identity for signed commits. The author stays github-actions[bot]; the
+      # committer is what GitHub verifies against, so this must be an email tied to the
+      # account owning PUBLIC_SYNC_SIGNING_KEY.
+      signer-name: Jackson Wearn
+      signer-email: 2472105+jcwearn@users.noreply.github.com
+    secrets:
+      DEPLOY_KEY: ${{ secrets.PUBLIC_SYNC_DEPLOY_KEY }}
+      SIGNING_KEY: ${{ secrets.PUBLIC_SYNC_SIGNING_KEY }}

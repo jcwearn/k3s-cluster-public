@@ -1,0 +1,29 @@
+# gitleaks configuration for the public snapshot scan in .github/workflows/publish.yaml.
+#
+# The reusable workflow picks this up from the scanned directory. It extends the default
+# ruleset rather than replacing it -- every stock rule still applies.
+
+[extend]
+useDefault = true
+
+[[allowlists]]
+description = """
+age recipients (public keys).
+
+An age public key is an encryption target, not a credential: it lets anyone encrypt a secret
+to this cluster, and nothing else. Decryption needs the private key, which begins
+AGE-SECRET-KEY- and lives only in the sops-age Secret in flux-system. It has never been in
+this repository.
+
+The same value already appears in the SOPS metadata of all 27 *.sops.yaml files, which are
+published; gitleaks flags it only in CLAUDE.md because the surrounding prose contains the
+word "key" and the generic-api-key rule keys off that.
+
+Scoped deliberately to the bech32 form of an age *public* key: lowercase age1 followed by 58
+characters from the bech32 alphabet. An age private key is uppercase and differently
+prefixed, so this cannot mask one. Verified by scanning a file containing a real
+AGE-SECRET-KEY- value and confirming it is still reported.
+"""
+regexes = [
+  '''age1[02-9ac-hj-np-z]{58}''',
+]

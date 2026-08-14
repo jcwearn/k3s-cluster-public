@@ -1,0 +1,103 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: zeroclaw
+  namespace: zeroclaw
+  annotations:
+    reloader.stakater.com/auto: "true"
+spec:
+  revisionHistoryLimit: 1
+  replicas: 1
+  selector:
+    matchLabels:
+      app: zeroclaw
+  template:
+    metadata:
+      labels:
+        app: zeroclaw
+    spec:
+      securityContext:
+        fsGroup: 65534
+        fsGroupChangePolicy: OnRootMismatch
+      initContainers:
+        - name: init-config
+          image: busybox
+          command:
+            - sh
+            - -c
+            - |
+              set -e
+              mkdir -p /zeroclaw-data/.zeroclaw /zeroclaw-data/workspace
+              cp /config-source/config.toml /zeroclaw-data/.zeroclaw/config.toml
+              cp /config-source/AGENTS.md /zeroclaw-data/workspace/AGENTS.md
+              # Bare $VAR, not the curly-brace form, deliberately. Flux
+              # postBuild substitution rewrites braced references and replaces
+              # anything it cannot resolve with an empty string -- which would
+              # deploy a pod that starts cleanly and writes a blank token into
+              # the config. No error, no crash, a bot that cannot authenticate.
+              # Bash treats the two forms identically here, because the next
+              # character is a pipe and cannot be part of an identifier.
+              sed -i "s|__SECRET_TELEGRAM_BOT_TOKEN__|$TELEGRAM_BOT_TOKEN|g" /zeroclaw-data/.zeroclaw/config.toml
+              sed -i "s|__SECRET_TELEGRAM_ALLOWED_USER__|$TELEGRAM_ALLOWED_USER|g" /zeroclaw-data/.zeroclaw/config.toml
+              chmod 600 /zeroclaw-data/.zeroclaw/config.toml
+              chown -R 65534:65534 /zeroclaw-data
+          env:
+            - name: TELEGRAM_BOT_TOKEN
+              valueFrom:
+                secretKeyRef:
+                  name: zeroclaw-secrets
+                  key: TELEGRAM_BOT_TOKEN
+            - name: TELEGRAM_ALLOWED_USER
+              valueFrom:
+                secretKeyRef:
+                  name: zeroclaw-secrets
+                  key: TELEGRAM_ALLOWED_USER
+          resources:
+            requests:
+              cpu: 10m
+              memory: 16Mi
+            limits:
+              cpu: 100m
+              memory: 32Mi
+          volumeMounts:
+            - name: config-volume
+              mountPath: /config-source
+            - name: data-volume
+              mountPath: /zeroclaw-data
+      containers:
+        - name: zeroclaw
+          image: ghcr.io/zeroclaw-labs/zeroclaw:v0.8.4-debian@sha256:af1fa1f55cf0c78a00b3302f7cc77b8bdccce7e56045cfc50313f902ca81d33a
+          imagePullPolicy: IfNotPresent
+          args: ["daemon"]
+          ports:
+            - containerPort: 42617
+          env:
+            - name: API_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: zeroclaw-secrets
+                  key: API_KEY
+            - name: PROVIDER
+              value: gemini
+            - name: ZEROCLAW_HOME
+              value: /zeroclaw-data
+            - name: SHELL
+              value: /bin/bash
+          resources:
+            requests:
+              cpu: 50m
+              memory: 64Mi
+            limits:
+              cpu: 500m
+              memory: 256Mi
+          volumeMounts:
+            - name: data-volume
+              mountPath: /zeroclaw-data
+
+      volumes:
+        - name: config-volume
+          configMap:
+            name: zeroclaw-config
+        - name: data-volume
+          persistentVolumeClaim:
+            claimName: zeroclaw-data-pvc

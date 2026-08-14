@@ -1,0 +1,86 @@
+---
+# One-shot playbook to prepare a host for Ansible management.
+# Requires initial SSH access as root or an existing sudo user.
+# Public key is read from /secrets/ssh-public-key (mounted from ansible-secrets).
+#
+# Usage (get CM_HASH from: kubectl -n ansible get cm):
+#
+#   kubectl -n ansible run onboard --rm -it \
+#     --image=ghcr.io/jcwearn/ansible-runner:0.1.2 \
+#     --restart=Never \
+#     --overrides='{
+#       "spec": {
+#         "containers": [{
+#           "name": "onboard",
+#           "image": "ghcr.io/jcwearn/ansible-runner:0.1.2",
+#           "securityContext": {"runAsUser": 0},
+#           "command": ["ansible-playbook"],
+#           "args": [
+#             "/ansible/playbooks/onboard-host.yml",
+#             "-i", "<HOST_IP>,",
+#             "-e", "target_host=<HOST_IP>",
+#             "-e", "initial_user=<USER>",
+#             "-e", "initial_password=<PASSWORD>"
+#           ],
+#           "env": [{"name": "ANSIBLE_CONFIG", "value": "/ansible/ansible.cfg"}],
+#           "volumeMounts": [
+#             {"name": "ansible-data", "mountPath": "/ansible"},
+#             {"name": "ssh-key", "mountPath": "/secrets", "readOnly": true}
+#           ]
+#         }],
+#         "volumes": [
+#           {"name": "ansible-data", "configMap": {"name": "ansible-data-<CM_HASH>", "items": [{"key": "ansible.cfg", "path": "ansible.cfg"}, {"key": "inventory.yml", "path": "inventory.yml"}, {"key": "onboard-host.yml", "path": "playbooks/onboard-host.yml"}]}},
+#           {"name": "ssh-key", "secret": {"secretName": "ansible-secrets", "defaultMode": 256, "items": [{"key": "ssh-private-key", "path": "ssh-private-key"}, {"key": "ssh-public-key", "path": "ssh-public-key"}]}}
+#         ]
+#       }
+#     }'
+
+- name: Onboard host for Ansible management
+  hosts: "{{ target_host }}"
+  become: true
+  gather_facts: true
+  vars:
+    ansible_user: "{{ initial_user | default('root') }}"
+    ansible_ssh_private_key_file: /secrets/ssh-private-key
+    ansible_managed_user: ansible
+    ansible_become_password: "{{ initial_password | default(omit) }}"
+    ansible_public_key: "{{ lookup('file', '/secrets/ssh-public-key') }}"
+
+  tasks:
+    - name: Create ansible user
+      ansible.builtin.user:
+        name: "{{ ansible_managed_user }}"
+        shell: /bin/bash
+        create_home: true
+        state: present
+
+    - name: Install sudo
+      ansible.builtin.apt:
+        name: sudo
+        state: present
+      when: ansible_os_family == "Debian"
+
+    - name: Add ansible user to sudo group
+      ansible.builtin.user:
+        name: "{{ ansible_managed_user }}"
+        groups: sudo
+        append: true
+
+    - name: Configure passwordless sudo
+      ansible.builtin.copy:
+        dest: /etc/sudoers.d/ansible
+        content: "{{ ansible_managed_user }} ALL=(ALL) NOPASSWD:ALL\n"
+        mode: "0440"
+        validate: "visudo -cf %s"
+
+    - name: Deploy SSH public key
+      ansible.posix.authorized_key:
+        user: "{{ ansible_managed_user }}"
+        key: "{{ ansible_public_key }}"
+        state: present
+
+    - name: Ensure python3 is installed
+      ansible.builtin.apt:
+        name: python3
+        state: present
+      when: ansible_os_family == "Debian"

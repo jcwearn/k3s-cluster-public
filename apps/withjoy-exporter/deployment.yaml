@@ -1,0 +1,59 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: withjoy-exporter-web
+  namespace: withjoy-exporter
+  annotations:
+    reloader.stakater.com/auto: "true"
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: withjoy-exporter-web
+  template:
+    metadata:
+      labels:
+        app: withjoy-exporter-web
+    spec:
+      serviceAccountName: withjoy-exporter-web
+      containers:
+        - name: withjoy-exporter-web
+          image: ghcr.io/jcwearn/withjoy-exporter:v0.4.1@sha256:132fc8715252f056305c3d266bf15fb1f331efc44b1e66ef53e4a78586624334
+          imagePullPolicy: IfNotPresent
+          command: ["python", "web.py"]
+          ports:
+            - name: http
+              containerPort: 8080
+          env:
+            - name: NAMESPACE
+              value: "withjoy-exporter"
+            - name: CRONJOB_NAME
+              value: "withjoy-exporter"
+            # Dispatches the wedding site's "Refresh schedule index" workflow,
+            # which rebuilds the site's schedule from the sheet this app exports.
+            - name: GITHUB_REPO
+              value: "jcwearn/anupamaandjackson"
+            - name: GITHUB_WORKFLOW_FILE
+              value: "refresh-schedule-index.yml"
+            - name: GITHUB_APP_ID
+              valueFrom:
+                secretKeyRef:
+                  name: withjoy-exporter-github-app
+                  key: GITHUB_APP_ID
+            - name: GITHUB_APP_INSTALLATION_ID
+              valueFrom:
+                secretKeyRef:
+                  name: withjoy-exporter-github-app
+                  key: GITHUB_APP_INSTALLATION_ID
+            - name: GITHUB_APP_PRIVATE_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: withjoy-exporter-github-app
+                  key: GITHUB_APP_PRIVATE_KEY
+          resources:
+            requests:
+              memory: "64Mi"
+              cpu: "50m"
+            limits:
+              memory: "128Mi"
+              cpu: "200m"

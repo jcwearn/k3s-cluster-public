@@ -1,0 +1,19 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+resources:
+  - namespace.yaml
+  - serviceaccount.yaml
+  - cronjob-update-linux.yaml
+  - cronjob-configure-k3s-shutdown.yaml
+  - cronjob-configure-node-sysctl.yaml
+  - secrets.sops.yaml
+configMapGenerator:
+  - name: ansible-data
+    namespace: ansible
+    files:
+      - data/ansible.cfg
+      - data/inventory.yml
+      - data/playbooks/update-linux.yml
+      - data/playbooks/onboard-host.yml
+      - data/playbooks/configure-k3s-shutdown.yml
+      - data/playbooks/configure-node-sysctl.yml

@@ -1,0 +1,44 @@
+apiVersion: gateway.envoyproxy.io/v1alpha1
+kind: Backend
+metadata:
+  name: pve-01
+  namespace: proxmox
+spec:
+  endpoints:
+    - ip:
+        address: ${LAN_PREFIX}.21
+        port: 8006
+  tls:
+    insecureSkipVerify: true
+    alpnProtocols:
+      - http/1.1
+---
+apiVersion: gateway.envoyproxy.io/v1alpha1
+kind: Backend
+metadata:
+  name: pve-02
+  namespace: proxmox
+spec:
+  endpoints:
+    - ip:
+        address: ${LAN_PREFIX}.22
+        port: 8006
+  tls:
+    insecureSkipVerify: true
+    alpnProtocols:
+      - http/1.1
+---
+apiVersion: gateway.envoyproxy.io/v1alpha1
+kind: Backend
+metadata:
+  name: pve-03
+  namespace: proxmox
+spec:
+  endpoints:
+    - ip:
+        address: ${LAN_PREFIX}.23
+        port: 8006
+  tls:
+    insecureSkipVerify: true
+    alpnProtocols:
+      - http/1.1

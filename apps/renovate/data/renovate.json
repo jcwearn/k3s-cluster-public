@@ -1,0 +1,67 @@
+{
+    "repositories": [
+        "jcwearn/ansible-runner",
+        "jcwearn/homeassistant-config",
+        "jcwearn/anupamaandjackson",
+        "jcwearn/borderline",
+        "jcwearn/cf-worker-email",
+        "jcwearn/dotfiles-coder",
+        "jcwearn/jackson-wearn",
+        "jcwearn/k3s-cluster",
+        "jcwearn/priceatronic2",
+        "jcwearn/withjoy-exporter"
+    ],
+    "prHourlyLimit": 0,
+    "gitTimeout": 600000,
+    "autodiscover": false,
+    "platform": "github",
+    "reviewers": [
+        "jcwearn"
+    ],
+    "packageRules": [
+        {
+            "matchUpdateTypes": [
+                "minor",
+                "patch",
+                "pin",
+                "digest"
+            ],
+            "matchPackageNames": [
+                "*"
+            ],
+            "groupName": "all non-major dependencies",
+            "groupSlug": "all-non-major-dependencies",
+            "automerge": true,
+            "autoApprove": true,
+            "assignAutomerge": true
+        }
+    ],
+    "vulnerabilityAlerts": {
+        "enabled": true,
+        "labels": [
+            "security"
+        ],
+        "reviewers": [
+            "jcwearn"
+        ]
+    },
+    "dependencyDashboard": true,
+    "hostRules": [
+        {
+            "matchHost": "api.github.com",
+            "concurrentRequestLimit": 1,
+            "maxRequestsPerSecond": 8
+        }
+    ],
+    "dockerUser": "1000:1000",
+    "customEnvVariables": {
+        "GOCACHE": "/tmp/renovate/go-build",
+        "GOMODCACHE": "/tmp/renovate/go-mod",
+        "GOBIN": "/tmp/renovate/go-bin"
+    },
+    "binarySource": "global",
+    "timezone": "America/New_York",
+    "schedule": [
+        "* 0-7 * * 0,5,6"
+    ]
+}

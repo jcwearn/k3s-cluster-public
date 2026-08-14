@@ -1,0 +1,20 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: shelfmark
+  namespace: ebooks
+  labels:
+    app.kubernetes.io/name: shelfmark
+  annotations:
+    tailscale.com/expose: "true"
+    tailscale.com/hostname: "shelfmark"
+    kube-vip.io/loadbalancerIPs: "${LAN_PREFIX}.29"
+spec:
+  type: LoadBalancer
+  ports:
+    - port: 8084
+      targetPort: http
+      protocol: TCP
+      name: http
+  selector:
+    app.kubernetes.io/name: shelfmark

@@ -1,0 +1,46 @@
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: withjoy-exporter
+  namespace: withjoy-exporter
+spec:
+  schedule: "0 6 * * *"
+  timeZone: America/New_York
+  concurrencyPolicy: Forbid
+  successfulJobsHistoryLimit: 3
+  failedJobsHistoryLimit: 3
+  jobTemplate:
+    spec:
+      backoffLimit: 1
+      activeDeadlineSeconds: 1800
+      template:
+        spec:
+          restartPolicy: Never
+          containers:
+            - name: withjoy-exporter
+              image: ghcr.io/jcwearn/withjoy-exporter:v0.4.1@sha256:132fc8715252f056305c3d266bf15fb1f331efc44b1e66ef53e4a78586624334
+              imagePullPolicy: IfNotPresent
+              envFrom:
+                - secretRef:
+                    name: withjoy-exporter-env
+                - configMapRef:
+                    name: withjoy-exporter-config
+              volumeMounts:
+                - name: google-credentials
+                  mountPath: /secrets
+                  readOnly: true
+              resources:
+                requests:
+                  cpu: 200m
+                  memory: 1Gi
+                limits:
+                  cpu: "1"
+                  memory: 2Gi
+          volumes:
+            - name: google-credentials
+              secret:
+                secretName: withjoy-exporter-google-credentials
+                defaultMode: 0400
+                items:
+                  - key: google-service-account.json
+                    path: google-service-account.json

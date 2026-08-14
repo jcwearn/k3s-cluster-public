@@ -1,0 +1,196 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: homepage
+  namespace: homepage
+  labels:
+    app.kubernetes.io/name: homepage
+data:
+  kubernetes.yaml: |
+    mode: cluster
+  settings.yaml: |
+    background: 
+      image: /images/background.webp
+      opacity: 75
+    color: slate
+    theme: dark
+    useEqualHeights: true
+    layout:
+      Media & Books:
+        style: row
+        columns: 4
+      Tools & Productivity:
+        style: row
+        columns: 4
+      Development & AI:
+        style: row
+        columns: 4
+      Home & Network:
+        style: row
+        columns: 4
+      Infrastructure:
+        style: row
+        columns: 2
+      Proxmox:
+        style: row
+        columns: 3
+      Monitoring:
+        style: row
+        columns: 4
+    quicklaunch:
+      searchDescriptions: true
+      showSearchSuggestions: true
+      provider: google
+  custom.css: ""
+  custom.js: ""
+  bookmarks.yaml: |
+    - Cloud Services:
+        - Github:
+            - abbr: GH
+              href: https://github.com/
+              icon: sh-github-light.webp
+        - Cloudflare:
+            - abbr: CF
+              href: https://dash.cloudflare.com/
+              icon: sh-cloudflare-light.webp
+        - Tailscale:
+            - abbr: TS
+              href: https://login.tailscale.com/
+              icon: sh-tailscale-light.webp
+        - Healthchecks:
+            - abbr: HC
+              href: https://healthchecks.io/
+              icon: sh-healthchecks-light.webp
+  services.yaml: |
+    - Media & Books:
+        - Immich:
+            href: https://immich.${DOMAIN}/
+            description: Immich is a self-hosted photo and video backup solution directly from your mobile phone
+            icon: sh-immich-light.webp
+        - Jellyfin:
+            href: https://jellyfin.${DOMAIN}/
+            description: Jellyfin is a free software media system for streaming movies, TV shows, music, and more
+            icon: sh-jellyfin-light.webp
+        - Calibre-Web:
+            href: https://books.${DOMAIN}/
+            description: Calibre-Web is a web app for browsing, reading, and managing your ebook library
+            icon: sh-calibre-web-light.webp
+        - Shelfmark:
+            href: https://shelfmark.${DOMAIN}/
+            description: Shelfmark is a self-hosted ebook search and download tool
+            icon: sh-shelfmark-light.webp
+    - Tools & Productivity:
+        - Paperless-ngx:
+            href: https://paperless.${DOMAIN}/
+            description: Paperless-ngx is a document management system with OCR, tagging, and full-text search
+            icon: sh-paperless-ngx-light.webp
+        - Stirling PDF:
+            href: https://pdf.${DOMAIN}/
+            description: Stirling PDF  A privacy-first, self-hosted PDF toolbox
+            icon: sh-stirling-pdf-light.webp
+        - Mazanoke:
+            href: https://image.${DOMAIN}/
+            description: Mazanoke is a self-hosted image optimizer / converter.
+            icon: sh-mazanoke-light.webp
+        - It Tools:
+            href: https://tools.${DOMAIN}/
+            description: IT Tools is a collection of tools for IT professionals
+            icon: sh-it-tools-light.webp
+        - Ntfy:
+            href: https://ntfy.${DOMAIN}/
+            description: Ntfy is a simple HTTP-based pub-sub notification service
+            icon: sh-ntfy-light.webp
+        - WithJoy Exporter:
+            href: https://withjoy-exporter.${DOMAIN}/
+            description: Manual trigger for the WithJoy guest list export to Google Sheets
+            icon: sh-google-sheets-light.webp
+    - Development & AI:
+        - Coder:
+            href: https://code.${DOMAIN}/
+            description: Coder is a cloud development environment platform that provisions remote development workspaces
+            icon: sh-coder-light.webp
+        - Open Web UI:
+            href: https://chat.${DOMAIN}/
+            description: Open Web UI is a user-friendly web interface for interacting with large language models
+            icon: sh-open-webui-light.webp
+        - Mkdocs:
+            href: https://docs.${DOMAIN}/
+            description: MkDocs is a fast, simple static site generator that’s geared towards building project documentation
+            icon: sh-material-for-mkdocs-light.webp
+        - n8n:
+            href: https://n8n.${DOMAIN}/
+            description: n8n is a workflow automation tool for connecting apps and services
+            icon: sh-n8n-light.webp
+    - Home & Network:
+        - Home Assistant:
+            href: https://home.${DOMAIN}/
+            description: Home Assistant is a free and open-source software platform that serves as a central hub for controlling and automating smart home devices
+            icon: sh-home-assistant-light.webp
+        - AdGuard Home:
+            href: https://dns.${DOMAIN}/
+            description: AdGuard Home is a network-wide software for blocking ads & tracking
+            icon: sh-adguard-home-light.webp
+        - AdGuard Home (Secondary):
+            href: https://dns-secondary.${DOMAIN}/
+            description: Secondary AdGuard Home instance for redundant DNS ad-blocking
+            icon: sh-adguard-home-light.webp
+        - Router:
+            href: https://router.${DOMAIN}/
+            description: UniFi Dream Machine Pro is an all-in-one enterprise network appliance
+            icon: sh-ubiquiti-unifi-light.webp
+    - Infrastructure:
+        - Headlamp:
+            href: https://dash.${DOMAIN}/
+            description: Headlamp is an easy-to-use and extensible Kubernetes web UI
+            icon: sh-headlamp-light.webp
+        - TrueNAS:
+            href: https://truenas.${DOMAIN}/
+            description: TrueNAS is an open-source network-attached storage (NAS) operating system
+            icon: sh-truenas-core-light.webp
+    - Proxmox:
+        - pve-01:
+            href: https://pve-01.${DOMAIN}/
+            description: Proxmox Virtual Environment is an open-source server virtualization management solution
+            icon: sh-proxmox-light.webp
+        - pve-02:
+            href: https://pve-02.${DOMAIN}/
+            description: Proxmox Virtual Environment is an open-source server virtualization management solution
+            icon: sh-proxmox-light.webp
+        - pve-03:
+            href: https://pve-03.${DOMAIN}/
+            description: Proxmox Virtual Environment is an open-source server virtualization management solution
+            icon: sh-proxmox-light.webp
+    - Monitoring:
+        - Prometheus:
+            href: https://prometheus.${DOMAIN}/
+            description: An open-source monitoring system and time series database that collects and stores metrics data
+            icon: sh-prometheus-light.webp
+        - Alert Manager:
+            href: https://alerts.${DOMAIN}/
+            description: Manages alerts generated by client applications like the Prometheus server
+            icon: sh-prometheus-light.webp
+        - Grafana:
+            href: https://grafana.${DOMAIN}/
+            description: A multi-platform open source analytics and interactive visualization web application
+            icon: sh-grafana-light.webp
+        - Uptime Kuma:
+            href: https://uptime.${DOMAIN}/
+            description: Uptime Kuma is a self-hosted status monitoring solution
+            icon: sh-uptime-kuma-light.webp
+  widgets.yaml: |
+    - kubernetes:
+        cluster:
+          show: true
+          cpu: true
+          memory: true
+          showLabel: true
+          label: "cluster"
+        nodes:
+          show: true
+          cpu: true
+          memory: true
+          showLabel: true
+    - search:
+        provider: google
+        target: _blank
+  docker.yaml: ""

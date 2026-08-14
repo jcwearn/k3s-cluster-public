@@ -1,0 +1,26 @@
+origin:
+  url: $ORIGIN_URL
+  insecureSkipVerify: true
+  username: $ORIGIN_USERNAME
+  password: $ORIGIN_PASSWORD
+replicas:
+  - url: $REPLICA1_URL
+    insecureSkipVerify: true
+    username: $REPLICA1_USERNAME
+    password: $REPLICA1_PASSWORD
+features:
+  generalSettings: true
+  queryLogConfig: true
+  statsConfig: true
+  clientSettings: true
+  services: true
+  filters: true
+  dhcp:
+    serverConfig: true
+    staticLeases: true
+  dns:
+    serverConfig: true
+    accessLists: true
+    rewrites: true
+api:
+  port: 0

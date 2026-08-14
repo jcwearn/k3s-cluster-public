@@ -1,0 +1,20 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: it-tools
+  namespace: it-tools
+  labels:
+    app.kubernetes.io/name: it-tools
+  annotations:
+    tailscale.com/expose: "true"
+    tailscale.com/hostname: "it-tools"
+    kube-vip.io/loadbalancerIPs: "${LAN_PREFIX}.17"
+spec:
+  type: LoadBalancer
+  ports:
+    - port: 20080
+      targetPort: http
+      protocol: TCP
+      name: http
+  selector:
+    app.kubernetes.io/name: it-tools

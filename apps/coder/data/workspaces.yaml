@@ -1,0 +1,107 @@
+workspaces:
+  - name: k3s-cluster
+    template: kubernetes
+    repo: https://github.com/jcwearn/k3s-cluster
+    parameters:
+      cpu: "2"
+      memory: "4"
+      home_disk_size: "20"
+    schedule:
+      autostart: "08:00 * America/New_York"
+      autostop_ttl: "16h"
+  - name: cf-worker-email
+    template: kubernetes
+    repo: https://github.com/jcwearn/cf-worker-email
+    parameters:
+      cpu: "2"
+      memory: "4"
+      home_disk_size: "10"
+    schedule:
+      autostop_ttl: "1h"
+  - name: anupamaandjackson
+    template: kubernetes
+    repo: https://github.com/jcwearn/anupamaandjackson
+    parameters:
+      cpu: "2"
+      memory: "4"
+      home_disk_size: "10"
+    schedule:
+      autostop_ttl: "1h"
+  - name: jackson-wearn
+    template: kubernetes
+    repo: https://github.com/jcwearn/jackson-wearn
+    parameters:
+      cpu: "2"
+      memory: "4"
+      home_disk_size: "10"
+    schedule:
+      autostop_ttl: "1h"
+  - name: ansible-runner
+    template: kubernetes
+    repo: https://github.com/jcwearn/ansible-runner
+    parameters:
+      cpu: "2"
+      memory: "4"
+      home_disk_size: "10"
+    schedule:
+      autostop_ttl: "1h"
+  - name: dotfiles-coder
+    template: kubernetes
+    repo: https://github.com/jcwearn/dotfiles-coder
+    parameters:
+      cpu: "2"
+      memory: "4"
+      home_disk_size: "10"
+    schedule:
+      autostop_ttl: "1h"
+  - name: homeassistant-config
+    template: kubernetes
+    repo: https://github.com/jcwearn/homeassistant-config
+    parameters:
+      cpu: "2"
+      memory: "4"
+      home_disk_size: "10"
+    schedule:
+      autostop_ttl: "1h"
+  - name: priceatronic2
+    template: kubernetes
+    repo: https://github.com/jcwearn/priceatronic2
+    parameters:
+      cpu: "2"
+      memory: "4"
+      home_disk_size: "10"
+    schedule:
+      autostop_ttl: "1h"
+  # Agentic workspaces (swappable repos, Claude Code task-capable)
+  - name: agent-1
+    template: agentic
+    parameters:
+      cpu: "4"
+      memory: "8"
+      home_disk_size: "20"
+    schedule:
+      autostop_ttl: "1h"
+  - name: agent-2
+    template: agentic
+    parameters:
+      cpu: "4"
+      memory: "8"
+      home_disk_size: "20"
+    schedule:
+      autostop_ttl: "1h"
+  - name: agent-3
+    template: agentic
+    parameters:
+      cpu: "4"
+      memory: "8"
+      home_disk_size: "20"
+    schedule:
+      autostop_ttl: "1h"
+  - name: agent-4
+    template: agentic
+    parameters:
+      cpu: "4"
+      memory: "8"
+      home_disk_size: "20"
+    schedule:
+      autostop_ttl: "1h"

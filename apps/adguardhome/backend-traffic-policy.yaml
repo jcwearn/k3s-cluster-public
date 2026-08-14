@@ -1,0 +1,17 @@
+apiVersion: gateway.envoyproxy.io/v1alpha1
+kind: BackendTrafficPolicy
+metadata:
+  name: adguardhome
+  namespace: adguardhome
+spec:
+  targetRefs:
+    - group: gateway.networking.k8s.io
+      kind: HTTPRoute
+      name: adguardhome
+    - group: gateway.networking.k8s.io
+      kind: HTTPRoute
+      name: adguardhome-secondary
+  timeout:
+    http:
+      connectionIdleTimeout: 3600s
+      requestTimeout: 3600s

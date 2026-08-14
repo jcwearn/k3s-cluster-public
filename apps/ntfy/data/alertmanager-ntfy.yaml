@@ -1,0 +1,23 @@
+http:
+  addr: :8000
+  auth:
+    username: $ALERTMANAGER_NTFY_USERNAME
+    password: $ALERTMANAGER_NTFY_PASSWORD
+ntfy:
+  baseurl: http://${LAN_PREFIX}.19:4080
+  auth:
+    token: $NTFY_TOKEN
+  notification:
+    topic: alertmanager
+    priority: |
+      status == "firing" ? "urgent" : "default"
+    tags:
+      - tag: "+1"
+        condition: status == "resolved"
+      - tag: rotating_light
+        condition: status == "firing"
+    templates:
+      title: |
+        {{ if eq .Status "resolved" }}Resolved: {{ end }}{{ index .Annotations "summary" }}
+      description: |
+        {{ index .Annotations "description" }}

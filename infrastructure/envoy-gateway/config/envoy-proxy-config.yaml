@@ -1,0 +1,18 @@
+apiVersion: gateway.envoyproxy.io/v1alpha1
+kind: EnvoyProxy
+metadata:
+  name: proxy-config
+  namespace: envoy-gateway-system
+spec:
+  provider:
+    type: Kubernetes
+    kubernetes:
+      envoyDeployment:
+        replicas: 2
+      envoyService:
+        name: envoy-proxy
+        type: LoadBalancer
+        annotations:
+          kube-vip.io/loadbalancerIPs: "${LAN_PREFIX}.5"
+          tailscale.com/expose: "true"
+          tailscale.com/hostname: "k3s-gateway"

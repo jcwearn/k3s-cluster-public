@@ -1,0 +1,18 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: withjoy-exporter-web
+  namespace: withjoy-exporter
+  annotations:
+    tailscale.com/expose: "true"
+    tailscale.com/hostname: "withjoy-exporter"
+    kube-vip.io/loadbalancerIPs: "${LAN_PREFIX}.35"
+spec:
+  type: LoadBalancer
+  selector:
+    app: withjoy-exporter-web
+  ports:
+    - port: 8080
+      targetPort: 8080
+      protocol: TCP
+      name: http

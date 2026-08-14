@@ -1,0 +1,14 @@
+apiVersion: gateway.envoyproxy.io/v1alpha1
+kind: BackendTrafficPolicy
+metadata:
+  name: homeassistant
+  namespace: homeassistant
+spec:
+  targetRefs:
+    - group: gateway.networking.k8s.io
+      kind: HTTPRoute
+      name: homeassistant
+  timeout:
+    http:
+      connectionIdleTimeout: 3600s
+      requestTimeout: 3600s

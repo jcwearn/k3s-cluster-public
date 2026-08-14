@@ -1,0 +1,28 @@
+apiVersion: postgresql.cnpg.io/v1
+kind: Cluster
+metadata:
+  name: immich-database
+  namespace: immich
+spec:
+  instances: 1
+  imageName: ghcr.io/tensorchord/cloudnative-vectorchord:16.9-0.4.3
+  storage:
+    size: 20Gi
+    storageClass: truenas-nfs-postgres
+  postgresql:
+    shared_preload_libraries:
+      - "vchord.so"
+  bootstrap:
+    initdb:
+      database: immich
+      owner: immich
+      secret:
+        name: immich-database-credentials
+      postInitApplicationSQL:
+        - CREATE EXTENSION IF NOT EXISTS vchord CASCADE;
+        - CREATE EXTENSION IF NOT EXISTS earthdistance CASCADE;
+        # Might need these for proper functionality, manually granted running:
+        # kubectl exec -n immich immich-database-1 -- psql -U postgres -d immich -c "GRANT pg_read_all_data TO immich; GRANT pg_read_all_stats TO immich; ALTER USER immich WITH REPLICATION;" 2>&1
+        # - GRANT pg_read_all_data TO immich;
+        # - GRANT pg_read_all_stats TO immich;
+        # - ALTER USER immich WITH REPLICATION;

@@ -1,0 +1,88 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: mkdocs
+  namespace: mkdocs
+  annotations:
+    reloader.stakater.com/auto: "true"
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: mkdocs
+  template:
+    metadata:
+      labels:
+        app: mkdocs
+    spec:
+      initContainers:
+        - name: init-mkdocs
+          image: squidfunk/mkdocs-material:9
+          imagePullPolicy: IfNotPresent
+          args:
+            - build
+            - --site-dir=/site
+            - --strict
+            - --clean
+          volumeMounts:
+            - name: mkdocs-root
+              mountPath: /docs/mkdocs.yml
+              subPath: mkdocs.yml
+              readOnly: true
+            - name: mkdocs-root
+              mountPath: /docs/docs/index.md
+              subPath: index.md
+              readOnly: true
+            - name: mkdocs-apps
+              mountPath: /docs/docs/apps
+              readOnly: true
+            - name: mkdocs-infra
+              mountPath: /docs/docs/infrastructure
+              readOnly: true
+            - name: mkdocs-misc
+              mountPath: /docs/docs/misc
+              readOnly: true
+            - name: site-volume
+              mountPath: /site
+          resources:
+            requests:
+              cpu: 200m
+              memory: 256Mi
+            limits:
+              cpu: 500m
+              memory: 512Mi
+      containers:
+        - name: mkdocs
+          image: nginx:1.31.3-alpine-slim@sha256:45b82ed5f285b90d63df07ba70430fdd8f25624b416617d9e6dc93412b2006dc
+          imagePullPolicy: IfNotPresent
+          ports:
+            - containerPort: 80
+          resources:
+            limits:
+              memory: "512Mi"
+              cpu: "500m"
+            requests:
+              memory: "256Mi"
+              cpu: "250m"
+          volumeMounts:
+            - name: site-volume
+              mountPath: /usr/share/nginx/html
+      volumes:
+        - name: mkdocs-root
+          configMap:
+            name: mkdocs-root
+            defaultMode: 0444
+        - name: mkdocs-apps
+          configMap:
+            name: mkdocs-apps
+            defaultMode: 0444
+        - name: mkdocs-infra
+          configMap:
+            name: mkdocs-infra
+            defaultMode: 0444
+        - name: mkdocs-misc
+          configMap:
+            name: mkdocs-misc
+            defaultMode: 0444
+        - name: site-volume
+          emptyDir: {}

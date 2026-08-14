@@ -1,0 +1,113 @@
+name: Validate Manifests
+
+# Two checks:
+#
+#   1. Every kustomize overlay in the repo still builds.
+#   2. Every Flux Kustomization that has postBuild substitution enabled renders with no
+#      unresolved ${VAR}.
+#
+# The second one is the guard that matters. postBuild replaces a variable it cannot resolve
+# with an empty string and reports success, so a typo'd name or a stray ${1} from an
+# upstream config produces a healthy-looking reconcile and a silently broken resource.
+# `flux envsubst --strict` is the only thing that turns that into a failure.
+#
+# The path list is derived from clusters/prod/ rather than hand-maintained, so it covers
+# each path from the moment postBuild is enabled on it and never drifts.
+
+on:
+  push:
+    branches:
+      - main
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  validate:
+    name: Build and check substitutions
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+
+      - name: Install flux
+        uses: fluxcd/flux2/action@main
+
+      - name: Install kustomize and yq
+        env:
+          KUSTOMIZE_VERSION: "5.8.1"
+          YQ_VERSION: "4.53.3"
+        run: |
+          set -euo pipefail
+          curl -fsSL -o kustomize.tar.gz \
+            "https://github.com/kubernetes-sigs/kustomize/releases/download/kustomize%2Fv${KUSTOMIZE_VERSION}/kustomize_v${KUSTOMIZE_VERSION}_linux_amd64.tar.gz"
+          tar -xzf kustomize.tar.gz kustomize
+          sudo install -m 755 kustomize /usr/local/bin/kustomize
+          curl -fsSL -o yq \
+            "https://github.com/mikefarah/yq/releases/download/v${YQ_VERSION}/yq_linux_amd64"
+          sudo install -m 755 yq /usr/local/bin/yq
+
+      - name: Build every overlay
+        run: |
+          set -euo pipefail
+          fail=0
+          while read -r f; do
+            d=$(dirname "$f")
+            if ! kustomize build "$d" >/dev/null; then
+              echo "::error file=$f::kustomize build failed for $d"
+              fail=1
+            fi
+          done < <(git ls-files '*kustomization.yaml' | grep -v '^clusters/')
+          exit "$fail"
+
+      - name: Check postBuild substitutions resolve
+        run: |
+          set -euo pipefail
+
+          # Placeholder values. Only the *names* have to match the keys in the cluster-vars
+          # Secret -- the values are irrelevant, since this checks resolution rather than
+          # correctness. Adding a key to the Secret means adding it here too.
+          export DOMAIN="example.test"
+          export TAILNET="example-tailnet.ts.net"
+          export LAN_PREFIX="10.255.255"
+          export MGMT_PREFIX="10.255.254"
+
+          # -N suppresses the "---" separators yq emits once more than one document
+          # matches, which would otherwise be read back as a path.
+          paths=$(yq -N 'select(.spec.postBuild.substituteFrom != null) | .spec.path' clusters/prod/*.yaml)
+          if [ -z "$paths" ]; then
+            echo "No Kustomization has postBuild enabled yet -- nothing to check."
+            exit 0
+          fi
+
+          fail=0
+          checked=0
+          while read -r p; do
+            [ -n "$p" ] && [ "$p" != "---" ] || continue
+            p="${p#./}"
+            # ./apps has no kustomization.yaml of its own -- Flux generates one over the
+            # app subdirectories, so check each of them individually.
+            if [ -f "$p/kustomization.yaml" ]; then
+              dirs=$(printf '%s\n' "$p")
+            else
+              dirs=$(find "$p" -name kustomization.yaml -exec dirname {} \; | sort)
+            fi
+            while read -r d; do
+              [ -n "$d" ] || continue
+              checked=$((checked + 1))
+              if ! out=$(kustomize build "$d" | flux envsubst --strict 2>&1 >/dev/null); then
+                echo "::error file=$d/kustomization.yaml::unresolved substitution in $d: $out"
+                fail=1
+              fi
+            done <<< "$dirs"
+          done <<< "$paths"
+
+          # A guard that silently checks nothing is the same failure mode it exists to
+          # catch, so make an empty run an error rather than a pass.
+          if [ "$checked" -eq 0 ]; then
+            echo "::error::postBuild is enabled somewhere but no overlay was checked."
+            exit 1
+          fi
+          echo "Checked $checked overlays."
+          exit "$fail"

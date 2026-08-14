@@ -1,0 +1,285 @@
+name: Reconcile Coder Infrastructure
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - ".github/workflows/coder-reconcile.yaml"
+      - "apps/coder/data/workspaces.yaml"
+      - "apps/coder/data/templates/**"
+  workflow_dispatch:
+    inputs:
+      mode:
+        description: "plan or apply"
+        type: choice
+        required: true
+        default: "plan"
+        options: [plan, apply]
+      recreate_on_param_change:
+        description: "If checked, delete + recreate workspaces to apply parameter changes"
+        type: boolean
+        required: true
+        default: false
+      delete_missing:
+        description: "If checked, delete workspaces not in workspaces.yaml"
+        type: boolean
+        required: true
+        default: false
+      push_templates:
+        description: "If checked, push templates before managing workspaces"
+        type: boolean
+        required: true
+        default: true
+
+jobs:
+  push-templates:
+    runs-on: ubuntu-latest
+    if: >-
+      github.event_name == 'push' ||
+      (github.event_name == 'workflow_dispatch' && inputs.push_templates == true)
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+
+      - name: Require CODER_URL
+        env:
+          CODER_URL: ${{ vars.CODER_URL }}
+        run: |
+          # vars.CODER_URL expands to an empty string when the repository variable is
+          # unset, and the Coder CLI would then act against an empty endpoint rather
+          # than erroring. A push to main runs this workflow in apply mode, so fail here.
+          if [ -z "$CODER_URL" ]; then
+            echo "::error::Repository variable CODER_URL is not set."
+            echo "Set it with: gh variable set CODER_URL --body https://<coder-host>"
+            exit 1
+          fi
+
+      - name: Connect to Tailscale
+        uses: tailscale/github-action@v4
+        with:
+          oauth-client-id: ${{ secrets.TS_OAUTH_CLIENT_ID }}
+          oauth-secret: ${{ secrets.TS_OAUTH_SECRET }}
+          tags: tag:ci
+          ping: coder
+
+      - name: Install Coder CLI
+        run: curl -fsSL https://coder.com/install.sh | sh
+
+      - name: Push Kubernetes Template
+        env:
+          CODER_URL: ${{ vars.CODER_URL }}
+          CODER_SESSION_TOKEN: ${{ secrets.CODER_SESSION_TOKEN }}
+        run: |
+          coder templates push kubernetes \
+            --directory apps/coder/data/templates/kubernetes \
+            --variable namespace=coder \
+            --yes
+
+      - name: Push Agentic Template
+        env:
+          CODER_URL: ${{ vars.CODER_URL }}
+          CODER_SESSION_TOKEN: ${{ secrets.CODER_SESSION_TOKEN }}
+        run: |
+          coder templates push agentic \
+            --directory apps/coder/data/templates/agentic \
+            --variable namespace=coder \
+            --yes
+
+  manage-workspaces:
+    runs-on: ubuntu-latest
+    needs: push-templates
+    if: ${{ always() }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+
+      - name: Require CODER_URL
+        env:
+          CODER_URL: ${{ vars.CODER_URL }}
+        run: |
+          # vars.CODER_URL expands to an empty string when the repository variable is
+          # unset, and the Coder CLI would then act against an empty endpoint rather
+          # than erroring. A push to main runs this workflow in apply mode, so fail here.
+          if [ -z "$CODER_URL" ]; then
+            echo "::error::Repository variable CODER_URL is not set."
+            echo "Set it with: gh variable set CODER_URL --body https://<coder-host>"
+            exit 1
+          fi
+
+      - name: Connect to Tailscale
+        uses: tailscale/github-action@v4
+        with:
+          oauth-client-id: ${{ secrets.TS_OAUTH_CLIENT_ID }}
+          oauth-secret: ${{ secrets.TS_OAUTH_SECRET }}
+          tags: tag:ci
+          ping: coder
+
+      - name: Install Coder CLI
+        run: curl -fsSL https://coder.com/install.sh | sh
+
+      - name: Install yq + jq
+        run: |
+          sudo wget -qO /usr/local/bin/yq https://github.com/mikefarah/yq/releases/latest/download/yq_linux_amd64
+          sudo chmod +x /usr/local/bin/yq
+          sudo apt-get update
+          sudo apt-get install -y jq
+
+      - name: Reconcile Workspaces (plan/apply)
+        env:
+          CODER_URL: ${{ vars.CODER_URL }}
+          CODER_SESSION_TOKEN: ${{ secrets.CODER_SESSION_TOKEN }}
+          MODE: ${{ inputs.mode || 'apply' }}
+          RECREATE_ON_PARAM_CHANGE: ${{ inputs.recreate_on_param_change || 'false' }}
+          DELETE_MISSING: ${{ inputs.delete_missing || 'false' }}
+        run: |
+          set -euo pipefail
+
+          WORKSPACES_FILE="apps/coder/data/workspaces.yaml"
+          DOTFILES_URI="https://github.com/jcwearn/dotfiles-coder"
+
+          echo "MODE=$MODE"
+          echo "RECREATE_ON_PARAM_CHANGE=$RECREATE_ON_PARAM_CHANGE"
+          echo "DELETE_MISSING=$DELETE_MISSING"
+
+          actual_json="$(coder list --output json)"
+          actual_names="$(echo "$actual_json" | jq -r '.[].name' | sort -u)"
+
+          desired_count="$(yq '.workspaces | length' "$WORKSPACES_FILE")"
+          if [ "$desired_count" -eq 0 ]; then
+            echo "No workspaces found in $WORKSPACES_FILE"
+            exit 0
+          fi
+
+          desired_names=()
+
+          workspace_exists() {
+            local n="$1"
+            echo "$actual_json" | jq -e --arg n "$n" '.[] | select(.name == $n)' >/dev/null 2>&1
+          }
+
+          plan_actions=()
+
+          for ((i=0; i<desired_count; i++)); do
+            name="$(yq -r ".workspaces[$i].name" "$WORKSPACES_FILE")"
+            template="$(yq -r ".workspaces[$i].template" "$WORKSPACES_FILE")"
+            repo="$(yq -r ".workspaces[$i].repo" "$WORKSPACES_FILE")"
+            cpu="$(yq -r ".workspaces[$i].parameters.cpu" "$WORKSPACES_FILE")"
+            memory="$(yq -r ".workspaces[$i].parameters.memory" "$WORKSPACES_FILE")"
+            home_disk_size="$(yq -r ".workspaces[$i].parameters.home_disk_size" "$WORKSPACES_FILE")"
+            autostart="$(yq -r ".workspaces[$i].schedule.autostart // \"\"" "$WORKSPACES_FILE")"
+            autostop_ttl="$(yq -r ".workspaces[$i].schedule.autostop_ttl // \"\"" "$WORKSPACES_FILE")"
+
+            desired_names+=("$name")
+
+            if workspace_exists "$name"; then
+              if [ "$RECREATE_ON_PARAM_CHANGE" = "true" ]; then
+                plan_actions+=("RECREATE $name (delete+create to apply params) template=$template repo=$repo")
+              else
+                plan_actions+=("UPDATE $name (coder update to latest template version)")
+              fi
+            else
+              plan_actions+=("CREATE $name template=$template repo=$repo")
+            fi
+          done
+
+          # Optional delete for workspaces not in YAML
+          if [ "$DELETE_MISSING" = "true" ]; then
+            desired_set="$(printf "%s\n" "${desired_names[@]}" | sort -u)"
+            missing="$(comm -23 <(echo "$actual_names") <(echo "$desired_set") || true)"
+            if [ -n "$missing" ]; then
+              while IFS= read -r n; do
+                [ -n "$n" ] && plan_actions+=("DELETE $n (not in workspaces.yaml)")
+              done <<< "$missing"
+            fi
+          fi
+
+          echo "Planned actions:"
+          printf ' - %s\n' "${plan_actions[@]}"
+          echo ""
+
+          if [ "$MODE" = "plan" ]; then
+            echo "Plan mode: no changes applied."
+            exit 0
+          fi
+
+          # APPLY
+          for ((i=0; i<desired_count; i++)); do
+            name="$(yq -r ".workspaces[$i].name" "$WORKSPACES_FILE")"
+            template="$(yq -r ".workspaces[$i].template" "$WORKSPACES_FILE")"
+            repo="$(yq -r ".workspaces[$i].repo" "$WORKSPACES_FILE")"
+            cpu="$(yq -r ".workspaces[$i].parameters.cpu" "$WORKSPACES_FILE")"
+            memory="$(yq -r ".workspaces[$i].parameters.memory" "$WORKSPACES_FILE")"
+            home_disk_size="$(yq -r ".workspaces[$i].parameters.home_disk_size" "$WORKSPACES_FILE")"
+            autostart="$(yq -r ".workspaces[$i].schedule.autostart // \"\"" "$WORKSPACES_FILE")"
+            autostop_ttl="$(yq -r ".workspaces[$i].schedule.autostop_ttl // \"\"" "$WORKSPACES_FILE")"
+
+            # Build schedule args if provided
+            schedule_args=()
+            if [ -n "$autostart" ]; then
+              schedule_args+=(--start-at "$autostart")
+            fi
+            if [ -n "$autostop_ttl" ]; then
+              schedule_args+=(--stop-after "$autostop_ttl")
+            fi
+
+            # Build repo param if provided
+            repo_args=()
+            if [ -n "$repo" ] && [ "$repo" != "null" ]; then
+              repo_args+=(--parameter git_repo="$repo")
+            elif [ "$template" = "agentic" ]; then
+              repo_args+=(--parameter git_repo="")
+            fi
+
+            if workspace_exists "$name"; then
+              if [ "$RECREATE_ON_PARAM_CHANGE" = "true" ]; then
+                echo "Recreating workspace: $name"
+                coder delete "$name" --yes
+
+                echo "Creating workspace: $name"
+                coder create "$name" \
+                  --template "$template" \
+                  --parameter cpu="$cpu" \
+                  --parameter memory="$memory" \
+                  --parameter home_disk_size="$home_disk_size" \
+                  "${repo_args[@]}" \
+                  --parameter dotfiles_uri="$DOTFILES_URI" \
+                  "${schedule_args[@]}" \
+                  --yes
+              else
+                echo "Updating workspace to latest template version: $name"
+                coder update "$name" --yes || echo "WARNING: Failed to update $name"
+                # Update schedule for existing workspaces
+                if [ -n "$autostart" ]; then
+                  echo "Setting autostart schedule for $name"
+                  coder schedule start "$name" "$autostart" || true
+                fi
+                if [ -n "$autostop_ttl" ]; then
+                  echo "Setting autostop TTL for $name"
+                  coder schedule stop "$name" "$autostop_ttl" || true
+                fi
+              fi
+            else
+              echo "Creating workspace: $name"
+              coder create "$name" \
+                --template "$template" \
+                --parameter cpu="$cpu" \
+                --parameter memory="$memory" \
+                --parameter home_disk_size="$home_disk_size" \
+                "${repo_args[@]}" \
+                --parameter dotfiles_uri="$DOTFILES_URI" \
+                "${schedule_args[@]}" \
+                --yes
+            fi
+          done
+
+          if [ "$DELETE_MISSING" = "true" ]; then
+            desired_set="$(yq -r '.workspaces[].name' "$WORKSPACES_FILE" | sort -u)"
+            missing="$(comm -23 <(echo "$actual_names") <(echo "$desired_set") || true)"
+            if [ -n "$missing" ]; then
+              while IFS= read -r n; do
+                [ -n "$n" ] || continue
+                echo "Deleting workspace not in YAML: $n"
+                coder delete "$n" --yes
+              done <<< "$missing"
+            fi
+          fi
+
+          echo "Reconcile complete."

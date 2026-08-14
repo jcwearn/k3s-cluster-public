@@ -1,0 +1,20 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: homepage
+  namespace: homepage
+  labels:
+    app.kubernetes.io/name: homepage
+  annotations:
+    tailscale.com/expose: "true"
+    tailscale.com/hostname: "homepage"
+    kube-vip.io/loadbalancerIPs: "${LAN_PREFIX}.8"
+spec:
+  type: LoadBalancer
+  ports:
+    - port: 7000
+      targetPort: http
+      protocol: TCP
+      name: http
+  selector:
+    app.kubernetes.io/name: homepage

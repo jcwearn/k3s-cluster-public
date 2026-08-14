@@ -1,0 +1,48 @@
+apiVersion: helm.toolkit.fluxcd.io/v2
+kind: HelmRelease
+metadata:
+  name: external-dns
+  namespace: external-dns
+spec:
+  interval: 10m
+  chart:
+    spec:
+      chart: external-dns
+      version: 1.21.1
+      sourceRef:
+        kind: HelmRepository
+        name: external-dns
+        namespace: flux-system
+  install:
+    createNamespace: true
+    crds: Create
+  upgrade:
+    crds: CreateReplace
+  values:
+    provider:
+      name: cloudflare
+    env:
+      - name: CF_API_TOKEN
+        valueFrom:
+          secretKeyRef:
+            name: cf-api-token
+            key: CF_API_TOKEN
+    domainFilters:
+      - ${DOMAIN}
+    policy: sync
+    txtPrefix: "_edns."
+    txtOwnerId: "k3s-cluster"
+    logLevel: debug
+    labelFilter: "external-dns/exclude!=true"
+    sources:
+      - crd
+      - gateway-httproute
+    resources:
+      requests:
+        cpu: 50m
+        memory: 128Mi
+      limits:
+        cpu: 250m
+        memory: 256Mi
+    deploymentAnnotations:
+      reloader.stakater.com/auto: "true"

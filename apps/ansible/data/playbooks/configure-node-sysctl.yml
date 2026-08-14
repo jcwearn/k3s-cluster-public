@@ -1,0 +1,32 @@
+---
+# Playbook to configure kernel sysctl parameters on all k3s nodes.
+# Sets inotify limits above the Linux defaults (128 instances, 8192 watches),
+# which are too low for nodes running many containers — each .NET/Node.js/Python
+# workload creates inotify instances for file watching, and with 30-50 pods per
+# node the defaults are easily exhausted, causing container startup failures.
+#
+# Run manually:
+#   kubectl create job -n ansible --from=cronjob/ansible-configure-node-sysctl \
+#     ansible-configure-node-sysctl-$(date +%s)
+
+- name: Configure k3s node sysctl parameters
+  hosts: k3s
+  become: true
+  gather_facts: false
+
+  tasks:
+    - name: Set fs.inotify.max_user_instances
+      ansible.posix.sysctl:
+        name: fs.inotify.max_user_instances
+        value: "1024"
+        state: present
+        reload: true
+        sysctl_file: /etc/sysctl.d/99-k3s-node.conf
+
+    - name: Set fs.inotify.max_user_watches
+      ansible.posix.sysctl:
+        name: fs.inotify.max_user_watches
+        value: "524288"
+        state: present
+        reload: true
+        sysctl_file: /etc/sysctl.d/99-k3s-node.conf

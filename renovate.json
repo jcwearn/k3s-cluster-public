@@ -1,0 +1,76 @@
+{
+  "$schema": "https://docs.renovatebot.com/renovate-schema.json",
+  "extends": [
+    "config:best-practices"
+  ],
+  "flux": {
+    "managerFilePatterns": [
+      "/(?:^|/)gotk-components\\.ya?ml$/",
+      "/clusters/prod/flux-system/",
+      "/^apps\\/.*helm.*\\.ya?ml$/",
+      "/^infrastructure\\/.*helm.*\\.ya?ml$/"
+    ]
+  },
+  "kubernetes": {
+    "managerFilePatterns": [
+      "/^apps\\/.+\\.ya?ml$/",
+      "/^infrastructure\\/.+\\.ya?ml$/"
+    ]
+  },
+  "packageRules": [
+    {
+      "matchFileNames": [
+        "apps/**"
+      ],
+      "matchUpdateTypes": [
+        "minor",
+        "patch",
+        "pin",
+        "digest"
+      ],
+      "groupName": "apps",
+      "groupSlug": "apps"
+    },
+    {
+      "matchFileNames": [
+        "infrastructure/**"
+      ],
+      "matchUpdateTypes": [
+        "minor",
+        "patch",
+        "pin",
+        "digest"
+      ],
+      "groupName": "infrastructure",
+      "groupSlug": "infrastructure"
+    },
+    {
+      "matchFileNames": [
+        "clusters/prod/flux-system/**"
+      ],
+      "matchManagers": [
+        "flux"
+      ],
+      "matchUpdateTypes": [
+        "minor",
+        "patch",
+        "pin",
+        "digest"
+      ],
+      "groupName": "flux-system",
+      "groupSlug": "flux-system"
+    },
+    {
+      "matchPackageNames": [
+        "ghcr.io/kube-vip/kube-vip"
+      ],
+      "automerge": false
+    },
+    {
+      "matchPackageNames": [
+        "ghcr.io/immich-app/immich-server"
+      ],
+      "pinDigests": false
+    }
+  ]
+}

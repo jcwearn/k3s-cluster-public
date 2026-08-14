@@ -1,0 +1,41 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: coredns-custom
+  namespace: kube-system
+data:
+  ${DOMAIN}.override: |
+    # Route all ${DOMAIN} subdomains through Envoy Gateway for TLS termination
+    # Apps
+    rewrite name books.${DOMAIN} envoy-proxy.envoy-gateway-system.svc.cluster.local
+    rewrite name chat.${DOMAIN} envoy-proxy.envoy-gateway-system.svc.cluster.local
+    rewrite name clock.${DOMAIN} envoy-proxy.envoy-gateway-system.svc.cluster.local
+    rewrite name code.${DOMAIN} envoy-proxy.envoy-gateway-system.svc.cluster.local
+    rewrite name dash.${DOMAIN} envoy-proxy.envoy-gateway-system.svc.cluster.local
+    rewrite name dns.${DOMAIN} envoy-proxy.envoy-gateway-system.svc.cluster.local
+    rewrite name dns-secondary.${DOMAIN} envoy-proxy.envoy-gateway-system.svc.cluster.local
+    rewrite name docs.${DOMAIN} envoy-proxy.envoy-gateway-system.svc.cluster.local
+    rewrite name image.${DOMAIN} envoy-proxy.envoy-gateway-system.svc.cluster.local
+    rewrite name immich.${DOMAIN} envoy-proxy.envoy-gateway-system.svc.cluster.local
+    rewrite name jellyfin.${DOMAIN} envoy-proxy.envoy-gateway-system.svc.cluster.local
+    rewrite name n8n.${DOMAIN} envoy-proxy.envoy-gateway-system.svc.cluster.local
+    rewrite name ntfy.${DOMAIN} envoy-proxy.envoy-gateway-system.svc.cluster.local
+    rewrite name paperless.${DOMAIN} envoy-proxy.envoy-gateway-system.svc.cluster.local
+    rewrite name pdf.${DOMAIN} envoy-proxy.envoy-gateway-system.svc.cluster.local
+    rewrite name shelfmark.${DOMAIN} envoy-proxy.envoy-gateway-system.svc.cluster.local
+    rewrite name tools.${DOMAIN} envoy-proxy.envoy-gateway-system.svc.cluster.local
+    rewrite name uptime.${DOMAIN} envoy-proxy.envoy-gateway-system.svc.cluster.local
+    rewrite name ${DOMAIN} envoy-proxy.envoy-gateway-system.svc.cluster.local
+    rewrite name withjoy-exporter.${DOMAIN} envoy-proxy.envoy-gateway-system.svc.cluster.local
+    rewrite name zeroclaw.${DOMAIN} envoy-proxy.envoy-gateway-system.svc.cluster.local
+    # Infrastructure
+    rewrite name alerts.${DOMAIN} envoy-proxy.envoy-gateway-system.svc.cluster.local
+    rewrite name grafana.${DOMAIN} envoy-proxy.envoy-gateway-system.svc.cluster.local
+    rewrite name prometheus.${DOMAIN} envoy-proxy.envoy-gateway-system.svc.cluster.local
+    # External services
+    rewrite name home.${DOMAIN} envoy-proxy.envoy-gateway-system.svc.cluster.local
+    rewrite name pve-01.${DOMAIN} envoy-proxy.envoy-gateway-system.svc.cluster.local
+    rewrite name pve-02.${DOMAIN} envoy-proxy.envoy-gateway-system.svc.cluster.local
+    rewrite name pve-03.${DOMAIN} envoy-proxy.envoy-gateway-system.svc.cluster.local
+    rewrite name router.${DOMAIN} envoy-proxy.envoy-gateway-system.svc.cluster.local
+    rewrite name truenas.${DOMAIN} envoy-proxy.envoy-gateway-system.svc.cluster.local

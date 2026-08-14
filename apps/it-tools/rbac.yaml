@@ -1,0 +1,35 @@
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: it-tools
+  namespace: it-tools
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: it-tools-read
+  namespace: it-tools
+rules:
+  - apiGroups: [""]
+    resources: ["pods", "services", "endpoints", "configmaps"]
+    verbs: ["get", "list", "watch"]
+  - apiGroups: ["apps"]
+    resources: ["deployments", "replicasets"]
+    verbs: ["get", "list", "watch"]
+  - apiGroups: ["networking.k8s.io"]
+    resources: ["ingresses"]
+    verbs: ["get", "list", "watch"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: it-tools-read-binding
+  namespace: it-tools
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: it-tools-read
+subjects:
+  - kind: ServiceAccount
+    name: it-tools
+    namespace: it-tools

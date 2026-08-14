@@ -1,0 +1,55 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: ntfy-deployment
+  namespace: ntfy
+  labels:
+    app: ntfy-deployment
+  annotations:
+    reloader.stakater.com/auto: "true"
+spec:
+  revisionHistoryLimit: 1
+  replicas: 1
+  selector:
+    matchLabels:
+      app: ntfy-pod
+  template:
+    metadata:
+      labels:
+        app: ntfy-pod
+    spec:
+      containers:
+        - name: ntfy
+          image: binwiederhier/ntfy:v2.27.0@sha256:f2419f405127afa868f10985c1a41449e673477cee1eb19994339a5ae8b592e7
+          imagePullPolicy: IfNotPresent
+          args: ["serve"]
+          env:
+            - name: TZ
+              value: America/New_York
+          ports:
+            - containerPort: 80
+          resources:
+            limits:
+              memory: 300Mi
+              cpu: 200m
+            requests:
+              cpu: 150m
+              memory: 150Mi
+          volumeMounts:
+            - mountPath: /etc/ntfy/server.yml
+              subPath: server.yml
+              name: config-volume
+            - mountPath: /var/cache/ntfy
+              name: cache-volume
+            - mountPath: /var/lib/ntfy
+              name: auth-volume
+      volumes:
+        - name: config-volume
+          configMap:
+            name: server-config
+        - name: cache-volume
+          persistentVolumeClaim:
+            claimName: ntfy-cache-pvc
+        - name: auth-volume
+          persistentVolumeClaim:
+            claimName: ntfy-auth-pvc

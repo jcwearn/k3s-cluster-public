@@ -1,0 +1,14 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+resources:
+  - namespace.yaml
+  - postgresql.yaml
+  - secrets.sops.yaml
+  - github-oauth.sops.yaml
+  - anthropic-secret.sops.yaml
+  - helm.yaml
+  - httproute.yaml
+  - backend-traffic-policy.yaml
+  - rbac.yaml
+  - workspace-rbac.yaml
+  - kubeconfig.sops.yaml

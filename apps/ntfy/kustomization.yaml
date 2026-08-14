@@ -1,0 +1,19 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+resources:
+  - alertmanager-ntfy-deployment.yaml
+  - alertmanager-ntfy-service.yaml
+  - deployment.yaml
+  - httproute.yaml
+  - namespace.yaml
+  - pvc.yaml
+  - secrets.sops.yaml
+  - service.yaml
+configMapGenerator:
+  - name: server-config
+    files:
+      - data/server.yml
+  - name: alertmanager-ntfy-config
+    files:
+      - data/alertmanager-ntfy.yaml
+namespace: ntfy

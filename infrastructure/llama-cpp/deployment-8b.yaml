@@ -1,0 +1,81 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: llama-cpp-8b
+  namespace: llama-cpp
+  labels:
+    app: llama-cpp-8b
+spec:
+  revisionHistoryLimit: 1
+  replicas: 1
+  selector:
+    matchLabels:
+      app: llama-cpp-8b
+  template:
+    metadata:
+      labels:
+        app: llama-cpp-8b
+        app.kubernetes.io/name: llama-cpp
+    spec:
+      affinity:
+        podAntiAffinity:
+          preferredDuringSchedulingIgnoredDuringExecution:
+            - weight: 100
+              podAffinityTerm:
+                topologyKey: kubernetes.io/hostname
+                labelSelector:
+                  matchLabels:
+                    app.kubernetes.io/name: llama-cpp
+      containers:
+        - name: llama-cpp
+          image: ghcr.io/ggml-org/llama.cpp:server-b8637@sha256:b730227f92f5463a660f3d9231f509967d966a7e54a12734cb63ca2a7bd285a2
+          args:
+            - "--hf-repo"
+            - "Qwen/Qwen3-8B-GGUF"
+            - "--hf-file"
+            - "Qwen3-8B-Q4_K_M.gguf"
+            - "--port"
+            - "8080"
+            - "--host"
+            - "0.0.0.0"
+            - "-c"
+            - "8192"
+            - "--threads"
+            - "8"
+          env:
+            - name: LLAMA_CACHE
+              value: /models
+          ports:
+            - containerPort: 8080
+          startupProbe:
+            httpGet:
+              path: /health
+              port: 8080
+            failureThreshold: 60
+            periodSeconds: 10
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: 8080
+            periodSeconds: 30
+            failureThreshold: 3
+          readinessProbe:
+            httpGet:
+              path: /health
+              port: 8080
+            periodSeconds: 10
+            failureThreshold: 3
+          resources:
+            requests:
+              cpu: 500m
+              memory: 5Gi
+            limits:
+              cpu: "8"
+              memory: 9Gi
+          volumeMounts:
+            - mountPath: /models
+              name: models
+      volumes:
+        - name: models
+          persistentVolumeClaim:
+            claimName: llama-cpp-models

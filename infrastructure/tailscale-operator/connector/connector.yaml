@@ -1,0 +1,13 @@
+apiVersion: tailscale.com/v1alpha1
+kind: Connector
+metadata:
+  name: ts-pod-cidrs
+  namespace: tailscale-operator
+spec:
+  proxyClass: exit-node-dns
+  hostname: k3s-exit-node
+  subnetRouter:
+    advertiseRoutes:
+      - "${MGMT_PREFIX}.0/24"
+      - "${LAN_PREFIX}.0/24"
+  exitNode: true

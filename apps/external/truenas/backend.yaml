@@ -1,0 +1,14 @@
+apiVersion: gateway.envoyproxy.io/v1alpha1
+kind: Backend
+metadata:
+  name: truenas
+  namespace: truenas
+spec:
+  endpoints:
+    - ip:
+        address: ${LAN_PREFIX}.200
+        port: 443
+  tls:
+    insecureSkipVerify: true
+    alpnProtocols:
+      - http/1.1

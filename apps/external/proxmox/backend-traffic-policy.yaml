@@ -1,0 +1,20 @@
+apiVersion: gateway.envoyproxy.io/v1alpha1
+kind: BackendTrafficPolicy
+metadata:
+  name: proxmox
+  namespace: proxmox
+spec:
+  targetRefs:
+    - group: gateway.networking.k8s.io
+      kind: HTTPRoute
+      name: pve-01
+    - group: gateway.networking.k8s.io
+      kind: HTTPRoute
+      name: pve-02
+    - group: gateway.networking.k8s.io
+      kind: HTTPRoute
+      name: pve-03
+  timeout:
+    http:
+      connectionIdleTimeout: 3600s
+      requestTimeout: 3600s

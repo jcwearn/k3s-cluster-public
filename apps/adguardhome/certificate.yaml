@@ -1,0 +1,25 @@
+apiVersion: cert-manager.io/v1
+kind: Certificate
+metadata:
+  name: adguardhome-letsencrypt
+  namespace: adguardhome
+spec:
+  secretName: adguardhome-letsencrypt
+  dnsNames:
+    - dns.${DOMAIN}
+  issuerRef:
+    kind: ClusterIssuer
+    name: cloudflare-letsencrypt
+---
+apiVersion: cert-manager.io/v1
+kind: Certificate
+metadata:
+  name: adguardhome-secondary-letsencrypt
+  namespace: adguardhome
+spec:
+  secretName: adguardhome-secondary-letsencrypt
+  dnsNames:
+    - dns-secondary.${DOMAIN}
+  issuerRef:
+    kind: ClusterIssuer
+    name: cloudflare-letsencrypt

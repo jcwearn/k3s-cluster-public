@@ -1,0 +1,392 @@
+apiVersion: source.toolkit.fluxcd.io/v1
+kind: HelmRepository
+metadata:
+  name: prometheus-community
+  namespace: flux-system
+spec:
+  url: https://prometheus-community.github.io/helm-charts
+  interval: 10m
+---
+apiVersion: helm.toolkit.fluxcd.io/v2
+kind: HelmRelease
+metadata:
+  name: kube-prometheus-stack
+  namespace: prometheus
+spec:
+  interval: 10m
+  chart:
+    spec:
+      chart: kube-prometheus-stack
+      version: 88.2.0
+      sourceRef:
+        kind: HelmRepository
+        name: prometheus-community
+        namespace: flux-system
+  install:
+    createNamespace: true
+    crds: Create
+  upgrade:
+    crds: CreateReplace
+  valuesFrom:
+    - kind: Secret
+      name: prometheus-secrets
+      valuesKey: GRAFANA_ADMIN_USER
+      targetPath: grafana.adminUser
+    - kind: Secret
+      name: prometheus-secrets
+      valuesKey: GRAFANA_ADMIN_PASSWORD
+      targetPath: grafana.adminPassword
+    - kind: Secret
+      name: prometheus-secrets
+      valuesKey: NTFY_USERNAME
+      targetPath: alertmanager.config.receivers[1].webhook_configs[0].http_config.basic_auth.username
+    - kind: Secret
+      name: prometheus-secrets
+      valuesKey: NTFY_PASSWORD
+      targetPath: alertmanager.config.receivers[1].webhook_configs[0].http_config.basic_auth.password
+    - kind: Secret
+      name: prometheus-secrets
+      valuesKey: HEALTHCHECK_PING_URL
+      targetPath: alertmanager.config.receivers[2].webhook_configs[0].url
+  values:
+    prometheus:
+      prometheusSpec:
+        additionalScrapeConfigs:
+          - job_name: truenas
+            honor_labels: true
+            static_configs:
+              - targets: ['graphite-exporter-svc.prometheus.svc.cluster.local:9108']
+                labels:
+                  instance: truenas
+          - job_name: pve
+            static_configs:
+              - targets:
+                  - ${LAN_PREFIX}.21
+                  - ${LAN_PREFIX}.22
+                  - ${LAN_PREFIX}.23
+            metrics_path: /pve
+            params:
+              module: [default]
+              cluster: ['1']
+              node: ['1']
+            relabel_configs:
+              - source_labels: [__address__]
+                target_label: __param_target
+              - source_labels: [__param_target]
+                target_label: instance
+              - target_label: __address__
+                replacement: pve-exporter-svc.prometheus.svc.cluster.local:9221
+          - job_name: proxmox-nodes
+            static_configs:
+              - targets:
+                  - ${LAN_PREFIX}.21:9100
+                  - ${LAN_PREFIX}.22:9100
+                  - ${LAN_PREFIX}.23:9100
+      service:
+        type: LoadBalancer
+        annotations:
+          tailscale.com/expose: "true"
+          tailscale.com/hostname: "prometheus"
+          kube-vip.io/loadbalancerIPs: "${LAN_PREFIX}.3"
+      ingress:
+        enabled: false
+    alertmanager:
+      ingress:
+        enabled: false
+      service:
+        type: LoadBalancer
+        annotations:
+          tailscale.com/expose: "true"
+          tailscale.com/hostname: "alertmanager"
+          kube-vip.io/loadbalancerIPs: "${LAN_PREFIX}.18"
+      config:
+        route:
+          group_by: ["namespace"]
+          group_wait: 30s
+          group_interval: 5m
+          repeat_interval: 12h
+          receiver: "null"
+          routes:
+            - receiver: "healthcheck"
+              matchers:
+                - alertname = "Watchdog"
+              group_wait: 0s
+              group_interval: 1m
+              repeat_interval: 5m
+            - receiver: "null"
+              matchers:
+                - alertname = "InfoInhibitor"
+            - receiver: "ntfy"
+              matchers:
+                - alertname != "Watchdog"
+        receivers:
+          - name: "null"
+          - name: "ntfy"
+            webhook_configs:
+              - url: "http://alertmanager-ntfy-svc.ntfy.svc.cluster.local:4081/hook"
+                http_config:
+                  basic_auth:
+                    username: ""
+                    password: ""
+          - name: "healthcheck"
+            webhook_configs:
+              - url: "https://hc-ping.com/placeholder"
+                send_resolved: false
+      alertmanagerSpec:
+        volumes:
+          - name: password-file-volume
+            secret:
+              secretName: prometheus-secrets
+              items:
+                - key: alertmanager-ntfy-password
+                  path: alertmanager-ntfy-password
+        volumeMounts:
+          - name: password-file-volume
+            mountPath: /passwords
+            readOnly: true
+    grafana:
+      sidecar:
+        dashboards:
+          folderAnnotation: grafana_folder
+      ingress:
+        enabled: false
+      prune: true
+    kubeControllerManager:
+      enabled: false
+    kubeProxy:
+      enabled: false
+    kubeScheduler:
+      enabled: false
+    defaultRules:
+      create: true
+      rules:
+        kubeControllerManager: false
+        kubeProxy: false
+        kubeSchedulerAlerting: false
+        kubeSchedulerRecording: false
+        windows: false
+    additionalPrometheusRulesMap:
+      truenas-health:
+        groups:
+          - name: truenas-health
+            rules:
+              - alert: TrueNASDiskTemperatureHigh
+                expr: disk_temperature{job="truenas"} > 65
+                for: 5m
+                labels:
+                  severity: warning
+                annotations:
+                  summary: "TrueNAS disk temperature high ({{ $labels.serial }})"
+                  description: "Disk {{ $labels.serial }} on {{ $labels.instance }} is at {{ $value }}°C (threshold: 65°C)."
+              - alert: TrueNASDiskTemperatureCritical
+                expr: disk_temperature{job="truenas"} > 70
+                for: 2m
+                labels:
+                  severity: critical
+                annotations:
+                  summary: "TrueNAS disk temperature critical ({{ $labels.serial }})"
+                  description: "Disk {{ $labels.serial }} on {{ $labels.instance }} is at {{ $value }}°C (threshold: 70°C)."
+              - alert: TrueNASHighCpuUsage
+                expr: (100 - cpu_total{job="truenas", kind="idle"}) > 90
+                for: 5m
+                labels:
+                  severity: warning
+                annotations:
+                  summary: "TrueNAS high CPU usage ({{ $labels.instance }})"
+                  description: "TrueNAS CPU usage is above 90% for more than 5 minutes.\n  VALUE = {{ $value }}%"
+              - alert: TrueNASHighMemoryUsage
+                expr: (physical_memory{job="truenas", kind="used"} / (physical_memory{job="truenas", kind="used"} + physical_memory{job="truenas", kind="free"}) * 100) > 90
+                for: 5m
+                labels:
+                  severity: warning
+                annotations:
+                  summary: "TrueNAS high memory usage ({{ $labels.instance }})"
+                  description: "TrueNAS memory usage is above 90% for more than 5 minutes.\n  VALUE = {{ $value }}%"
+              - alert: TrueNASZfsArcHitRatioLow
+                expr: (truenas_arcstats{type="cache", subtype="hits"} / (truenas_arcstats{type="cache", subtype="hits"} + truenas_arcstats{type="cache", subtype="misses"}) * 100) < 50
+                for: 15m
+                labels:
+                  severity: warning
+                annotations:
+                  summary: "TrueNAS ZFS ARC hit ratio low ({{ $labels.instance }})"
+                  description: "ZFS ARC hit ratio is below 50% for more than 15 minutes.\n  VALUE = {{ $value }}%"
+              - alert: TrueNASHighDiskUtilization
+                expr: (disk_bytes_used{job="truenas"} / (disk_bytes_used{job="truenas"} + disk_bytes_avail{job="truenas"}) * 100) > 85
+                for: 10m
+                labels:
+                  severity: warning
+                annotations:
+                  summary: "TrueNAS filesystem usage high ({{ $labels.mountpoint }})"
+                  description: "Filesystem {{ $labels.mountpoint }} on {{ $labels.instance }} is above 85% used.\n  VALUE = {{ $value }}%"
+      proxmox-health:
+        groups:
+          - name: proxmox-health
+            rules:
+              - alert: ProxmoxNodeDown
+                expr: pve_up{id=~"node/.*"} == 0
+                for: 1m
+                labels:
+                  severity: critical
+                annotations:
+                  summary: "Proxmox node {{ $labels.id }} is down"
+                  description: "Proxmox node {{ $labels.id }} has been unreachable for more than 1 minute."
+              - alert: ProxmoxVMDown
+                expr: pve_up{id=~"qemu/(100|201|301)"} == 0
+                for: 5m
+                labels:
+                  severity: warning
+                annotations:
+                  summary: "Proxmox VM {{ $labels.name }} is down"
+                  description: "VM {{ $labels.name }} on {{ $labels.instance }} has been down for more than 5 minutes."
+              - alert: ProxmoxHighCPU
+                expr: pve_cpu_usage_ratio{id=~"node/.*"} > 0.9
+                for: 10m
+                labels:
+                  severity: warning
+                annotations:
+                  summary: "Proxmox node {{ $labels.id }} high CPU ({{ $value | humanizePercentage }})"
+                  description: "CPU usage on {{ $labels.id }} has exceeded 90% for 10 minutes."
+              - alert: ProxmoxHighMemory
+                expr: (pve_memory_usage_bytes{id=~"node/.*"} / pve_memory_size_bytes{id=~"node/.*"}) > 0.90
+                for: 10m
+                labels:
+                  severity: warning
+                annotations:
+                  summary: "Proxmox node {{ $labels.id }} high memory ({{ $value | humanizePercentage }})"
+                  description: "Memory usage on {{ $labels.id }} has exceeded 90% for 10 minutes."
+              - alert: ProxmoxStorageAlmostFull
+                expr: (pve_disk_usage_bytes / pve_disk_size_bytes) > 0.85
+                for: 10m
+                labels:
+                  severity: warning
+                annotations:
+                  summary: "Proxmox storage {{ $labels.id }} almost full ({{ $value | humanizePercentage }})"
+                  description: "Storage {{ $labels.id }} is above 85% used."
+              - alert: ProxmoxStorageFull
+                expr: (pve_disk_usage_bytes / pve_disk_size_bytes) > 0.95
+                for: 5m
+                labels:
+                  severity: critical
+                annotations:
+                  summary: "Proxmox storage {{ $labels.id }} critically full ({{ $value | humanizePercentage }})"
+                  description: "Storage {{ $labels.id }} is above 95% used."
+              - alert: ProxmoxHostHighCPU
+                expr: (1 - avg without(cpu) (rate(node_cpu_seconds_total{job="proxmox-nodes", mode="idle"}[5m]))) > 0.9
+                for: 10m
+                labels:
+                  severity: warning
+                annotations:
+                  summary: "Proxmox host {{ $labels.instance }} high CPU"
+                  description: "OS-level CPU usage on {{ $labels.instance }} has exceeded 90% for 10 minutes.\n  VALUE = {{ $value | humanizePercentage }}"
+              - alert: ProxmoxHostDiskAlmostFull
+                expr: (1 - node_filesystem_avail_bytes{job="proxmox-nodes", fstype!~"tmpfs|overlay"} / node_filesystem_size_bytes{job="proxmox-nodes", fstype!~"tmpfs|overlay"}) > 0.85
+                for: 10m
+                labels:
+                  severity: warning
+                annotations:
+                  summary: "Proxmox host {{ $labels.instance }} disk almost full ({{ $labels.mountpoint }})"
+                  description: "Filesystem {{ $labels.mountpoint }} on {{ $labels.instance }} is above 85% used.\n  VALUE = {{ $value | humanizePercentage }}"
+              - alert: ProxmoxHostDiskFull
+                expr: (1 - node_filesystem_avail_bytes{job="proxmox-nodes", fstype!~"tmpfs|overlay"} / node_filesystem_size_bytes{job="proxmox-nodes", fstype!~"tmpfs|overlay"}) > 0.95
+                for: 5m
+                labels:
+                  severity: critical
+                annotations:
+                  summary: "Proxmox host {{ $labels.instance }} disk critically full ({{ $labels.mountpoint }})"
+                  description: "Filesystem {{ $labels.mountpoint }} on {{ $labels.instance }} is above 95% used.\n  VALUE = {{ $value | humanizePercentage }}"
+      pod-not-healthy:
+        groups:
+          - name: pod-not-healthy-group
+            rules:
+              - alert: KubernetesPodNotHealthy
+                expr: sum by (namespace, pod) (kube_pod_status_phase{phase=~"Pending|Unknown|Failed", namespace!="renovate"}) > 0
+                for: 10m
+                labels:
+                  severity: critical
+                annotations:
+                  summary: Kubernetes Pod not healthy (instance {{ $labels.instance }})
+                  description: "Pod {{ $labels.namespace }}/{{ $labels.pod }} has been in a non-running state for longer than 10 minutes.\n  VALUE = {{ $value }}\n  LABELS = {{ $labels }}"
+              - alert: KubernetesPodNotHealthy
+                expr: sum by (namespace, pod) (kube_pod_status_phase{phase=~"Unknown|Failed", namespace="renovate"}) > 0
+                for: 20m
+                labels:
+                  severity: critical
+                annotations:
+                  summary: Kubernetes Pod not healthy (instance {{ $labels.instance }})
+                  description: "Pod {{ $labels.namespace }}/{{ $labels.pod }} has been in a non-running state for longer than 20 minutes.\n  VALUE = {{ $value }}\n  LABELS = {{ $labels }}"
+              - alert: KubernetesDaemonsetRolloutStuck
+                expr: kube_daemonset_status_number_ready / kube_daemonset_status_desired_number_scheduled * 100 < 100 or kube_daemonset_status_desired_number_scheduled - kube_daemonset_status_current_number_scheduled > 0
+                for: 10m
+                labels:
+                  severity: warning
+                annotations:
+                  summary: Kubernetes DaemonSet rollout stuck (instance {{ $labels.instance }})
+                  description: "Some Pods of DaemonSet {{ $labels.namespace }}/{{ $labels.daemonset }} are not scheduled or not ready\n  VALUE = {{ $value }}\n  LABELS = {{ $labels }}"
+              - alert: ContainerHighCpuUtilization
+                expr: (sum(rate(container_cpu_usage_seconds_total{container!=""}[5m])) by (pod, container) / sum(container_spec_cpu_quota{container!=""}/container_spec_cpu_period{container!=""}) by (pod, container) * 100) > 80
+                for: 2m
+                labels:
+                  severity: warning
+                annotations:
+                  summary: Container High CPU utilization (instance {{ $labels.instance }})
+                  description: "Container CPU utilization is above 80%\n  VALUE = {{ $value }}\n  LABELS = {{ $labels }}"
+              - alert: ContainerHighMemoryUsage
+                expr: (sum(container_memory_working_set_bytes{name!=""}) BY (instance, name) / sum(container_spec_memory_limit_bytes > 0) BY (instance, name) * 100) > 80
+                for: 2m
+                labels:
+                  severity: warning
+                annotations:
+                  summary: Container High Memory usage (instance {{ $labels.instance }})
+                  description: "Container Memory usage is above 80%\n  VALUE = {{ $value }}\n  LABELS = {{ $labels }}"
+              - alert: KubernetesContainerOomKiller
+                expr: (kube_pod_container_status_restarts_total - kube_pod_container_status_restarts_total offset 10m >= 1) and ignoring (reason) min_over_time(kube_pod_container_status_last_terminated_reason{reason="OOMKilled"}[10m]) == 1
+                for: 0m
+                labels:
+                  severity: warning
+                annotations:
+                  summary: Kubernetes Container oom killer (instance {{ $labels.instance }})
+                  description: "Container {{ $labels.container }} in pod {{ $labels.namespace }}/{{ $labels.pod }} has been OOMKilled {{ $value }} times in the last 10 minutes.\n  VALUE = {{ $value }}\n  LABELS = {{ $labels }}"
+              - alert: KubernetesPodCrashLooping
+                expr: increase(kube_pod_container_status_restarts_total[1m]) > 3
+                for: 2m
+                labels:
+                  severity: warning
+                annotations:
+                  summary: Kubernetes pod crash looping (instance {{ $labels.instance }})
+                  description: "Pod {{ $labels.namespace }}/{{ $labels.pod }} is crash looping\n  VALUE = {{ $value }}\n  LABELS = {{ $labels }}"
+      flux-reconciliation:
+        groups:
+          - name: flux-reconciliation-group
+            rules:
+              - alert: FluxReconciliationFailure
+                expr: gotk_reconcile_condition{type="Ready", status="False", kind=~"Kustomization|HelmRelease"} == 1
+                for: 15m
+                labels:
+                  severity: critical
+                annotations:
+                  summary: "Flux {{ $labels.kind }} {{ $labels.namespace }}/{{ $labels.name }} reconciliation failing"
+                  description: "{{ $labels.kind }} {{ $labels.name }} in namespace {{ $labels.namespace }} has not reconciled successfully for more than 15 minutes."
+              - alert: FluxReconciliationStalled
+                expr: gotk_reconcile_condition{type="Ready", status="Unknown", kind=~"Kustomization|HelmRelease"} == 1
+                for: 30m
+                labels:
+                  severity: warning
+                annotations:
+                  summary: "Flux {{ $labels.kind }} {{ $labels.namespace }}/{{ $labels.name }} reconciliation stalled"
+                  description: "{{ $labels.kind }} {{ $labels.name }} in namespace {{ $labels.namespace }} has been in Unknown state for more than 30 minutes."
+              - alert: FluxSourceFailure
+                expr: gotk_reconcile_condition{type="Ready", status="False", kind=~"GitRepository|HelmRepository|OCIRepository|Bucket"} == 1
+                for: 15m
+                labels:
+                  severity: critical
+                annotations:
+                  summary: "Flux source {{ $labels.namespace }}/{{ $labels.name }} failing"
+                  description: "{{ $labels.kind }} {{ $labels.name }} in namespace {{ $labels.namespace }} has failed to fetch for more than 15 minutes."
+              - alert: FluxSuspendedTooLong
+                expr: gotk_suspend_status == 1
+                for: 24h
+                labels:
+                  severity: warning
+                annotations:
+                  summary: "Flux {{ $labels.kind }} {{ $labels.namespace }}/{{ $labels.name }} suspended for >24h"
+                  description: "{{ $labels.kind }} {{ $labels.name }} in namespace {{ $labels.namespace }} has been suspended for more than 24 hours. This may be intentional, but verify it wasn't forgotten."

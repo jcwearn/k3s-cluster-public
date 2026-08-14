@@ -1,0 +1,16 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+resources:
+  - backend-traffic-policy.yaml
+  - deployment.yaml
+  - httproute.yaml
+  - namespace.yaml
+  - pvc.yaml
+  - secrets.sops.yaml
+  - service.yaml
+configMapGenerator:
+  - name: zeroclaw-config
+    files:
+      - data/config.toml
+      - data/AGENTS.md
+namespace: zeroclaw

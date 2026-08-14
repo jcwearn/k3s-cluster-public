@@ -1,0 +1,21 @@
+apiVersion: gateway.networking.k8s.io/v1
+kind: HTTPRoute
+metadata:
+  name: adguardhome
+  namespace: adguardhome
+spec:
+  parentRefs:
+    - name: main-gateway
+      namespace: envoy-gateway-system
+      sectionName: https
+  hostnames:
+    - dns.${DOMAIN}
+  rules:
+    - matches:
+        - path:
+            type: PathPrefix
+            value: /
+      backendRefs:
+        - group: gateway.envoyproxy.io
+          kind: Backend
+          name: adguardhome

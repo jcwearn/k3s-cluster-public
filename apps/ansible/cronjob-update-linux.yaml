@@ -1,0 +1,74 @@
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: ansible-update-linux
+  namespace: ansible
+spec:
+  schedule: "0 3 * * 6"
+  timeZone: America/New_York
+  concurrencyPolicy: Forbid
+  successfulJobsHistoryLimit: 3
+  failedJobsHistoryLimit: 3
+  jobTemplate:
+    spec:
+      backoffLimit: 0
+      template:
+        spec:
+          serviceAccountName: ansible-runner
+          containers:
+            - name: ansible
+              image: ghcr.io/jcwearn/ansible-runner:0.1.28@sha256:0096de690eb87c0bc7525df05feacb8a3006d1871003a95925bf393096facc07
+              imagePullPolicy: IfNotPresent
+              securityContext:
+                runAsUser: 0
+              command: ["ansible-playbook"]
+              args: ["/ansible/playbooks/update-linux.yml"]
+              env:
+                - name: ANSIBLE_CONFIG
+                  value: /ansible/ansible.cfg
+                - name: SMTP_USERNAME
+                  valueFrom:
+                    secretKeyRef:
+                      name: ansible-secrets
+                      key: smtp-username
+                - name: SMTP_PASSWORD
+                  valueFrom:
+                    secretKeyRef:
+                      name: ansible-secrets
+                      key: smtp-password
+              volumeMounts:
+                - name: ansible-data
+                  mountPath: /ansible
+                - name: ssh-key
+                  mountPath: /secrets
+                  readOnly: true
+              resources:
+                requests:
+                  cpu: 100m
+                  memory: 128Mi
+                limits:
+                  cpu: 500m
+                  memory: 256Mi
+          restartPolicy: Never
+          volumes:
+            - name: ansible-data
+              configMap:
+                name: ansible-data
+                items:
+                  - key: ansible.cfg
+                    path: ansible.cfg
+                  - key: inventory.yml
+                    path: inventory.yml
+                  - key: update-linux.yml
+                    path: playbooks/update-linux.yml
+                  - key: onboard-host.yml
+                    path: playbooks/onboard-host.yml
+            - name: ssh-key
+              secret:
+                secretName: ansible-secrets
+                defaultMode: 0400
+                items:
+                  - key: ssh-private-key
+                    path: ssh-private-key
+                  - key: ssh-public-key
+                    path: ssh-public-key

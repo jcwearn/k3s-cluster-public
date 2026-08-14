@@ -1,0 +1,68 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+resources:
+  - deployment.yaml
+  - httproute.yaml
+  - namespace.yaml
+  - service.yaml
+configMapGenerator:
+  - name: mkdocs-root
+    namespace: mkdocs
+    files:
+      - data/mkdocs.yml
+      - data/docs/index.md
+  - name: mkdocs-apps
+    namespace: mkdocs
+    files:
+      - data/docs/apps/index.md
+      - data/docs/apps/ansible.md
+      - data/docs/apps/adguardhome.md
+      - data/docs/apps/adguardhome-sync.md
+      - data/docs/apps/homeassistant.md
+      - data/docs/apps/homepage.md
+      - data/docs/apps/immich.md
+      - data/docs/apps/it-tools.md
+      - data/docs/apps/headlamp.md
+      - data/docs/apps/mazanoke.md
+      - data/docs/apps/mkdocs.md
+      - data/docs/apps/n8n.md
+      - data/docs/apps/ntfy.md
+      - data/docs/apps/paperless-ngx.md
+      - data/docs/apps/open-webui.md
+      - data/docs/apps/renovate.md
+      - data/docs/apps/stirling-pdf.md
+      - data/docs/apps/unifi.md
+      - data/docs/apps/uptime-kuma.md
+      - data/docs/apps/ebooks.md
+      - data/docs/apps/withjoy-exporter.md
+      - data/docs/apps/world-clock.md
+      - data/docs/apps/zeroclaw.md
+  - name: mkdocs-infra
+    namespace: mkdocs
+    files:
+      - data/docs/infrastructure/index.md
+      - data/docs/infrastructure/cert-manager.md
+      - data/docs/infrastructure/descheduler.md
+      - data/docs/infrastructure/external-dns.md
+      - data/docs/infrastructure/flux-operator.md
+      - data/docs/infrastructure/envoy-gateway.md
+      - data/docs/infrastructure/kube-vip.md
+      - data/docs/infrastructure/prometheus.md
+      - data/docs/infrastructure/reloader.md
+      - data/docs/infrastructure/tailscale-operator.md
+      - data/docs/infrastructure/truenas.md
+      - data/docs/infrastructure/proxmox-monitoring.md
+      - data/docs/infrastructure/truenas-monitoring.md
+      - data/docs/infrastructure/llama-cpp.md
+  - name: mkdocs-misc
+    namespace: mkdocs
+    files:
+      - data/docs/misc/index.md
+      - data/docs/misc/adding-docs.md
+      - data/docs/misc/bootstrapping-k3s.md
+      - data/docs/misc/kube-vip-update.md
+      - data/docs/misc/refreshing-tailscale-machines.md
+      - data/docs/misc/rotating-flux-github-pat.md
+      - data/docs/misc/security-hardening.md
+      - data/docs/misc/truenas-docker-default-interface.md
+      - data/docs/misc/updating-flux.md

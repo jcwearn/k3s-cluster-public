@@ -1,0 +1,20 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: mazanoke
+  namespace: mazanoke
+  labels:
+    app.kubernetes.io/name: mazanoke
+  annotations:
+    tailscale.com/expose: "true"
+    tailscale.com/hostname: "mazanoke"
+    kube-vip.io/loadbalancerIPs: "${LAN_PREFIX}.15"
+spec:
+  type: LoadBalancer
+  ports:
+    - port: 12080
+      targetPort: http
+      protocol: TCP
+      name: http
+  selector:
+    app.kubernetes.io/name: mazanoke

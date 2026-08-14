@@ -1,0 +1,260 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: calibre-web
+  namespace: ebooks
+  labels:
+    app.kubernetes.io/name: calibre-web
+  annotations:
+    reloader.stakater.com/auto: "true"
+spec:
+  revisionHistoryLimit: 3
+  replicas: 1
+  strategy:
+    type: RollingUpdate
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: calibre-web
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: calibre-web
+    spec:
+      initContainers:
+        - name: init-calibre-db
+          image: python:3.14-alpine@sha256:a1321512d6a287428c50dcdf2ab3857761127e03a23b1f648e9c1c0de59288f8
+          command:
+            - python3
+            - -c
+            - |
+              import os, sqlite3
+              db_path = "/books/metadata.db"
+              if os.path.exists(db_path):
+                  print("metadata.db already exists, skipping init")
+              else:
+                  print("Creating empty Calibre metadata.db")
+                  conn = sqlite3.connect(db_path)
+                  c = conn.cursor()
+                  c.executescript("""
+                  CREATE TABLE IF NOT EXISTS authors (
+                      id INTEGER PRIMARY KEY,
+                      name TEXT NOT NULL COLLATE NOCASE,
+                      sort TEXT COLLATE NOCASE,
+                      link TEXT NOT NULL DEFAULT ""
+                  );
+                  CREATE TABLE IF NOT EXISTS books (
+                      id INTEGER PRIMARY KEY AUTOINCREMENT,
+                      title TEXT NOT NULL DEFAULT 'Unknown' COLLATE NOCASE,
+                      sort TEXT COLLATE NOCASE,
+                      timestamp TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                      pubdate TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                      series_index REAL NOT NULL DEFAULT 1.0,
+                      author_sort TEXT COLLATE NOCASE,
+                      isbn TEXT DEFAULT "" COLLATE NOCASE,
+                      lccn TEXT DEFAULT "" COLLATE NOCASE,
+                      path TEXT NOT NULL DEFAULT "",
+                      flags INTEGER NOT NULL DEFAULT 1,
+                      uuid TEXT,
+                      has_cover BOOL DEFAULT 0,
+                      last_modified TIMESTAMP NOT NULL DEFAULT "2000-01-01 00:00:00+00:00"
+                  );
+                  CREATE TABLE IF NOT EXISTS comments (
+                      id INTEGER PRIMARY KEY,
+                      book INTEGER NOT NULL,
+                      text TEXT NOT NULL COLLATE NOCASE,
+                      UNIQUE(book)
+                  );
+                  CREATE TABLE IF NOT EXISTS data (
+                      id INTEGER PRIMARY KEY,
+                      book INTEGER NOT NULL,
+                      format TEXT NOT NULL COLLATE NOCASE,
+                      uncompressed_size INTEGER NOT NULL,
+                      name TEXT NOT NULL
+                  );
+                  CREATE TABLE IF NOT EXISTS identifiers (
+                      id INTEGER PRIMARY KEY,
+                      book INTEGER NOT NULL,
+                      type TEXT NOT NULL DEFAULT "isbn" COLLATE NOCASE,
+                      val TEXT NOT NULL COLLATE NOCASE
+                  );
+                  CREATE TABLE IF NOT EXISTS languages (
+                      id INTEGER PRIMARY KEY,
+                      lang_code TEXT NOT NULL COLLATE NOCASE,
+                      UNIQUE(lang_code)
+                  );
+                  CREATE TABLE IF NOT EXISTS publishers (
+                      id INTEGER PRIMARY KEY,
+                      name TEXT NOT NULL COLLATE NOCASE,
+                      sort TEXT COLLATE NOCASE,
+                      UNIQUE(name)
+                  );
+                  CREATE TABLE IF NOT EXISTS ratings (
+                      id INTEGER PRIMARY KEY,
+                      rating INTEGER CHECK(rating > -1 AND rating < 11),
+                      UNIQUE(rating)
+                  );
+                  CREATE TABLE IF NOT EXISTS series (
+                      id INTEGER PRIMARY KEY,
+                      name TEXT NOT NULL COLLATE NOCASE,
+                      sort TEXT COLLATE NOCASE,
+                      UNIQUE(name)
+                  );
+                  CREATE TABLE IF NOT EXISTS tags (
+                      id INTEGER PRIMARY KEY,
+                      name TEXT NOT NULL COLLATE NOCASE,
+                      UNIQUE(name)
+                  );
+                  CREATE TABLE IF NOT EXISTS books_authors_link (
+                      id INTEGER PRIMARY KEY,
+                      book INTEGER NOT NULL,
+                      author INTEGER NOT NULL,
+                      UNIQUE(book, author)
+                  );
+                  CREATE TABLE IF NOT EXISTS books_languages_link (
+                      id INTEGER PRIMARY KEY,
+                      book INTEGER NOT NULL,
+                      lang_code INTEGER NOT NULL,
+                      item_order INTEGER NOT NULL DEFAULT 0,
+                      UNIQUE(book, lang_code)
+                  );
+                  CREATE TABLE IF NOT EXISTS books_publishers_link (
+                      id INTEGER PRIMARY KEY,
+                      book INTEGER NOT NULL,
+                      publisher INTEGER NOT NULL,
+                      UNIQUE(book)
+                  );
+                  CREATE TABLE IF NOT EXISTS books_ratings_link (
+                      id INTEGER PRIMARY KEY,
+                      book INTEGER NOT NULL,
+                      rating INTEGER NOT NULL,
+                      UNIQUE(book, rating)
+                  );
+                  CREATE TABLE IF NOT EXISTS books_series_link (
+                      id INTEGER PRIMARY KEY,
+                      book INTEGER NOT NULL,
+                      series INTEGER NOT NULL,
+                      UNIQUE(book)
+                  );
+                  CREATE TABLE IF NOT EXISTS books_tags_link (
+                      id INTEGER PRIMARY KEY,
+                      book INTEGER NOT NULL,
+                      tag INTEGER NOT NULL,
+                      UNIQUE(book, tag)
+                  );
+                  CREATE TABLE IF NOT EXISTS custom_columns (
+                      id INTEGER PRIMARY KEY AUTOINCREMENT,
+                      label TEXT NOT NULL,
+                      name TEXT NOT NULL,
+                      datatype TEXT NOT NULL,
+                      mark_for_delete BOOL DEFAULT 0 NOT NULL,
+                      editable BOOL DEFAULT 1 NOT NULL,
+                      display TEXT DEFAULT "{}" NOT NULL,
+                      is_multiple BOOL DEFAULT 0 NOT NULL,
+                      normalized BOOL NOT NULL,
+                      UNIQUE(label)
+                  );
+                  CREATE TABLE IF NOT EXISTS library_id (
+                      id INTEGER PRIMARY KEY,
+                      uuid TEXT NOT NULL,
+                      UNIQUE(uuid)
+                  );
+                  INSERT INTO library_id (uuid) VALUES (lower(hex(randomblob(16))));
+                  CREATE TABLE IF NOT EXISTS preferences (
+                      id INTEGER PRIMARY KEY,
+                      key TEXT NOT NULL UNIQUE,
+                      val TEXT NOT NULL
+                  );
+                  INSERT INTO preferences (key, val) VALUES ('library_version', '{"major": 1, "minor": 0, "patch": 0}');
+                  """)
+                  conn.commit()
+                  conn.close()
+                  os.chmod(db_path, 0o666)
+                  print("metadata.db created successfully")
+          volumeMounts:
+            - name: library
+              mountPath: /books
+          resources:
+            requests:
+              cpu: 100m
+              memory: 64Mi
+            limits:
+              cpu: 200m
+              memory: 128Mi
+      containers:
+        - name: calibre-web
+          image: lscr.io/linuxserver/calibre-web:0.6.26-ls370
+          imagePullPolicy: IfNotPresent
+          ports:
+            - name: http
+              containerPort: 8083
+              protocol: TCP
+          env:
+            - name: PUID
+              value: "1000"
+            - name: PGID
+              value: "1000"
+            - name: TZ
+              value: America/Chicago
+            - name: DOCKER_MODS
+              value: linuxserver/mods:universal-calibre
+          resources:
+            requests:
+              memory: "256Mi"
+              cpu: "250m"
+            limits:
+              memory: "2Gi"
+              cpu: "1000m"
+          volumeMounts:
+            - name: config
+              mountPath: /config
+            - name: library
+              mountPath: /books
+        - name: auto-import
+          image: lscr.io/linuxserver/calibre:v9.3.0-ls386@sha256:f74637926b0c7aca1967edb0982dd8624c2a1e090d2ff1e8fdca634452872084
+          imagePullPolicy: IfNotPresent
+          command:
+            - /bin/bash
+            - -c
+            - |
+              IMPORT_LOG="/config/imported-books.txt"
+              touch "$IMPORT_LOG"
+              echo "Auto-import sidecar started, watching /downloads..."
+              while true; do
+                find /downloads -type f \( -iname '*.epub' -o -iname '*.mobi' -o -iname '*.pdf' -o -iname '*.azw3' -o -iname '*.azw' -o -iname '*.cbz' -o -iname '*.cbr' -o -iname '*.fb2' -o -iname '*.djvu' -o -iname '*.lit' -o -iname '*.prc' -o -iname '*.doc' -o -iname '*.docx' -o -iname '*.rtf' -o -iname '*.txt' \) 2>/dev/null | while read -r file; do
+                  if ! grep -qxF "$file" "$IMPORT_LOG"; then
+                    echo "Importing: $file"
+                    if calibredb add --library-path /books "$file"; then
+                      echo "$file" >> "$IMPORT_LOG"
+                      echo "Successfully imported: $file"
+                    else
+                      echo "Failed to import: $file"
+                    fi
+                  fi
+                done
+                sleep 60
+              done
+          resources:
+            requests:
+              memory: "64Mi"
+              cpu: "50m"
+            limits:
+              memory: "512Mi"
+              cpu: "500m"
+          volumeMounts:
+            - name: downloads
+              mountPath: /downloads
+              readOnly: true
+            - name: library
+              mountPath: /books
+            - name: config
+              mountPath: /config
+      volumes:
+        - name: config
+          persistentVolumeClaim:
+            claimName: calibre-web-config
+        - name: library
+          persistentVolumeClaim:
+            claimName: calibre-library
+        - name: downloads
+          persistentVolumeClaim:
+            claimName: shelfmark-books

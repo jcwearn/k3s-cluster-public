@@ -1,0 +1,66 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: alertmanager-ntfy-deployment
+  namespace: ntfy
+  labels:
+    app: alertmanager-ntfy-deployment
+  annotations:
+    reloader.stakater.com/auto: "true"
+spec:
+  revisionHistoryLimit: 1
+  replicas: 1
+  selector:
+    matchLabels:
+      app: alertmanager-ntfy-pod
+  template:
+    metadata:
+      labels:
+        app: alertmanager-ntfy-pod
+    spec:
+      initContainers:
+        - name: move-config
+          image: alpine:3.24@sha256:28bd5fe8b56d1bd048e5babf5b10710ebe0bae67db86916198a6eec434943f8b
+          imagePullPolicy: IfNotPresent
+          command: ["/bin/sh", "-c"]
+          args:
+            - |
+              apk add --no-cache gettext &&
+              envsubst < /config/alertmanager-ntfy.yaml > /config-target/alertmanager-ntfy.yaml &&
+              chown -R 1000:1000 /config-target &&
+              chmod -R 755 /config-target
+          envFrom:
+            - secretRef:
+                name: ntfy-secrets
+          volumeMounts:
+            - name: config-volume
+              mountPath: /config/alertmanager-ntfy.yaml
+              subPath: alertmanager-ntfy.yaml
+            - name: config-target
+              mountPath: /config-target
+      containers:
+        - name: alertmanager-ntfy
+          image: ghcr.io/alexbakker/alertmanager-ntfy:1.2.1@sha256:2a862f23c8fb67f777824979487c06a417b2f9bbbc2eb45a974a1fb45b9bbff3
+          imagePullPolicy: IfNotPresent
+          args:
+            - "--configs"
+            - "/config/alertmanager-ntfy.yaml"
+          ports:
+            - containerPort: 8000
+          resources:
+            limits:
+              memory: 300Mi
+              cpu: 200m
+            requests:
+              cpu: 150m
+              memory: 150Mi
+          volumeMounts:
+            - name: config-target
+              mountPath: /config/alertmanager-ntfy.yaml
+              subPath: alertmanager-ntfy.yaml
+      volumes:
+        - name: config-volume
+          configMap:
+            name: alertmanager-ntfy-config
+        - name: config-target
+          emptyDir: {}

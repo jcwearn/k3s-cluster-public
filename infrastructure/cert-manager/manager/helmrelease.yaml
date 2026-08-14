@@ -1,0 +1,61 @@
+apiVersion: helm.toolkit.fluxcd.io/v2
+kind: HelmRelease
+metadata:
+  name: cert-manager
+  namespace: cert-manager
+spec:
+  interval: 10m
+  chart:
+    spec:
+      chart: cert-manager
+      version: v1.21.1
+      sourceRef:
+        kind: HelmRepository
+        name: jetstack
+        namespace: flux-system
+  install:
+    createNamespace: true
+    crds: Create
+  upgrade:
+    crds: CreateReplace
+  values:
+    crds:
+      enabled: true
+      keep: true
+    resources:
+      requests:
+        cpu: 50m
+        memory: 128Mi
+      limits:
+        cpu: 500m
+        memory: 256Mi
+    deploymentAnnotations:
+      reloader.stakater.com/auto: "true"
+    webhook:
+      deploymentAnnotations:
+        reloader.stakater.com/auto: "true"
+      resources:
+        requests:
+          cpu: 25m
+          memory: 32Mi
+        limits:
+          cpu: 100m
+          memory: 64Mi
+    cainjector:
+      deploymentAnnotations:
+        reloader.stakater.com/auto: "true"
+      resources:
+        requests:
+          cpu: 25m
+          memory: 128Mi
+        limits:
+          cpu: 250m
+          memory: 256Mi
+    extraArgs:
+      - --dns01-recursive-nameservers-only
+      - --dns01-recursive-nameservers=1.1.1.1:53,8.8.8.8:53
+    podDnsPolicy: None
+    podDnsConfig:
+      nameservers:
+        - 1.1.1.1
+        - 8.8.8.8
