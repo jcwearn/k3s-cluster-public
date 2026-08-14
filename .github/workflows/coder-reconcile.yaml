@@ -31,6 +31,12 @@ on:
         required: true
         default: true
 
+env:
+  # Pinned to match the Coder Helm chart version in apps/coder/helm.yaml so the CLI and the
+  # server stay in lockstep.
+  # renovate: datasource=github-releases depName=coder/coder
+  CODER_VERSION: "2.36.0"
+
 jobs:
   push-templates:
     runs-on: ubuntu-latest
@@ -73,10 +79,23 @@ jobs:
       # Must stay above "Connect to Tailscale". The action brings the runner up with
       # --accept-routes and adopts the tailnet DNS config, which points every lookup at the
       # AdGuard resolvers on the LAN -- reachable only through the subnet router. A public
-      # name like coder.com then resolves only while that path is healthy, and a blip fails
+      # name like github.com then resolves only while that path is healthy, and a blip fails
       # the download. Everything fetched from the internet is fetched before that happens.
+      #
+      # The install.sh one-liner resolves the mainline version through an unauthenticated
+      # api.github.com call, and that limit is 60/hr per IP shared across every hosted
+      # runner, so it 403s at random. Release assets are not on that limit.
       - name: Install Coder CLI
-        run: curl -fsSL --retry 3 --retry-delay 5 https://coder.com/install.sh | sh
+        run: |
+          set -euo pipefail
+          # The archive carries a README and a LICENSE alongside the binary, so unpack it
+          # somewhere other than the checkout.
+          tmp="$(mktemp -d)"
+          curl -fsSL --retry 3 --retry-delay 5 -o "$tmp/coder.tar.gz" \
+            "https://github.com/coder/coder/releases/download/v${CODER_VERSION}/coder_${CODER_VERSION}_linux_amd64.tar.gz"
+          tar -xzf "$tmp/coder.tar.gz" -C "$tmp"
+          sudo install -m 755 "$tmp/coder" /usr/local/bin/coder
+          coder version
 
       - name: Connect to Tailscale
         uses: tailscale/github-action@v4
@@ -169,7 +188,16 @@ jobs:
       # Must stay above "Connect to Tailscale" -- see the note in push-templates. jq is
       # preinstalled on ubuntu-latest, so only yq is fetched here.
       - name: Install Coder CLI
-        run: curl -fsSL --retry 3 --retry-delay 5 https://coder.com/install.sh | sh
+        run: |
+          set -euo pipefail
+          # The archive carries a README and a LICENSE alongside the binary, so unpack it
+          # somewhere other than the checkout.
+          tmp="$(mktemp -d)"
+          curl -fsSL --retry 3 --retry-delay 5 -o "$tmp/coder.tar.gz" \
+            "https://github.com/coder/coder/releases/download/v${CODER_VERSION}/coder_${CODER_VERSION}_linux_amd64.tar.gz"
+          tar -xzf "$tmp/coder.tar.gz" -C "$tmp"
+          sudo install -m 755 "$tmp/coder" /usr/local/bin/coder
+          coder version
 
       - name: Install yq
         env:
