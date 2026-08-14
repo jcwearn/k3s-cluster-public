@@ -40,10 +40,15 @@ jobs:
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
 
-      - name: Require CODER_URL
+      # Runs before Tailscale so the lookup uses the runner's own resolver. The record is a
+      # CNAME to a *.ts.net name that only the tailnet can turn into an address, so the node
+      # name is carried forward and resolved from the peer list once Tailscale is up.
+      - name: Resolve Coder host
         env:
           CODER_URL: ${{ vars.CODER_URL }}
         run: |
+          set -euo pipefail
+
           # vars.CODER_URL expands to an empty string when the repository variable is
           # unset, and the Coder CLI would then act against an empty endpoint rather
           # than erroring. A push to main runs this workflow in apply mode, so fail here.
@@ -53,6 +58,26 @@ jobs:
             exit 1
           fi
 
+          host="${CODER_URL#*://}"
+          host="${host%%/*}"
+          node="$(dig +short CNAME "$host" | head -1 | sed 's/\.$//')"
+          if [ -z "$node" ]; then
+            echo "::error::The CODER_URL host does not CNAME to a tailnet node."
+            exit 1
+          fi
+          {
+            echo "CODER_HOST=$host"
+            echo "CODER_TS_NODE=${node%%.*}"
+          } >> "$GITHUB_ENV"
+
+      # Must stay above "Connect to Tailscale". The action brings the runner up with
+      # --accept-routes and adopts the tailnet DNS config, which points every lookup at the
+      # AdGuard resolvers on the LAN -- reachable only through the subnet router. A public
+      # name like coder.com then resolves only while that path is healthy, and a blip fails
+      # the download. Everything fetched from the internet is fetched before that happens.
+      - name: Install Coder CLI
+        run: curl -fsSL --retry 3 --retry-delay 5 https://coder.com/install.sh | sh
+
       - name: Connect to Tailscale
         uses: tailscale/github-action@v4
         with:
@@ -61,8 +86,28 @@ jobs:
           tags: tag:ci
           ping: coder
 
-      - name: Install Coder CLI
-        run: curl -fsSL https://coder.com/install.sh | sh
+      # The tailnet hands out the LAN resolvers as its nameservers, and a runner can only
+      # reach those through the subnet router -- the hop that has been failing and taking
+      # the whole workflow down with it. Take the address from the tailnet peer list
+      # instead: /etc/hosts wins over DNS, so the Coder calls need no lookup at all.
+      - name: Point Coder host at its tailnet address
+        run: |
+          set -euo pipefail
+          addr="$(sudo tailscale ip -4 "$CODER_TS_NODE")"
+          echo "$addr $CODER_HOST" | sudo tee -a /etc/hosts >/dev/null
+
+          # tailscale up returning does not mean the path to the gateway is ready, so give
+          # it a few tries before failing the job.
+          for i in $(seq 1 6); do
+            if curl -fsS --max-time 10 -o /dev/null "https://$CODER_HOST/api/v2/buildinfo"; then
+              echo "Coder API reachable."
+              exit 0
+            fi
+            echo "Attempt $i: Coder API not reachable yet; retrying in 10s."
+            sleep 10
+          done
+          echo "::error::Coder API did not become reachable over the tailnet."
+          exit 1
 
       - name: Push Kubernetes Template
         env:
@@ -91,10 +136,15 @@ jobs:
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
 
-      - name: Require CODER_URL
+      # Runs before Tailscale so the lookup uses the runner's own resolver. The record is a
+      # CNAME to a *.ts.net name that only the tailnet can turn into an address, so the node
+      # name is carried forward and resolved from the peer list once Tailscale is up.
+      - name: Resolve Coder host
         env:
           CODER_URL: ${{ vars.CODER_URL }}
         run: |
+          set -euo pipefail
+
           # vars.CODER_URL expands to an empty string when the repository variable is
           # unset, and the Coder CLI would then act against an empty endpoint rather
           # than erroring. A push to main runs this workflow in apply mode, so fail here.
@@ -104,6 +154,32 @@ jobs:
             exit 1
           fi
 
+          host="${CODER_URL#*://}"
+          host="${host%%/*}"
+          node="$(dig +short CNAME "$host" | head -1 | sed 's/\.$//')"
+          if [ -z "$node" ]; then
+            echo "::error::The CODER_URL host does not CNAME to a tailnet node."
+            exit 1
+          fi
+          {
+            echo "CODER_HOST=$host"
+            echo "CODER_TS_NODE=${node%%.*}"
+          } >> "$GITHUB_ENV"
+
+      # Must stay above "Connect to Tailscale" -- see the note in push-templates. jq is
+      # preinstalled on ubuntu-latest, so only yq is fetched here.
+      - name: Install Coder CLI
+        run: curl -fsSL --retry 3 --retry-delay 5 https://coder.com/install.sh | sh
+
+      - name: Install yq
+        env:
+          YQ_VERSION: "4.53.3"
+        run: |
+          set -euo pipefail
+          curl -fsSL --retry 3 --retry-delay 5 -o yq \
+            "https://github.com/mikefarah/yq/releases/download/v${YQ_VERSION}/yq_linux_amd64"
+          sudo install -m 755 yq /usr/local/bin/yq
+
       - name: Connect to Tailscale
         uses: tailscale/github-action@v4
         with:
@@ -112,15 +188,23 @@ jobs:
           tags: tag:ci
           ping: coder
 
-      - name: Install Coder CLI
-        run: curl -fsSL https://coder.com/install.sh | sh
-
-      - name: Install yq + jq
+      # See the note in push-templates.
+      - name: Point Coder host at its tailnet address
         run: |
-          sudo wget -qO /usr/local/bin/yq https://github.com/mikefarah/yq/releases/latest/download/yq_linux_amd64
-          sudo chmod +x /usr/local/bin/yq
-          sudo apt-get update
-          sudo apt-get install -y jq
+          set -euo pipefail
+          addr="$(sudo tailscale ip -4 "$CODER_TS_NODE")"
+          echo "$addr $CODER_HOST" | sudo tee -a /etc/hosts >/dev/null
+
+          for i in $(seq 1 6); do
+            if curl -fsS --max-time 10 -o /dev/null "https://$CODER_HOST/api/v2/buildinfo"; then
+              echo "Coder API reachable."
+              exit 0
+            fi
+            echo "Attempt $i: Coder API not reachable yet; retrying in 10s."
+            sleep 10
+          done
+          echo "::error::Coder API did not become reachable over the tailnet."
+          exit 1
 
       - name: Reconcile Workspaces (plan/apply)
         env:
