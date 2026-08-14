@@ -1,15 +1,19 @@
 {
     "repositories": [
         "jcwearn/ansible-runner",
-        "jcwearn/homeassistant-config",
         "jcwearn/anupamaandjackson",
         "jcwearn/borderline",
         "jcwearn/cf-worker-email",
         "jcwearn/dotfiles-coder",
+        "jcwearn/homeassistant-config",
         "jcwearn/jackson-wearn",
         "jcwearn/k3s-cluster",
         "jcwearn/priceatronic2",
-        "jcwearn/withjoy-exporter"
+        "jcwearn/resume",
+        "jcwearn/udm-pro",
+        "jcwearn/withjoy-exporter",
+        "jcwearn/workflows",
+        "jcwearn/world-clock"
     ],
     "prHourlyLimit": 0,
     "gitTimeout": 600000,
