@@ -72,36 +72,3 @@ workspaces:
       home_disk_size: "10"
     schedule:
       autostop_ttl: "1h"
-  # Agentic workspaces (swappable repos, Claude Code task-capable)
-  - name: agent-1
-    template: agentic
-    parameters:
-      cpu: "4"
-      memory: "8"
-      home_disk_size: "20"
-    schedule:
-      autostop_ttl: "1h"
-  - name: agent-2
-    template: agentic
-    parameters:
-      cpu: "4"
-      memory: "8"
-      home_disk_size: "20"
-    schedule:
-      autostop_ttl: "1h"
-  - name: agent-3
-    template: agentic
-    parameters:
-      cpu: "4"
-      memory: "8"
-      home_disk_size: "20"
-    schedule:
-      autostop_ttl: "1h"
-  - name: agent-4
-    template: agentic
-    parameters:
-      cpu: "4"
-      memory: "8"
-      home_disk_size: "20"
-    schedule:
-      autostop_ttl: "1h"

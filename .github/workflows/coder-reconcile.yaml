@@ -138,16 +138,6 @@ jobs:
             --variable namespace=coder \
             --yes
 
-      - name: Push Agentic Template
-        env:
-          CODER_URL: ${{ vars.CODER_URL }}
-          CODER_SESSION_TOKEN: ${{ secrets.CODER_SESSION_TOKEN }}
-        run: |
-          coder templates push agentic \
-            --directory apps/coder/data/templates/agentic \
-            --variable namespace=coder \
-            --yes
-
   manage-workspaces:
     runs-on: ubuntu-latest
     needs: push-templates
@@ -336,8 +326,6 @@ jobs:
             repo_args=()
             if [ -n "$repo" ] && [ "$repo" != "null" ]; then
               repo_args+=(--parameter git_repo="$repo")
-            elif [ "$template" = "agentic" ]; then
-              repo_args+=(--parameter git_repo="")
             fi
 
             if workspace_exists "$name"; then
@@ -348,6 +336,7 @@ jobs:
                 echo "Creating workspace: $name"
                 coder create "$name" \
                   --template "$template" \
+                  --use-parameter-defaults \
                   --parameter cpu="$cpu" \
                   --parameter memory="$memory" \
                   --parameter home_disk_size="$home_disk_size" \
@@ -357,7 +346,10 @@ jobs:
                   --yes
               else
                 echo "Updating workspace to latest template version: $name"
-                coder update "$name" --yes || echo "WARNING: Failed to update $name"
+                # No --yes here: coder update has no such flag, and passing it made this a
+                # silent no-op. Defaults cover any parameter a new template version adds.
+                coder update "$name" --use-parameter-defaults \
+                  || echo "WARNING: Failed to update $name"
                 # Update schedule for existing workspaces
                 if [ -n "$autostart" ]; then
                   echo "Setting autostart schedule for $name"
@@ -370,8 +362,12 @@ jobs:
               fi
             else
               echo "Creating workspace: $name"
+              # --yes only skips the final confirmation. On create the CLI asks for every
+              # parameter it was not given a value for, so a module that adds one (the
+              # dotfiles branch, say) would block on a prompt with no stdin to read.
               coder create "$name" \
                 --template "$template" \
+                --use-parameter-defaults \
                 --parameter cpu="$cpu" \
                 --parameter memory="$memory" \
                 --parameter home_disk_size="$home_disk_size" \
