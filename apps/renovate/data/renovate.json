@@ -19,8 +19,17 @@
     "gitTimeout": 600000,
     "autodiscover": false,
     "platform": "github",
+    "onboardingConfig": {
+        "$schema": "https://docs.renovatebot.com/renovate-schema.json",
+        "extends": [
+            "local>jcwearn/renovate-config"
+        ]
+    },
     "reviewers": [
         "jcwearn"
+    ],
+    "addLabels": [
+        "dependencies"
     ],
     "packageRules": [
         {
@@ -50,6 +59,8 @@
         ]
     },
     "dependencyDashboard": true,
+    "osvVulnerabilityAlerts": true,
+    "dependencyDashboardOSVVulnerabilitySummary": "unresolved",
     "hostRules": [
         {
             "matchHost": "api.github.com",
