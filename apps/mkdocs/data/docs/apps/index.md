@@ -26,6 +26,7 @@ of the stack.
 | **Uptime Kuma** | A self-hosted, open-source uptime monitoring and alerting system | [Read more](uptime-kuma.md) |
 | **Ebooks** | Self-hosted ebook management stack (Shelfmark + Calibre-Web + VPN). | [Read more](ebooks.md) |
 | **WithJoy Exporter** | Daily CronJob that exports the WithJoy guest list to a Google Sheet, plus a manual-trigger web UI. | [Read more](withjoy-exporter.md) |
+| **hivemind** | Party game: one snake steered by the whole room, over server-sent events. | [Read more](hivemind.md) |
 | **World Clock** | Multi-timezone clock dashboard with hypothetical-time conversion for wedding planning. | [Read more](world-clock.md) |
 | **ZeroClaw** | Lightweight AI personal assistant daemon connecting Telegram to Gemini LLM. | [Read more](zeroclaw.md) |
 

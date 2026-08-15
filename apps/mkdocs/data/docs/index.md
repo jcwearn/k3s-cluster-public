@@ -32,6 +32,7 @@ Welcome to **`k3s-cluster`** - the GitOps repository that declaratively manages 
 │   ├── coder/              # Cloud development environments
 │   ├── ebooks/             # E-book library (Calibre-Web + Calibre)
 │   ├── headlamp/           # Kubernetes dashboard
+│   ├── hivemind/           # Party game (one snake, everybody steers)
 │   ├── homepage/           # Dashboard
 │   ├── immich/             # Photo management
 │   ├── it-tools/           # Developer utilities
@@ -106,6 +107,7 @@ FluxCD watches `clusters/prod/` and recursively applies everything under `apps/`
 | **Coder** | Helm | Cloud development environments |
 | **Ebooks** | Deployment + PVC | Calibre-Web + Calibre e-book library |
 | **Headlamp** | Deployment | Kubernetes dashboard |
+| **hivemind** | Deployment | Party game; single replica, in-memory rooms |
 | **Homepage** | Deployment | Cluster dashboard |
 | **Immich** | Helm | Self-hosted photo management |
 | **IT Tools** | Deployment | Developer utilities |

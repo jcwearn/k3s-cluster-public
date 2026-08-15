@@ -1,0 +1,19 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: hivemind
+  namespace: hivemind
+  labels:
+    app.kubernetes.io/name: hivemind
+# ClusterIP rather than LoadBalancer, following world-clock: this is reached
+# from phones over the public hostname, so it has no use for a LAN address or a
+# Tailscale hostname of its own.
+spec:
+  type: ClusterIP
+  ports:
+    - port: 8080
+      targetPort: http
+      protocol: TCP
+      name: http
+  selector:
+    app.kubernetes.io/name: hivemind

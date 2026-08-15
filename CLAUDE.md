@@ -35,6 +35,7 @@ apps/                    # User-facing applications
   ├── coder/             # Cloud development environments (code.${DOMAIN})
   ├── ebooks/            # E-book library (Calibre-Web + Calibre)
   ├── headlamp/          # Kubernetes dashboard
+  ├── hivemind/          # Party game (one snake, everybody steers)
   ├── homepage/          # Dashboard
   ├── immich/            # Photo management
   ├── it-tools/          # Developer utilities

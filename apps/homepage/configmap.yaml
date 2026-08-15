@@ -79,6 +79,11 @@ data:
             href: https://shelfmark.${DOMAIN}/
             description: Shelfmark is a self-hosted ebook search and download tool
             icon: sh-shelfmark-light.webp
+    - Games:
+        - hivemind:
+            href: https://hivemind.${DOMAIN}/
+            description: One snake, steered by everybody at once  a party game for phones
+            icon: sh-homepage-light.webp
     - Tools & Productivity:
         - Paperless-ngx:
             href: https://paperless.${DOMAIN}/

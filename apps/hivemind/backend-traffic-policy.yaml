@@ -1,0 +1,27 @@
+apiVersion: gateway.envoyproxy.io/v1alpha1
+kind: BackendTrafficPolicy
+metadata:
+  name: hivemind-timeouts
+  namespace: hivemind
+# Without this the game breaks after five minutes and looks like a bug in the
+# app.
+#
+# hivemind pushes state to every screen and phone over server-sent events, which
+# is one HTTP response held open for as long as somebody is playing. Envoy's
+# default request timeout is 300s, so every connection would be cut mid-round on
+# a five minute cadence. The phones would silently stop updating while the
+# television carried on, which is the confusing half of that failure.
+#
+# The app already sends a heartbeat comment every 20s, so idle connections stay
+# warm; these timeouts are about the total lifetime of a stream, not idleness.
+spec:
+  targetRefs:
+    - group: gateway.networking.k8s.io
+      kind: HTTPRoute
+      name: hivemind
+  timeout:
+    http:
+      requestTimeout: 3600s
+      connectionIdleTimeout: 3600s
+    tcp:
+      connectTimeout: 10s

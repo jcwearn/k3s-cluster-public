@@ -1,0 +1,102 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: hivemind
+  namespace: hivemind
+  labels:
+    app.kubernetes.io/name: hivemind
+  annotations:
+    reloader.stakater.com/auto: "true"
+spec:
+  revisionHistoryLimit: 3
+  # ONE replica, and Recreate rather than RollingUpdate. Both are load-bearing.
+  #
+  # hivemind keeps every room in memory on purpose -- there is no database and
+  # nothing is persisted. Two replicas would mean two disjoint sets of rooms and
+  # a coin flip over which one a player's phone reaches, so a host would read a
+  # code off the television that half the room could not join.
+  #
+  # RollingUpdate would briefly run exactly that: the new pod starts before the
+  # old one stops, and for those seconds the Service load-balances across two
+  # processes that disagree about which rooms exist. Recreate accepts a few
+  # seconds of downtime instead, which for a party game is the cheaper failure.
+  replicas: 1
+  strategy:
+    type: Recreate
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: hivemind
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: hivemind
+    spec:
+      # The app ends its own SSE streams on SIGTERM and is measured shutting
+      # down in well under a second. This is slack, not a requirement.
+      terminationGracePeriodSeconds: 30
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 65532
+        runAsGroup: 65532
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+        - name: hivemind
+          image: "ghcr.io/jcwearn/hivemind:0.2.0@sha256:c10aa70d82891b9b19f2ec9fd16e3f29cb911f6d0502972c14dd0990abfc171c"
+          imagePullPolicy: IfNotPresent
+          ports:
+            - name: http
+              containerPort: 8080
+              protocol: TCP
+          env:
+            # This is what the join QR encodes, so it has to be the address a
+            # phone on cellular can reach -- not the Service, and not the pod.
+            # Get it wrong and the game looks fine on the television while every
+            # scan fails.
+            - name: HIVEMIND_BASE_URL
+              value: "https://hivemind.${DOMAIN}"
+            - name: HIVEMIND_LOG_LEVEL
+              value: "info"
+            # HIVEMIND_COOKIE_SECRET is deliberately unset.
+            #
+            # It signs the cookie that lets a phone reclaim its seat, and the
+            # app generates an ephemeral one per process when it is missing. A
+            # persistent secret would only matter if a seat could outlive the
+            # process -- and it cannot, because the rooms themselves are in
+            # memory. Any restart that would invalidate the cookie has already
+            # destroyed every room the cookie could point at, so a SOPS secret
+            # here would buy nothing and cost a key to rotate.
+          resources:
+            requests:
+              memory: "24Mi"
+              cpu: "10m"
+            limits:
+              memory: "128Mi"
+              cpu: "500m"
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop:
+                - ALL
+          # /healthz reports the live room count and flips to 503 as soon as
+          # shutdown starts, so readiness pulls the pod out of the Service
+          # before the streams are torn down.
+          startupProbe:
+            httpGet:
+              path: /healthz
+              port: http
+            periodSeconds: 2
+            failureThreshold: 15
+          livenessProbe:
+            httpGet:
+              path: /healthz
+              port: http
+            periodSeconds: 20
+            timeoutSeconds: 3
+          readinessProbe:
+            httpGet:
+              path: /healthz
+              port: http
+            periodSeconds: 5
+            timeoutSeconds: 3
