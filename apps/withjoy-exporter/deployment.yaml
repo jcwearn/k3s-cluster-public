@@ -18,7 +18,7 @@ spec:
       serviceAccountName: withjoy-exporter-web
       containers:
         - name: withjoy-exporter-web
-          image: ghcr.io/jcwearn/withjoy-exporter:v0.4.2@sha256:bef16d803865578a8b11686e57a1a4ceb8446cebb53b2050847b54ecff34cd1b
+          image: ghcr.io/jcwearn/withjoy-exporter:v0.4.4@sha256:faca35c8e776cc2b194b2eb4b059a33a30907b0734e1117e14d2b188d97490fa
           imagePullPolicy: IfNotPresent
           command: ["python", "web.py"]
           ports:
