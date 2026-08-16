@@ -22,7 +22,7 @@ spec:
     spec:
       containers:
         - name: world-clock
-          image: "ghcr.io/jcwearn/world-clock:v0.2.19@sha256:8cf8250acfa66e42cb5609114bb2be1e3ad912300b7f8075fe9233d4ee3479b2"
+          image: "ghcr.io/jcwearn/world-clock:v0.2.23@sha256:91f599097ea4c26bb17b44bc185eedba4db8320817499c276debc3e60b15b132"
           imagePullPolicy: IfNotPresent
           ports:
             - name: http
