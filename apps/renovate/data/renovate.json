@@ -5,6 +5,7 @@
         "jcwearn/borderline",
         "jcwearn/cf-worker-email",
         "jcwearn/dotfiles-coder",
+        "jcwearn/hivemind",
         "jcwearn/homeassistant-config",
         "jcwearn/jackson-wearn",
         "jcwearn/k3s-cluster",

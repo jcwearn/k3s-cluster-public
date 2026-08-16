@@ -79,7 +79,7 @@ Note that `config:best-practices` already enables weekly lock file maintenance (
   `labels` is not mergeable and would replace the `security` label on vulnerability PRs.
 * `vulnerabilityAlerts` enabled, plus `osvVulnerabilityAlerts` for advisories from osv.dev beyond
   GitHub's own, and an unresolved-CVE summary on each repo's Dependency Dashboard issue.
-* `hostRules` throttles `api.github.com` to avoid secondary rate limits across 14 repos.
+* `hostRules` throttles `api.github.com` to avoid secondary rate limits across 15 repos.
 
 ## Validating a config change
 
