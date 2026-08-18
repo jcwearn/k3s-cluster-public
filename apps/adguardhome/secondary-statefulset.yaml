@@ -56,12 +56,15 @@ spec:
                     app.kubernetes.io/name: adguardhome
       initContainers:
         - name: move-config
-          image: alpine:3.24@sha256:28bd5fe8b56d1bd048e5babf5b10710ebe0bae67db86916198a6eec434943f8b
+          # nginx purely for the envsubst binary it ships for its own template feature.
+          # The previous alpine image had to `apk add gettext` first, which meant this
+          # container needed working DNS and internet before AdGuard could start -- a
+          # deadlock on a cold boot, since the DNS it was waiting on was AdGuard itself.
+          image: nginx:1.31-alpine@sha256:4a73073bd557c65b759505da037898b61f1be6cbcc3c2c3aeac22d2a470c1752
           imagePullPolicy: IfNotPresent
           command: ["/bin/sh", "-c"]
           args:
             - |
-              apk add --no-cache gettext &&
               envsubst < /config/AdGuardHome.yaml > /config-target/AdGuardHome.yaml &&
               chown -R 1000:1000 /config-target &&
               chmod -R 755 /config-target
@@ -103,6 +106,27 @@ spec:
               containerPort: 3000
             - name: dot
               containerPort: 853
+          # Functional probes: a running-but-wedged AdGuard would otherwise keep its
+          # Service endpoint and silently blackhole its VIP.
+          #
+          # Readiness queries a rewrite rather than a real domain on purpose. A rewrite is
+          # answered from local config with no upstream involved, so an ISP outage cannot
+          # mark every instance unready at once and take LAN DNS down with it -- which is
+          # the exact failure this is meant to prevent. Keep at least one rewrite defined.
+          readinessProbe:
+            exec:
+              command: ["/usr/bin/nslookup", "router", "127.0.0.1"]
+            initialDelaySeconds: 10
+            periodSeconds: 15
+            timeoutSeconds: 5
+            failureThreshold: 3
+          livenessProbe:
+            tcpSocket:
+              port: 53
+            initialDelaySeconds: 30
+            periodSeconds: 30
+            timeoutSeconds: 5
+            failureThreshold: 6
           resources:
             limits:
               memory: "2048Mi"
