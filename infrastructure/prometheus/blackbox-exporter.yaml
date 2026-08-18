@@ -1,0 +1,104 @@
+# DNS reachability probes. Before this, an AdGuard outage surfaced only as
+# KubernetesPodNotHealthy after 10 minutes, and only if the pods actually entered a bad
+# phase -- a running-but-wedged resolver paged nobody at all.
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: blackbox-exporter-config
+  namespace: prometheus
+data:
+  blackbox.yml: |
+    modules:
+      # For the AdGuard instances. Queries a rewrite, which is answered from local config
+      # with no upstream involved, so this probe stays green during an ISP outage and only
+      # goes red when the resolver itself is genuinely not answering.
+      dns_local_rewrite:
+        prober: dns
+        timeout: 5s
+        dns:
+          transport_protocol: udp
+          preferred_ip_protocol: ip4
+          query_name: router
+          query_type: A
+          valid_rcodes:
+            - NOERROR
+      # For forwarding resolvers -- the UDM Pro fallback and the public control target.
+      # A public name is the right question to ask something whose job is to forward.
+      dns_public:
+        prober: dns
+        timeout: 5s
+        dns:
+          transport_protocol: udp
+          preferred_ip_protocol: ip4
+          query_name: cloudflare.com
+          query_type: A
+          valid_rcodes:
+            - NOERROR
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: blackbox-exporter
+  namespace: prometheus
+  labels:
+    app: blackbox-exporter
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: blackbox-exporter
+  template:
+    metadata:
+      labels:
+        app: blackbox-exporter
+      annotations:
+        reloader.stakater.com/auto: "true"
+    spec:
+      containers:
+        - name: blackbox-exporter
+          image: quay.io/prometheus/blackbox-exporter:v0.28.0@sha256:e753ff9f3fc458d02cca5eddab5a77e1c175eee484a8925ac7d524f04366c2fc
+          imagePullPolicy: IfNotPresent
+          args:
+            - --config.file=/etc/blackbox_exporter/blackbox.yml
+          ports:
+            - name: http
+              containerPort: 9115
+              protocol: TCP
+          readinessProbe:
+            httpGet:
+              path: /-/healthy
+              port: http
+            initialDelaySeconds: 5
+            periodSeconds: 15
+          volumeMounts:
+            - name: config
+              mountPath: /etc/blackbox_exporter
+              readOnly: true
+          resources:
+            requests:
+              cpu: 25m
+              memory: 32Mi
+            limits:
+              cpu: 200m
+              memory: 128Mi
+      volumes:
+        - name: config
+          configMap:
+            name: blackbox-exporter-config
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: blackbox-exporter-svc
+  namespace: prometheus
+  labels:
+    app: blackbox-exporter
+spec:
+  type: ClusterIP
+  selector:
+    app: blackbox-exporter
+  ports:
+    - name: http
+      port: 9115
+      targetPort: http
+      protocol: TCP

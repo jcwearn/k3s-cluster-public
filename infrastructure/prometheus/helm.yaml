@@ -82,6 +82,42 @@ spec:
                   - ${LAN_PREFIX}.21:9100
                   - ${LAN_PREFIX}.22:9100
                   - ${LAN_PREFIX}.23:9100
+          # DNS probes via blackbox-exporter. The relabel dance is the standard
+          # blackbox pattern: the target moves into __param_target so the exporter knows
+          # what to query, and __address__ is rewritten to the exporter itself.
+          - job_name: dns-adguard
+            metrics_path: /probe
+            params:
+              module: [dns_local_rewrite]
+            static_configs:
+              - targets:
+                  - ${LAN_PREFIX}.2
+                  - ${LAN_PREFIX}.102
+                  - ${LAN_PREFIX}.103
+            relabel_configs:
+              - source_labels: [__address__]
+                target_label: __param_target
+              - source_labels: [__param_target]
+                target_label: instance
+              - target_label: __address__
+                replacement: blackbox-exporter-svc.prometheus.svc.cluster.local:9115
+          # The UDM Pro is the off-cluster fallback resolver, and a public resolver is the
+          # control: if both fail together it is the WAN, not DNS.
+          - job_name: dns-forwarders
+            metrics_path: /probe
+            params:
+              module: [dns_public]
+            static_configs:
+              - targets:
+                  - ${MGMT_PREFIX}.1
+                  - 9.9.9.9
+            relabel_configs:
+              - source_labels: [__address__]
+                target_label: __param_target
+              - source_labels: [__param_target]
+                target_label: instance
+              - target_label: __address__
+                replacement: blackbox-exporter-svc.prometheus.svc.cluster.local:9115
       service:
         type: LoadBalancer
         annotations:
@@ -166,6 +202,48 @@ spec:
         kubeSchedulerRecording: false
         windows: false
     additionalPrometheusRulesMap:
+      dns-health:
+        groups:
+          - name: dns-health
+            rules:
+              # One instance failing is the signal that matters most: it is the state that
+              # used to decay unnoticed until the remaining ones followed it down.
+              - alert: AdGuardInstanceDown
+                expr: probe_success{job="dns-adguard"} == 0
+                for: 5m
+                labels:
+                  severity: warning
+                annotations:
+                  summary: "AdGuard Home not answering ({{ $labels.instance }})"
+                  description: "{{ $labels.instance }} has failed DNS probes for 5 minutes. The other instances may still be answering, so clients may not have noticed yet."
+              - alert: AdGuardAllDown
+                expr: sum(probe_success{job="dns-adguard"}) == 0
+                for: 2m
+                labels:
+                  severity: critical
+                annotations:
+                  summary: "All AdGuard Home instances are down"
+                  description: "No AdGuard instance has answered a DNS probe for 2 minutes. LAN clients are relying on the UDM Pro fallback; the exit node is relying on its public resolvers."
+              # The break-glass fallback. Silent rot here is only discovered when it is
+              # needed, which is the worst possible time to discover it.
+              - alert: FallbackResolverDown
+                expr: probe_success{job="dns-forwarders", instance="${MGMT_PREFIX}.1"} == 0
+                for: 15m
+                labels:
+                  severity: warning
+                annotations:
+                  summary: "UDM Pro fallback resolver not answering"
+                  description: "The off-cluster fallback resolver has failed DNS probes for 15 minutes. AdGuard may still be fine, but the fallback path is not there if it stops."
+              # Both forwarders failing at once points at the WAN rather than at DNS, so
+              # this is deliberately separate from the two above.
+              - alert: DnsEgressDown
+                expr: sum(probe_success{job="dns-forwarders"}) == 0
+                for: 10m
+                labels:
+                  severity: warning
+                annotations:
+                  summary: "No forwarding resolver reachable"
+                  description: "Both the UDM Pro and the public control resolver have failed for 10 minutes. This points at WAN or routing rather than at DNS itself."
       truenas-health:
         groups:
           - name: truenas-health
