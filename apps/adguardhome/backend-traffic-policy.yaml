@@ -11,6 +11,9 @@ spec:
     - group: gateway.networking.k8s.io
       kind: HTTPRoute
       name: adguardhome-secondary
+    - group: gateway.networking.k8s.io
+      kind: HTTPRoute
+      name: adguardhome-tertiary
   timeout:
     http:
       connectionIdleTimeout: 3600s

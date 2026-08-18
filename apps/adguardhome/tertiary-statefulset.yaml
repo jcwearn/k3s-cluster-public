@@ -2,14 +2,14 @@
 apiVersion: v1
 kind: Service
 metadata:
-  name: adguardhome-headless
+  name: adguardhome-tertiary-headless
   namespace: adguardhome
   labels:
-    app: adguardhome
+    app: adguardhome-tertiary
 spec:
   clusterIP: None
   selector:
-    app: adguardhome
+    app: adguardhome-tertiary
   ports:
     - name: dns-udp
       port: 53
@@ -29,20 +29,20 @@ spec:
 apiVersion: apps/v1
 kind: StatefulSet
 metadata:
-  name: adguardhome
+  name: adguardhome-tertiary
   namespace: adguardhome
   annotations:
     reloader.stakater.com/auto: "true"
 spec:
-  serviceName: adguardhome-headless
+  serviceName: adguardhome-tertiary-headless
   replicas: 1
   selector:
     matchLabels:
-      app: adguardhome
+      app: adguardhome-tertiary
   template:
     metadata:
       labels:
-        app: adguardhome
+        app: adguardhome-tertiary
         app.kubernetes.io/name: adguardhome
     spec:
       affinity:
@@ -67,7 +67,7 @@ spec:
               chmod -R 755 /config-target
           env:
             - name: TLS_SERVER_NAME
-              value: dns.${DOMAIN}
+              value: dns-tertiary.${DOMAIN}
           envFrom:
             - secretRef:
                 name: adguardhome-secrets
@@ -85,7 +85,7 @@ spec:
               cpu: 200m
               memory: 64Mi
       containers:
-        - name: adguardhome
+        - name: adguardhome-tertiary
           image: adguard/adguardhome:v0.107.78@sha256:1ea34eafe5dc691007946e8eaab7bf46b0de9412f39213d8c06e48b53bf9a6c5
           imagePullPolicy: IfNotPresent
           ports:
@@ -126,10 +126,10 @@ spec:
           emptyDir: {}
         - name: work-volume
           persistentVolumeClaim:
-            claimName: adguardhome-work
+            claimName: adguardhome-tertiary-work
         - name: tls-volume
           secret:
-            secretName: adguardhome-letsencrypt
+            secretName: adguardhome-tertiary-letsencrypt
             items:
               - key: tls.crt
                 path: tls.crt

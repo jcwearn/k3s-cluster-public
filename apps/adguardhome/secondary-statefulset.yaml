@@ -4,8 +4,8 @@ kind: Service
 metadata:
   name: adguardhome-secondary-headless
   namespace: adguardhome
-labels:
-  app: adguardhome-secondary
+  labels:
+    app: adguardhome-secondary
 spec:
   clusterIP: None
   selector:
@@ -43,7 +43,17 @@ spec:
     metadata:
       labels:
         app: adguardhome-secondary
+        app.kubernetes.io/name: adguardhome
     spec:
+      affinity:
+        podAntiAffinity:
+          preferredDuringSchedulingIgnoredDuringExecution:
+            - weight: 100
+              podAffinityTerm:
+                topologyKey: kubernetes.io/hostname
+                labelSelector:
+                  matchLabels:
+                    app.kubernetes.io/name: adguardhome
       initContainers:
         - name: move-config
           image: alpine:3.24@sha256:28bd5fe8b56d1bd048e5babf5b10710ebe0bae67db86916198a6eec434943f8b
@@ -67,6 +77,13 @@ spec:
               subPath: AdGuardHome.yaml
             - name: config-target
               mountPath: /config-target
+          resources:
+            requests:
+              cpu: 50m
+              memory: 32Mi
+            limits:
+              cpu: 200m
+              memory: 64Mi
       containers:
         - name: adguardhome-secondary
           image: adguard/adguardhome:v0.107.78@sha256:1ea34eafe5dc691007946e8eaab7bf46b0de9412f39213d8c06e48b53bf9a6c5

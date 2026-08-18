@@ -139,6 +139,10 @@ data:
             href: https://dns-secondary.${DOMAIN}/
             description: Secondary AdGuard Home instance for redundant DNS ad-blocking
             icon: sh-adguard-home-light.webp
+        - AdGuard Home (Tertiary):
+            href: https://dns-tertiary.${DOMAIN}/
+            description: Tertiary AdGuard Home instance for redundant DNS ad-blocking
+            icon: sh-adguard-home-light.webp
         - Router:
             href: https://router.${DOMAIN}/
             description: UniFi Dream Machine Pro is an all-in-one enterprise network appliance

@@ -1,0 +1,38 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: adguardhome-tertiary
+  namespace: adguardhome
+  annotations:
+    tailscale.com/expose: "true"
+    tailscale.com/hostname: "adguardhome-tertiary"
+    kube-vip.io/loadbalancerIPs: "${LAN_PREFIX}.103"
+spec:
+  type: LoadBalancer
+  selector:
+    app: adguardhome-tertiary
+  ports:
+    - port: 53
+      targetPort: 53
+      protocol: UDP
+      name: agh-t-dns
+    - port: 53
+      targetPort: 53
+      protocol: TCP
+      name: agh-t-dns-tcp
+    - port: 1080
+      targetPort: 80
+      protocol: TCP
+      name: agh-t-http
+    - port: 10443
+      targetPort: 443
+      protocol: TCP
+      name: agh-t-https
+    - port: 10300
+      targetPort: 3000
+      protocol: TCP
+      name: agh-t-ui
+    - port: 10853
+      targetPort: 853
+      protocol: TCP
+      name: agh-t-dns-tls

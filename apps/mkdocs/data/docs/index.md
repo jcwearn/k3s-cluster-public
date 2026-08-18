@@ -102,7 +102,7 @@ FluxCD watches `clusters/prod/` and recursively applies everything under `apps/`
 
 | App | Type | Notes |
 |-----|------|-------|
-| **AdGuard Home** | Deployment + PVC | Local DNS / DoH / DoT resolver |
+| **AdGuard Home** | 3 × StatefulSet + PVC | Local DNS / DoH / DoT resolver (one per node) |
 | **Ansible Runner** | CronJob | Automated infrastructure management |
 | **Coder** | Helm | Cloud development environments |
 | **Ebooks** | Deployment + PVC | Calibre-Web + Calibre e-book library |

@@ -14,6 +14,7 @@ data:
     rewrite name dash.${DOMAIN} envoy-proxy.envoy-gateway-system.svc.cluster.local
     rewrite name dns.${DOMAIN} envoy-proxy.envoy-gateway-system.svc.cluster.local
     rewrite name dns-secondary.${DOMAIN} envoy-proxy.envoy-gateway-system.svc.cluster.local
+    rewrite name dns-tertiary.${DOMAIN} envoy-proxy.envoy-gateway-system.svc.cluster.local
     rewrite name docs.${DOMAIN} envoy-proxy.envoy-gateway-system.svc.cluster.local
     rewrite name hivemind.${DOMAIN} envoy-proxy.envoy-gateway-system.svc.cluster.local
     rewrite name image.${DOMAIN} envoy-proxy.envoy-gateway-system.svc.cluster.local

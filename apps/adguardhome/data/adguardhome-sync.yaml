@@ -8,6 +8,10 @@ replicas:
     insecureSkipVerify: true
     username: $REPLICA1_USERNAME
     password: $REPLICA1_PASSWORD
+  - url: $REPLICA2_URL
+    insecureSkipVerify: true
+    username: $REPLICA2_USERNAME
+    password: $REPLICA2_PASSWORD
 features:
   generalSettings: true
   queryLogConfig: true

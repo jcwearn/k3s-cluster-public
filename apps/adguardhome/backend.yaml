@@ -27,3 +27,18 @@ spec:
     insecureSkipVerify: true
     alpnProtocols:
       - http/1.1
+---
+apiVersion: gateway.envoyproxy.io/v1alpha1
+kind: Backend
+metadata:
+  name: adguardhome-tertiary
+  namespace: adguardhome
+spec:
+  endpoints:
+    - fqdn:
+        hostname: adguardhome-tertiary.adguardhome.svc.cluster.local
+        port: 10443
+  tls:
+    insecureSkipVerify: true
+    alpnProtocols:
+      - http/1.1

@@ -10,6 +10,7 @@ spec:
         nameservers:
           - "${LAN_PREFIX}.2"
           - "${LAN_PREFIX}.102"
+          - "${LAN_PREFIX}.103"
         searches:
           - "tailscale.svc.cluster.local"
           - "svc.cluster.local"

@@ -15,6 +15,10 @@ resources:
   - secrets.sops.yaml
   - service.yaml
   - statefulset.yaml
+  - tertiary-httproute.yaml
+  - tertiary-pvc.yaml
+  - tertiary-service.yaml
+  - tertiary-statefulset.yaml
 configMapGenerator:
   - name: adguardhome-config
     namespace: adguardhome
