@@ -184,6 +184,32 @@ filtering:
     - domain: k3s-03
       answer: ${LAN_PREFIX}.13
       enabled: true
+    - domain: truenas
+      answer: ${LAN_PREFIX}.200
+      enabled: true
+    # Send ${DOMAIN} straight to the Envoy proxy on the LAN.
+    #
+    # Public DNS answers these with a CNAME to the gateway's MagicDNS name, and the apex
+    # with the gateway's tailnet address (apps/homepage/dnsendpoint.yaml) -- both of which
+    # only resolve on a device running Tailscale. Without these rewrites a LAN client with
+    # no tailnet connection cannot reach any internal site at all, even standing in the house.
+    #
+    # Envoy serves the wildcard cert (SAN: *.${DOMAIN}, ${DOMAIN}) and selects by SNI, so TLS
+    # is unaffected; LAN traffic also stops hairpinning out to the tailnet and back.
+    #
+    # Only clients that use AdGuard see these answers -- LAN and the exit node pod. Remote
+    # tailnet clients resolve via the tailnet's own nameserver and are unaffected.
+    #
+    # The wildcard does not match the apex, hence the separate entry. Note this captures
+    # every ${DOMAIN} subdomain: if one is ever hosted somewhere other than this cluster,
+    # it needs an explicit rewrite above this line. Mail is unaffected -- MX points at
+    # Cloudflare's own domain, not at a ${DOMAIN} name.
+    - domain: ${DOMAIN}
+      answer: ${LAN_PREFIX}.5
+      enabled: true
+    - domain: "*.${DOMAIN}"
+      answer: ${LAN_PREFIX}.5
+      enabled: true
   safe_fs_patterns:
     - /opt/adguardhome/work/userfilters/*
   safebrowsing_cache_size: 1048576

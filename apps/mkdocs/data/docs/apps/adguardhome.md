@@ -93,5 +93,31 @@ of the DoH upstreams themselves. These must be plain IP addresses.
 
 ### Local Rewrites
 
-Custom DNS rewrites map short hostnames to LAN IPs (e.g. `homeassistant`
-→ `${MGMT_PREFIX}.52`, `router` → `${MGMT_PREFIX}.1`, `pve-01` → `${LAN_PREFIX}.21`).
+Two kinds of rewrite, for two different problems.
+
+**Short hostnames → LAN IPs.** `homeassistant` → `${MGMT_PREFIX}.52`, `router` →
+`${MGMT_PREFIX}.1`, `pve-01/02/03` → `${LAN_PREFIX}.21-23`, `k3s-01/02/03` →
+`${LAN_PREFIX}.11-13`, `truenas` → `${LAN_PREFIX}.200`. These are the break-glass names:
+they reach each box directly, bypassing the cluster entirely, which is exactly what you
+need when the cluster is the thing that broke. The same records are mirrored on the UDM Pro
+so they survive AdGuard being down too.
+
+**`${DOMAIN}` and `*.${DOMAIN}` → `${LAN_PREFIX}.5`** (the Envoy proxy). Public DNS answers
+these with a CNAME to the gateway's MagicDNS name, and the apex with the gateway's tailnet
+address — neither of which resolves without Tailscale. Before these rewrites existed, a LAN
+client with no tailnet connection could not reach any internal site at all, even standing in
+the house. Now anything using AdGuard reaches Envoy directly, and LAN traffic stops
+hairpinning out to the tailnet and back.
+
+TLS is unaffected: Envoy serves the wildcard certificate (SAN `*.${DOMAIN}`, `${DOMAIN}`) and
+selects by SNI, so the hostname the client asked for is still what gets matched.
+
+Two things to know about the wildcard:
+
+- It does **not** match the apex, which is why `${DOMAIN}` has its own entry.
+- It captures *every* `${DOMAIN}` subdomain. If one is ever hosted somewhere other than this
+  cluster, it needs an explicit rewrite listed above the wildcard. Mail is unaffected — the MX
+  records point at Cloudflare's own domain, not at a `${DOMAIN}` name.
+
+Only clients that use AdGuard see these answers: LAN clients and the Tailscale exit-node pod.
+Remote tailnet clients resolve through the tailnet's own nameserver and are unaffected.
