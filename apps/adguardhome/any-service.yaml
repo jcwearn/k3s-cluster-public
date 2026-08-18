@@ -1,0 +1,25 @@
+# Fronts all three AdGuard Home instances behind a single ClusterIP so in-cluster
+# consumers get endpoint-based failover instead of being pinned to one pod.
+#
+# The clusterIP is pinned because ProxyClass dnsConfig.nameservers takes addresses,
+# not names, and glibc honours only the first three nameserver lines (MAXNS) -- so
+# the exit node cannot afford to spend a slot per instance.
+apiVersion: v1
+kind: Service
+metadata:
+  name: adguardhome-any
+  namespace: adguardhome
+spec:
+  type: ClusterIP
+  clusterIP: 10.43.0.53
+  selector:
+    app.kubernetes.io/name: adguardhome
+  ports:
+    - port: 53
+      targetPort: 53
+      protocol: UDP
+      name: agh-any-dns
+    - port: 53
+      targetPort: 53
+      protocol: TCP
+      name: agh-any-dns-tcp

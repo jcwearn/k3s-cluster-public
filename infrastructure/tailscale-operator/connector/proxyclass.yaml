@@ -7,10 +7,17 @@ spec:
     pod:
       dnsPolicy: "None"
       dnsConfig:
+        # glibc honours only the first three nameserver lines (MAXNS), so the list is
+        # one entry for AdGuard -- the adguardhome-any ClusterIP, which load-balances
+        # across all three instances -- plus two public resolvers.
+        #
+        # The public fallbacks matter: without them an AdGuard outage leaves this pod
+        # unable to resolve controlplane.tailscale.com, which takes down the exit node
+        # and the subnet router with it. Losing DNS should not cost remote access.
         nameservers:
-          - "${LAN_PREFIX}.2"
-          - "${LAN_PREFIX}.102"
-          - "${LAN_PREFIX}.103"
+          - "10.43.0.53"
+          - "9.9.9.9"
+          - "1.1.1.1"
         searches:
           - "tailscale.svc.cluster.local"
           - "svc.cluster.local"
@@ -18,3 +25,7 @@ spec:
         options:
           - name: ndots
             value: "5"
+          - name: timeout
+            value: "2"
+          - name: attempts
+            value: "2"
