@@ -1,0 +1,26 @@
+# Encryption defaults, so `sops -e -i <file>` and `sops <file>` work with no
+# flags.
+#
+# This exists because its absence caused a real bug. Without creation_rules,
+# every new secret needed a hand-typed command carrying a 59-character age
+# recipient and an --encrypted-regex, documented in CLAUDE.md and retyped each
+# time. That friction is what produced
+# infrastructure/cert-manager/issuer/secrets.sops.yaml: rather than encrypt a
+# new file, someone copied the external-dns one and edited the namespace by
+# hand. The ciphertext was valid, the MAC was not, and because Flux does not
+# enforce the MAC the way the sops CLI does, nothing surfaced it for sixteen
+# months. The cluster worked the whole time; the file simply could not be opened.
+#
+# Inert for existing files. creation_rules apply when sops ENCRYPTS something;
+# decryption reads each file's own embedded metadata, so nothing already
+# committed changes behaviour.
+#
+# The recipient is the age PUBLIC key -- an encryption target, not a credential.
+# The private key lives only in the sops-age Secret in flux-system and has never
+# been in this repository.
+creation_rules:
+  - path_regex: \.sops\.yaml$
+    age: age1ssrlddcqe0jrh2g3038538wuk6uzegz49gyvak2elm7rh2ccj3pq8vnz7t
+    # Encrypt the values, not the keys or the Kubernetes metadata -- Flux needs
+    # to read kind, name and namespace to apply the Secret at all.
+    encrypted_regex: ^(data|stringData)$

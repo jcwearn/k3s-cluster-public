@@ -121,12 +121,29 @@ To edit an encrypted secret:
 sops apps/some-app/secrets.sops.yaml
 ```
 
-To create a new encrypted secret:
+To create a new encrypted secret, write the plaintext Secret to a file ending in
+`.sops.yaml` and encrypt it in place:
 ```bash
-sops --encrypt \
-     --age age1ssrlddcqe0jrh2g3038538wuk6uzegz49gyvak2elm7rh2ccj3pq8vnz7t \
-     --encrypted-regex '^(data|stringData)$' \
-     secret.yaml > secrets.sops.yaml
+sops -e -i apps/some-app/secrets.sops.yaml
+```
+
+`.sops.yaml` at the repo root supplies the recipient and the `encrypted_regex`,
+so no flags are needed. That file exists because its absence caused a real bug:
+with every encrypt requiring a hand-typed 59-character recipient, someone copied
+an existing encrypted file and edited the namespace instead. The ciphertext was
+valid, the MAC was not, and since Flux does not enforce the MAC the way the sops
+CLI does, it went unnoticed for sixteen months — the cluster worked fine and the
+file simply could not be opened.
+
+**Never create an encrypted file by copying another one.** The MAC covers the
+plaintext fields too, so a copy with an edited namespace produces a file that
+Flux accepts and `sops` rejects. `scripts/check-sops-files.sh` fails CI on two
+files sharing a MAC.
+
+To verify every encrypted file locally (needs the age key, so it cannot run in
+CI):
+```bash
+for f in $(git ls-files '*.sops.yaml'); do sops -d "$f" >/dev/null || echo "BAD: $f"; done
 ```
 
 ## Common Tasks (Skills)

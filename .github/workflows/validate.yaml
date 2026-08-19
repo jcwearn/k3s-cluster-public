@@ -1,10 +1,11 @@
 name: Validate Manifests
 
-# Two checks:
+# Three checks:
 #
 #   1. Every kustomize overlay in the repo still builds.
 #   2. Every Flux Kustomization that has postBuild substitution enabled renders with no
 #      unresolved ${VAR}.
+#   3. The encrypted secrets are structurally sound -- see scripts/check-sops-files.sh.
 #
 # The second one is the guard that matters. postBuild replaces a variable it cannot resolve
 # with an empty string and reports success, so a typo'd name or a stray ${1} from an
@@ -47,6 +48,14 @@ jobs:
           curl -fsSL -o yq \
             "https://github.com/mikefarah/yq/releases/download/v${YQ_VERSION}/yq_linux_amd64"
           sudo install -m 755 yq /usr/local/bin/yq
+
+      # Runs without the age key, so it cannot verify a MAC -- the MAC is itself
+      # encrypted. What it can catch is the mistake that produced a broken file
+      # here: two *.sops.yaml sharing a MAC, which means one was copied from the
+      # other rather than encrypted. Flux accepts such a file; `sops -d` does
+      # not, so it hides until somebody tries to edit it.
+      - name: Check encrypted secrets
+        run: ./scripts/check-sops-files.sh
 
       - name: Build every overlay
         run: |
