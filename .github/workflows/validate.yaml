@@ -81,6 +81,7 @@ jobs:
           export TAILNET="example-tailnet.ts.net"
           export LAN_PREFIX="10.255.255"
           export MGMT_PREFIX="10.255.254"
+          export R2_ENDPOINT="https://example.r2.cloudflarestorage.com"
 
           # -N suppresses the "---" separators yq emits once more than one document
           # matches, which would otherwise be read back as a path.

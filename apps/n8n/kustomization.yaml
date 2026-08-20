@@ -6,7 +6,10 @@ resources:
   - httproute.yaml
   - n8n-secrets.sops.yaml
   - namespace.yaml
+  - objectstore.yaml
+  - postgres-backup-secrets.sops.yaml
   - postgresql.yaml
   - pvc.yaml
+  - scheduledbackup.yaml
   - secrets.sops.yaml
   - service.yaml

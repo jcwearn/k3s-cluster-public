@@ -198,15 +198,16 @@ time via `postBuild.substituteFrom`.
 | `${TAILNET}` | Tailnet name |
 | `${LAN_PREFIX}` | First three octets of the cluster LAN — use as `${LAN_PREFIX}.26` |
 | `${MGMT_PREFIX}` | First three octets of the management LAN |
+| `${R2_ENDPOINT}` | Cloudflare R2 S3 endpoint (embeds the account ID) |
 
 Rules when editing:
 
-- **Never write the domain, a `${LAN_PREFIX}.x` address or the tailnet literally.** Use the
-  variable. `.github/workflows/validate.yaml` cannot catch a literal — only a human review can.
+- **Never write the domain, a `${LAN_PREFIX}.x` address, the tailnet or the Cloudflare account ID
+  literally.** Use the variable. `.github/workflows/validate.yaml` cannot catch a literal — only a human review can.
 - **Substitution only reaches the kustomize build output.** It applies to manifests and to
   anything pulled in by a `configMapGenerator` (all `apps/*/data/` except `apps/coder/data/`).
   It does not reach `.github/`, `.claude/`, `README.md`, `CLAUDE.md` or `docs/`.
-- **A braced `${...}` that is not one of the four above will be replaced with an empty string,
+- **A braced `${...}` that is not one of the five above will be replaced with an empty string,
   silently.** If a file needs a literal `${FOO}` — a shell variable in a doc, a regex capture
   group in an exporter config — escape it as `$${FOO}`. A literal `$$` must be written `$$$$`.
   Bare `$FOO` is left alone and needs no escaping.
