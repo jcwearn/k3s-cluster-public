@@ -1,0 +1,54 @@
+# Where paperless-ngx's Postgres backups go.
+#
+# Namespaced, so there is one of these per namespace that runs a CloudNativePG
+# cluster. They all point at the same bucket: barman writes each cluster under a
+# directory named after it, so a shared destinationPath does not collide.
+apiVersion: barmancloud.cnpg.io/v1
+kind: ObjectStore
+metadata:
+  name: paperless-ngx-database-backups
+  namespace: paperless-ngx
+spec:
+  configuration:
+    destinationPath: s3://k3s-postgres-backups/
+    # The bucket and the token behind these credentials are managed in
+    # jcwearn/cloudflare-infra. R2 does not take a Cloudflare API token
+    # directly -- ACCESS_KEY_ID is the token's id and ACCESS_SECRET_KEY is the
+    # SHA-256 of its value.
+    endpointURL: ${R2_ENDPOINT}
+    s3Credentials:
+      accessKeyId:
+        name: postgres-backup-r2
+        key: ACCESS_KEY_ID
+      secretAccessKey:
+        name: postgres-backup-r2
+        key: ACCESS_SECRET_KEY
+    data:
+      compression: gzip
+    wal:
+      compression: gzip
+  # Backups older than this are swept, along with the WAL needed to reach them.
+  # Enforced by the sidecar rather than by a bucket lifecycle rule, so it stays
+  # in step with what barman believes it can still restore.
+  retentionPolicy: 30d
+  instanceSidecarConfiguration:
+    env:
+      # barman-cloud rides on boto3, which since 1.36 sends integrity headers
+      # that non-AWS S3 implementations reject. Without these, uploads fail
+      # against R2 with an error that reads like a credentials problem. The
+      # OpenTofu state backend in cloudflare-infra carries the same workaround
+      # as skip_s3_checksum.
+      - name: AWS_REQUEST_CHECKSUM_CALCULATION
+        value: when_required
+      - name: AWS_RESPONSE_CHECKSUM_VALIDATION
+        value: when_required
+      # R2 has no regions. The SDK still insists on one being set.
+      - name: AWS_DEFAULT_REGION
+        value: auto
+    resources:
+      requests:
+        cpu: 10m
+        memory: 64Mi
+      limits:
+        cpu: 200m
+        memory: 256Mi

@@ -6,6 +6,15 @@ metadata:
 spec:
   instances: 1
   imageName: ghcr.io/cloudnative-pg/postgresql:16
+  # Backups and WAL archiving, via the barman-cloud CNPG-I plugin installed in
+  # cnpg-system. isWALArchiver is what makes archive_command point here; without
+  # it the plugin would take base backups with no WAL to replay onto them, and
+  # point-in-time recovery would not work.
+  plugins:
+    - name: barman-cloud.cloudnative-pg.io
+      isWALArchiver: true
+      parameters:
+        barmanObjectName: paperless-ngx-database-backups
   storage:
     size: 5Gi
     storageClass: truenas-nfs-postgres

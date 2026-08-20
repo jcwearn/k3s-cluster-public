@@ -5,7 +5,10 @@ resources:
   - httproute.yaml
   - namespace.yaml
   - paperless-ngx-secrets.sops.yaml
+  - objectstore.yaml
+  - postgres-backup-secrets.sops.yaml
   - postgresql.yaml
+  - scheduledbackup.yaml
   - pvc.yaml
   - secrets.sops.yaml
   - service.yaml
