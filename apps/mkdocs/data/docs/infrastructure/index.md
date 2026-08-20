@@ -20,6 +20,7 @@ Helm values, and any cluster-specific tweaks.
 | **TrueNAS Monitoring** | Prometheus metrics, Grafana dashboards, and alerts for TrueNAS via Graphite exporter. | [Read more](truenas-monitoring.md) |
 | **DNS Monitoring** | Blackbox DNS probes and alerts for the AdGuard resolvers and the resolvers they fall back to. | [Read more](dns-monitoring.md) |
 | **Proxmox Monitoring** | PVE exporter + node_exporter metrics, Grafana dashboards, and alerts for Proxmox hypervisors. | [Read more](proxmox-monitoring.md) |
+| **EOL Monitoring** | Tracks major-version support windows for Proxmox VE, Debian, Ubuntu and Kubernetes, and alerts before one runs out. | [Read more](eol-monitoring.md) |
 | **Postgres Backups** | Nightly base backups and WAL archiving for the CloudNativePG clusters, off-site to Cloudflare R2, with a tested restore runbook. | [Read more](postgres-backups.md) |
 | **llama.cpp** | Self-hosted LLM inference server (Qwen3 models, OpenAI-compatible API). | [Read more](llama-cpp.md) |
 

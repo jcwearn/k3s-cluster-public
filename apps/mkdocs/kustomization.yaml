@@ -45,6 +45,7 @@ configMapGenerator:
       - data/docs/infrastructure/cert-manager.md
       - data/docs/infrastructure/descheduler.md
       - data/docs/infrastructure/dns-monitoring.md
+      - data/docs/infrastructure/eol-monitoring.md
       - data/docs/infrastructure/external-dns.md
       - data/docs/infrastructure/flux-operator.md
       - data/docs/infrastructure/envoy-gateway.md

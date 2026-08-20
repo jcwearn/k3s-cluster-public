@@ -203,6 +203,18 @@ spec:
             - receiver: "null"
               matchers:
                 - alertname = "InfoInhibitor"
+            # Lifecycle alerts are standing conditions, not incidents -- an
+            # end-of-life release stays end-of-life for weeks by design. At the
+            # global 12h repeat a 90-day warning window would be roughly 180
+            # pushes, which is how a real signal gets tuned out. Weekly instead.
+            #
+            # This is a route, not a receiver. The receivers list below is
+            # index-addressed by the valuesFrom block at the top of this file, so
+            # inserting into it would silently misroute the ntfy credentials.
+            - receiver: "ntfy"
+              matchers:
+                - alertname =~ "Release.*|Eol.*"
+              repeat_interval: 168h
             - receiver: "ntfy"
               matchers:
                 - alertname != "Watchdog"
@@ -503,6 +515,107 @@ spec:
                 annotations:
                   summary: "Proxmox host {{ $labels.instance }} disk critically full ({{ $labels.mountpoint }})"
                   description: "Filesystem {{ $labels.mountpoint }} on {{ $labels.instance }} is above 95% used.\n  VALUE = {{ $value | humanizePercentage }}"
+      release-lifecycle:
+        groups:
+          - name: release-lifecycle
+            rules:
+              # The running versions are already scraped, in three different shapes:
+              # node_os_info carries the OS for all six machines, kube_node_info the
+              # kubelet, pve_version_info the hypervisor. This normalises all of them
+              # onto the {product, cycle} pair the endoflife.date catalogue is keyed
+              # by, so every alert below is a plain join rather than four
+              # near-identical rules. node_os_info covers debian and ubuntu in one
+              # arm because its `id` label already holds the product slug.
+              #
+              # The bare $1 survives Flux postBuild substitution -- a digit-leading
+              # token is not a valid variable name, and this was checked with
+              # `flux envsubst --strict`. Do not "correct" it to ${1}: that form is
+              # a valid reference to an unset variable and would be silently blanked,
+              # leaving a label_replace that matches everything and rewrites nothing.
+              - record: eol:release_in_use
+                expr: |-
+                  group by (product, cycle) (
+                    label_replace(
+                      label_replace(node_os_info, "product", "$1", "id", "(.+)"),
+                      "cycle", "$1", "version_id", "(.+)"))
+                  or
+                  group by (product, cycle) (
+                    label_replace(
+                      label_replace(kube_node_info, "product", "kubernetes", "", ""),
+                      "cycle", "$1", "kubelet_version", "v(\\d+\\.\\d+)\\..*"))
+                  or
+                  group by (product, cycle) (
+                    label_replace(
+                      label_replace(pve_version_info, "product", "proxmox-ve", "", ""),
+                      "cycle", "$1", "version", "(\\d+)\\..*"))
+              # The alert that was missing. PVE 8 reached end of life on 2026-08-31
+              # and the upgrade off it beat that by twelve days on luck alone.
+              #
+              # This fires immediately on rollout, correctly: k3s v1.32.4 is upstream
+              # Kubernetes 1.32, which went end of life on 2026-02-28. It is a
+              # standing condition rather than an incident, which is why Release*
+              # alerts get their own Alertmanager route with a weekly repeat.
+              - alert: ReleaseEndOfLife
+                expr: eol:release_in_use * on (product, cycle) group_left() eol_cycle_is_eol == 1
+                for: 1h
+                labels:
+                  severity: critical
+                annotations:
+                  summary: "{{ $labels.product }} {{ $labels.cycle }} is past end of life"
+                  description: "{{ $labels.product }} {{ $labels.cycle }} is running somewhere in the stack and no longer receives security updates upstream. This does not resolve on its own -- it needs a major-version upgrade."
+              # 90 days is the lead time to plan a hypervisor upgrade rather than
+              # scramble one. Bounded below by zero so an already-expired cycle
+              # reports only as ReleaseEndOfLife instead of firing twice.
+              - alert: ReleaseEndOfLifeApproaching
+                expr: |-
+                  (
+                    eol:release_in_use * on (product, cycle) group_left() eol_cycle_eol_timestamp_seconds
+                    - time()
+                  ) / 86400 > 0 < 90
+                for: 1h
+                labels:
+                  severity: warning
+                annotations:
+                  summary: "{{ $labels.product }} {{ $labels.cycle }} reaches end of life in {{ $value | humanize }} days"
+                  description: "{{ $labels.product }} {{ $labels.cycle }} is running somewhere in the stack and loses upstream support in under 90 days. Plan the upgrade now; this is the window the PVE 8 to 9 migration did not have."
+              # Fires when something in use is absent from the catalogue entirely --
+              # a product dropped from EOL_PRODUCTS, a slug renamed upstream, or a
+              # new cycle that endoflife.date has not published yet. Without this,
+              # the two alerts above would simply go quiet, which looks identical to
+              # everything being supported. Six hours, because it is also what a
+              # partially-fetched catalogue looks like just after a restart.
+              - alert: ReleaseNotInEolCatalog
+                expr: eol:release_in_use unless on (product, cycle) eol_cycle_info
+                for: 6h
+                labels:
+                  severity: warning
+                annotations:
+                  summary: "No end-of-life data for {{ $labels.product }} {{ $labels.cycle }}"
+                  description: "{{ $labels.product }} {{ $labels.cycle }} is running but the exporter has no catalogue entry for it, so no end-of-life alert can fire for it. Check EOL_PRODUCTS in eol-exporter.yaml and that the cycle exists at endoflife.date."
+              # 48 hours against a six-hour refresh: seven consecutive failures. A
+              # single failed poll is not worth a push when the underlying data
+              # changes a few times a year.
+              - alert: EolCatalogStale
+                expr: time() - max by (product) (eol_fetch_success_timestamp_seconds) > 172800
+                for: 1h
+                labels:
+                  severity: warning
+                annotations:
+                  summary: "End-of-life catalogue is stale for {{ $labels.product }}"
+                  description: "The exporter has not fetched {{ $labels.product }} successfully in over 48 hours. It is still serving the last good catalogue, so alerts still evaluate, but against data that is no longer being refreshed."
+              # The one that catches silent failure, and the reason it is separate
+              # from EolCatalogStale: a product that has never fetched has no
+              # timestamp series at all, so subtracting from it yields nothing and
+              # the stale alert cannot see it. Same shape, and the same reasoning, as
+              # PostgresBackupMissing above.
+              - alert: EolCatalogMissing
+                expr: eol_fetch_success == 0 unless on (product) eol_fetch_success_timestamp_seconds
+                for: 1h
+                labels:
+                  severity: warning
+                annotations:
+                  summary: "End-of-life catalogue was never fetched for {{ $labels.product }}"
+                  description: "The exporter has not once fetched {{ $labels.product }} since it started. Either the slug is wrong -- it must match an endoflife.date product -- or the pod cannot reach the API."
       postgres-backups:
         groups:
           - name: postgres-backups

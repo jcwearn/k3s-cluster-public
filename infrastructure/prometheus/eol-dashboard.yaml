@@ -1,0 +1,203 @@
+# The "what am I running vs what is still supported" view. The alerts in the
+# release-lifecycle rule group say when something needs attention; this says where
+# everything stands, which is the question that went unanswered right up until PVE
+# 8 was twelve days from end of life.
+#
+# Hand-written rather than imported, so it stays small. Note there are no ${...}
+# references anywhere in the JSON -- this path has Flux postBuild substitution, and
+# a dashboard variable written that way is silently replaced with an empty string.
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: eol-dashboard
+  namespace: prometheus
+  labels:
+    grafana_dashboard: "1"
+  annotations:
+    grafana_folder: "Lifecycle"
+data:
+  release-lifecycle.json: |
+    {
+      "annotations": {
+        "list": []
+      },
+      "description": "What this cluster runs against what upstream still supports. Sourced from endoflife.date via eol-exporter; the versions come from node_os_info, kube_node_info and pve_version_info.",
+      "editable": true,
+      "graphTooltip": 0,
+      "links": [],
+      "panels": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "description": "One row per release in use. A blank countdown means upstream has not announced an end-of-life date yet; a negative one means the release is already past it.",
+          "fieldConfig": {
+            "defaults": {
+              "custom": {
+                "align": "auto",
+                "cellOptions": {
+                  "type": "auto"
+                },
+                "inspect": false
+              },
+              "mappings": [],
+              "thresholds": {
+                "mode": "absolute",
+                "steps": [
+                  {
+                    "color": "red",
+                    "value": null
+                  },
+                  {
+                    "color": "orange",
+                    "value": 90
+                  },
+                  {
+                    "color": "green",
+                    "value": 365
+                  }
+                ]
+              }
+            },
+            "overrides": [
+              {
+                "matcher": {
+                  "id": "byName",
+                  "options": "Days until EOL"
+                },
+                "properties": [
+                  {
+                    "id": "custom.cellOptions",
+                    "value": {
+                      "type": "color-text"
+                    }
+                  },
+                  {
+                    "id": "decimals",
+                    "value": 0
+                  },
+                  {
+                    "id": "custom.width",
+                    "value": 160
+                  }
+                ]
+              }
+            ]
+          },
+          "gridPos": {
+            "h": 10,
+            "w": 24,
+            "x": 0,
+            "y": 0
+          },
+          "id": 1,
+          "options": {
+            "cellHeight": "sm",
+            "footer": {
+              "countRows": false,
+              "fields": "",
+              "reducer": [
+                "sum"
+              ],
+              "show": false
+            },
+            "showHeader": true,
+            "sortBy": [
+              {
+                "desc": false,
+                "displayName": "Days until EOL"
+              }
+            ]
+          },
+          "targets": [
+            {
+              "datasource": {
+                "type": "prometheus",
+                "uid": "prometheus"
+              },
+              "editorMode": "code",
+              "expr": "eol:release_in_use\n* on (product, cycle) group_left (label, latest) eol_cycle_info",
+              "format": "table",
+              "instant": true,
+              "legendFormat": "__auto",
+              "range": false,
+              "refId": "A"
+            },
+            {
+              "datasource": {
+                "type": "prometheus",
+                "uid": "prometheus"
+              },
+              "editorMode": "code",
+              "expr": "(\n  eol:release_in_use * on (product, cycle) group_left () eol_cycle_eol_timestamp_seconds\n  - time()\n) / 86400",
+              "format": "table",
+              "instant": true,
+              "legendFormat": "__auto",
+              "range": false,
+              "refId": "B"
+            }
+          ],
+          "title": "Running versions vs upstream support",
+          "transformations": [
+            {
+              "id": "organize",
+              "options": {
+                "excludeByName": {
+                  "Time": true
+                },
+                "indexByName": {},
+                "renameByName": {}
+              }
+            },
+            {
+              "id": "merge",
+              "options": {}
+            },
+            {
+              "id": "organize",
+              "options": {
+                "excludeByName": {
+                  "Value #A": true
+                },
+                "indexByName": {
+                  "product": 0,
+                  "cycle": 1,
+                  "label": 2,
+                  "latest": 3,
+                  "Value #B": 4
+                },
+                "renameByName": {
+                  "product": "Product",
+                  "cycle": "Cycle in use",
+                  "label": "Release",
+                  "latest": "Latest in cycle",
+                  "Value #B": "Days until EOL"
+                }
+              }
+            }
+          ],
+          "type": "table"
+        }
+      ],
+      "refresh": "5m",
+      "schemaVersion": 37,
+      "style": "dark",
+      "tags": [
+        "lifecycle",
+        "eol"
+      ],
+      "templating": {
+        "list": []
+      },
+      "time": {
+        "from": "now-6h",
+        "to": "now"
+      },
+      "timepicker": {},
+      "timezone": "",
+      "title": "Release Lifecycle",
+      "uid": "eol-lifecycle",
+      "version": 1,
+      "weekStart": ""
+    }
