@@ -79,7 +79,10 @@ Note that `config:best-practices` already enables weekly lock file maintenance (
   `labels` is not mergeable and would replace the `security` label on vulnerability PRs.
 * `vulnerabilityAlerts` enabled, plus `osvVulnerabilityAlerts` for advisories from osv.dev beyond
   GitHub's own, and an unresolved-CVE summary on each repo's Dependency Dashboard issue.
-* `hostRules` throttles `api.github.com` to avoid secondary rate limits across 15 repos.
+* `hostRules` throttles `api.github.com` to avoid secondary rate limits across 16 repos.
+* `automerge` is turned back off for `jcwearn/cloudflare-infra` via `matchRepositories`. Merging
+  there runs `tofu apply` against the live Cloudflare account, and the repo has no branch
+  protection, so the `tofu plan` comment on each PR is the only review gate.
 
 ## Validating a config change
 

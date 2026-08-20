@@ -4,6 +4,7 @@
         "jcwearn/anupamaandjackson",
         "jcwearn/borderline",
         "jcwearn/cf-worker-email",
+        "jcwearn/cloudflare-infra",
         "jcwearn/dotfiles-coder",
         "jcwearn/hivemind",
         "jcwearn/homeassistant-config",
@@ -48,6 +49,13 @@
             "automerge": true,
             "autoApprove": true,
             "assignAutomerge": true
+        },
+        {
+            "matchRepositories": [
+                "jcwearn/cloudflare-infra"
+            ],
+            "automerge": false,
+            "description": "Merging to main runs tofu apply against the live Cloudflare account, and the repo has no branch protection. Read the plan comment, then merge by hand."
         }
     ],
     "vulnerabilityAlerts": {
