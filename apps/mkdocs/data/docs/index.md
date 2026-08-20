@@ -89,6 +89,7 @@ of the cluster.
 │   ├── llama-cpp/          # Local LLM inference server (Qwen3, CPU)
 │   ├── prometheus/         # Monitoring stack (kube-prometheus-stack + TrueNAS/Proxmox monitoring)
 │   ├── reloader/           # Auto-restart on ConfigMap/Secret changes
+│   ├── system-upgrade-controller/ # Declarative k3s node upgrades
 │   ├── tailscale-operator/ # Private VPN overlay
 │   └── truenas-nfs/        # NFS storage provisioner
 └── README.md
@@ -118,6 +119,7 @@ FluxCD watches `clusters/prod/` and recursively applies everything under `apps/`
 | | **Proxmox Monitoring** | PVE exporter + node_exporter + Prometheus alerts + Grafana dashboards for Proxmox |
 | **AI/ML** | **llama.cpp** | Local LLM inference server (Qwen3, OpenAI-compatible API) |
 | **Automation** | **Reloader** | Restarts workloads on ConfigMap/Secret changes |
+| | **System Upgrade Controller** | Upgrades k3s on the nodes from a pinned Plan in Git |
 
 ---
 

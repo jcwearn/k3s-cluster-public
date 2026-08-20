@@ -28,6 +28,7 @@ infrastructure/          # Cluster infrastructure components
   ├── llama-cpp/         # Local LLM inference server (Qwen3, CPU)
   ├── prometheus/        # Monitoring stack (kube-prometheus-stack + TrueNAS/Proxmox monitoring)
   ├── reloader/          # Auto-restart on ConfigMap/Secret changes
+  ├── system-upgrade-controller/ # Declarative k3s node upgrades
   ├── tailscale-operator/ # Private VPN network overlay
   └── truenas-nfs/       # NFS storage provisioner
 
@@ -108,7 +109,7 @@ Current external services: homeassistant, proxmox, truenas, unifi.
 Defined in `clusters/prod/infrastructure.yaml` and `clusters/prod/apps.yaml`:
 
 1. cert-manager → cert-manager-issuer
-2. external-dns, envoy-gateway → envoy-gateway-config, kube-vip, prometheus, reloader, truenas-nfs, cloudnative-pg, coredns, llama-cpp, flux-operator
+2. external-dns, envoy-gateway → envoy-gateway-config, kube-vip, prometheus, reloader, truenas-nfs, cloudnative-pg, coredns, llama-cpp, flux-operator, system-upgrade-controller
 3. tailscale-operator → tailscale-connector
 4. **apps** (depends on: cert-manager-issuer, external-dns, envoy-gateway-config, prometheus, tailscale-connector, truenas-nfs, cloudnative-pg, llama-cpp)
 

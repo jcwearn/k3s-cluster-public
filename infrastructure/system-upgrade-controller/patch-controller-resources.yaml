@@ -1,0 +1,24 @@
+# The vendored Deployment ships no resources block at all. Every container in
+# this repo carries requests and limits; this is the only place to add them
+# without editing the vendored file.
+#
+# The controller is a small reconciler that is idle almost all of the time --
+# it polls the Plan every 15 minutes and does nothing unless a node's hash
+# label disagrees with the Plan's. Sized accordingly.
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: system-upgrade-controller
+  namespace: system-upgrade
+spec:
+  template:
+    spec:
+      containers:
+        - name: system-upgrade-controller
+          resources:
+            requests:
+              cpu: 10m
+              memory: 64Mi
+            limits:
+              cpu: 200m
+              memory: 256Mi

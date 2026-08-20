@@ -58,6 +58,7 @@ configMapGenerator:
       - data/docs/infrastructure/truenas-monitoring.md
       - data/docs/infrastructure/llama-cpp.md
       - data/docs/infrastructure/postgres-backups.md
+      - data/docs/infrastructure/system-upgrade-controller.md
   - name: mkdocs-misc
     namespace: mkdocs
     files:

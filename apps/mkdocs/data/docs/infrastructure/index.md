@@ -23,6 +23,7 @@ Helm values, and any cluster-specific tweaks.
 | **EOL Monitoring** | Tracks major-version support windows for Proxmox VE, Debian, Ubuntu and Kubernetes, and alerts before one runs out. | [Read more](eol-monitoring.md) |
 | **Postgres Backups** | Nightly base backups and WAL archiving for the CloudNativePG clusters, off-site to Cloudflare R2, with a tested restore runbook. | [Read more](postgres-backups.md) |
 | **llama.cpp** | Self-hosted LLM inference server (Qwen3 models, OpenAI-compatible API). | [Read more](llama-cpp.md) |
+| **System Upgrade Controller** | Upgrades k3s on the nodes from a pinned `Plan` in Git, one node at a time. | [Read more](system-upgrade-controller.md) |
 
 ---
 

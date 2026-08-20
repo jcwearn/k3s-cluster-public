@@ -1,0 +1,24 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+# crd.yaml and controller.yaml are vendored verbatim from the upstream release
+# assets so that re-vendoring is a clean overwrite rather than a merge:
+#
+#   V=v0.20.1
+#   curl -sfL https://github.com/rancher/system-upgrade-controller/releases/download/$V/crd.yaml \
+#     -o infrastructure/system-upgrade-controller/crd.yaml
+#   curl -sfL https://github.com/rancher/system-upgrade-controller/releases/download/$V/system-upgrade-controller.yaml \
+#     -o infrastructure/system-upgrade-controller/controller.yaml
+#
+# Everything this cluster needs to differ lives in the patches below. Same
+# pattern as infrastructure/kube-vip/, and the reason there is no HelmRelease
+# here: upstream publishes no chart, only third-party ones.
+resources:
+  - crd.yaml
+  - controller.yaml
+  # plan-k3s.yaml is deliberately absent. The controller is installed idle: with
+  # no Plan there is nothing to reconcile and no Job can be created. The first
+  # Plan arrives in its own PR, pinned to v1.32.13+k3s1, so that installing the
+  # machinery and using it are two separately reviewable changes.
+patches:
+  - path: patch-controller-resources.yaml
+  - path: patch-controller-env.yaml

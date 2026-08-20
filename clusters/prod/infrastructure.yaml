@@ -368,3 +368,22 @@ spec:
     secretRef:
       name: sops-age
   wait: true
+---
+apiVersion: kustomize.toolkit.fluxcd.io/v1
+kind: Kustomization
+metadata:
+  name: system-upgrade-controller
+  namespace: flux-system
+spec:
+  interval: 10m
+  retryInterval: 1m
+  timeout: 5m
+  path: ./infrastructure/system-upgrade-controller
+  prune: true
+  sourceRef:
+    kind: GitRepository
+    name: flux-system
+  # No postBuild. Nothing under this path uses a cluster variable, and the
+  # vendored CRD is 1300 lines of upstream schema that would have to be audited
+  # for braced references before substitution could be turned on safely.
+  wait: true

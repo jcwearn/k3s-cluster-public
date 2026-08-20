@@ -1,0 +1,22 @@
+# Two defaults in the vendored ConfigMap are wrong for this cluster.
+#
+# SYSTEM_UPGRADE_JOB_KUBECTL_IMAGE ships pinned at rancher/kubectl:v1.30.3, and
+# that is the kubectl which performs the drain -- not a detail any k3s or
+# system-upgrade-controller documentation mentions. kubectl is supported within
+# one minor of the apiserver; v1.30 against the v1.36 this cluster is heading
+# for would be six. It has to move with the Plan version, so treat the two as
+# one edit: whenever plan-k3s.yaml changes, this changes with it.
+#
+# SYSTEM_UPGRADE_JOB_ACTIVE_DEADLINE_SECONDS ships at 900. A Job here has to
+# drain a node, pull the upgrade image, swap the binary and restart k3s, and
+# the deadline is what stops a hung drain from blocking forever -- 15 minutes
+# is tight enough to trip on a slow-but-healthy run. An hour still fails fast
+# relative to a human noticing.
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: default-controller-env
+  namespace: system-upgrade
+data:
+  SYSTEM_UPGRADE_JOB_KUBECTL_IMAGE: rancher/kubectl:v1.32.13
+  SYSTEM_UPGRADE_JOB_ACTIVE_DEADLINE_SECONDS: "3600"
