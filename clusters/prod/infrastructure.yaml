@@ -219,6 +219,11 @@ spec:
   sourceRef:
     kind: GitRepository
     name: flux-system
+  # The barman-cloud plugin's chart creates a cert-manager Issuer and two
+  # Certificates for the mTLS channel between the plugin and the operator.
+  # Without cert-manager's CRDs already present, those fail to apply.
+  dependsOn:
+    - name: cert-manager
   wait: true
 ---
 apiVersion: kustomize.toolkit.fluxcd.io/v1

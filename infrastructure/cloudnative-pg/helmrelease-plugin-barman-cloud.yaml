@@ -1,0 +1,41 @@
+# The CNPG-I backup plugin.
+#
+# CloudNativePG deprecated the in-tree spec.backup.barmanObjectStore form in
+# 1.26 and this operator is 1.30, so backups are configured through this plugin
+# and its namespaced ObjectStore resource instead.
+#
+# Must live in the operator's namespace: the operator discovers plugins by
+# looking for a Service named barman-cloud in its own namespace, and the chart
+# fixes that Service name because the mTLS certificate is issued against it.
+#
+# The certificates come from a self-signed cert-manager Issuer the chart creates
+# itself, which is why the cloudnative-pg Kustomization now depends on
+# cert-manager.
+#
+# No install.crds/upgrade.crds here, unlike the operator's HelmRelease. This
+# chart ships the ObjectStore CRD in templates/ rather than crds/, gated by
+# crds.create, so those settings would be no-ops that read as if they did
+# something.
+apiVersion: helm.toolkit.fluxcd.io/v2
+kind: HelmRelease
+metadata:
+  name: plugin-barman-cloud
+  namespace: cnpg-system
+spec:
+  interval: 10m
+  chart:
+    spec:
+      chart: plugin-barman-cloud
+      version: 0.7.1
+      sourceRef:
+        kind: HelmRepository
+        name: cloudnative-pg
+        namespace: flux-system
+  values:
+    resources:
+      requests:
+        cpu: 25m
+        memory: 64Mi
+      limits:
+        cpu: 200m
+        memory: 128Mi
