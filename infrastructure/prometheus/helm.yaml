@@ -63,6 +63,26 @@ spec:
         #
         # Retention was never set here before -- the 10d everyone assumed was
         # the chart default.
+        # Sized from head series, not from what `kubectl top` reported at the
+        # time: memory tracks series count at roughly 8 KiB each, and 234k
+        # series puts steady state near 2 GiB. Measuring instead would have
+        # given 823 MiB, because the pod had restarted minutes earlier and the
+        # head block was still filling -- it climbed from 399 to 839 MiB in the
+        # five minutes either side of the reading.
+        #
+        # The limit is deliberately 3x the request rather than snug. Compaction
+        # and wide range queries both spike well above steady state, and an
+        # OOM-kill mid-compaction is a worse outcome than a pod that is briefly
+        # large. Reaching 6 GiB would mean something is genuinely wrong -- a
+        # cardinality explosion, most likely -- and being killed for it is then
+        # the right behaviour.
+        resources:
+          requests:
+            cpu: 250m
+            memory: 2Gi
+          limits:
+            cpu: "2"
+            memory: 6Gi
         retention: 30d
         retentionSize: 50GiB
         # Cuts WAL write volume, which is worth having when the WAL is on NFS.
@@ -193,6 +213,13 @@ spec:
               - url: "https://hc-ping.com/placeholder"
                 send_resolved: false
       alertmanagerSpec:
+        resources:
+          requests:
+            cpu: 10m
+            memory: 96Mi
+          limits:
+            cpu: 200m
+            memory: 256Mi
         # Silences and the notification log. Small, but losing a silence on
         # restart means a deliberately-quietened alert starts paging again.
         storage:
@@ -215,6 +242,13 @@ spec:
             mountPath: /passwords
             readOnly: true
     grafana:
+      resources:
+        requests:
+          cpu: 50m
+          memory: 384Mi
+        limits:
+          cpu: 500m
+          memory: 1Gi
       # Dashboards come from ConfigMaps, so what this preserves is the SQLite
       # database: preferences, annotations, API keys and starred dashboards.
       persistence:
@@ -229,11 +263,54 @@ spec:
       deploymentStrategy:
         type: Recreate
       sidecar:
+        # Covers both sidecars -- grafana-sc-dashboard and
+        # grafana-sc-datasources share this key.
+        resources:
+          requests:
+            cpu: 10m
+            memory: 64Mi
+          limits:
+            cpu: 100m
+            memory: 128Mi
         dashboards:
           folderAnnotation: grafana_folder
       ingress:
         enabled: false
       prune: true
+    prometheusOperator:
+      resources:
+        requests:
+          cpu: 25m
+          memory: 64Mi
+        limits:
+          cpu: 200m
+          memory: 256Mi
+      # The sidecar injected into both the Prometheus and Alertmanager pods, so
+      # this one key covers two containers.
+      prometheusConfigReloader:
+        resources:
+          requests:
+            cpu: 10m
+            memory: 32Mi
+          limits:
+            cpu: 100m
+            memory: 128Mi
+    kube-state-metrics:
+      resources:
+        requests:
+          cpu: 25m
+          memory: 64Mi
+        limits:
+          cpu: 200m
+          memory: 256Mi
+    prometheus-node-exporter:
+      resources:
+        requests:
+          cpu: 25m
+          memory: 48Mi
+        limits:
+          cpu: 100m
+          memory: 128Mi
     kubeControllerManager:
       enabled: false
     kubeProxy:
