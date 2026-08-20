@@ -129,9 +129,12 @@ lvs -o lv_name,lv_size,data_percent --units g
 
 ## Draining notes
 
-- **k3s-01 needs `--disable-eviction`.** The four CloudNativePG clusters run at `instances: 1` with
-  `minAvailable: 1`, so their PDBs report `allowed=0` and a normal drain hangs forever rather than
-  failing. `--disable-eviction` deletes the pods instead of evicting them, bypassing the PDB.
+- **The CloudNativePG PDBs no longer block drains.** They used to: four clusters at `instances: 1`
+  with `minAvailable: 1` produced PDBs reporting `allowed=0`, so a drain of whichever node held them
+  hung forever rather than failing, and needed `--disable-eviction` to get past. The four `Cluster`
+  resources now set `enablePDB: false`, so no PDB is generated and a plain drain completes. Do not
+  assume the databases are on k3s-01 — they have since moved to k3s-03. Check with
+  `kubectl get pods -A -l cnpg.io/podRole=instance -o wide` rather than trusting this line.
 - **Draining a control-plane node can reset API connections.** kube-vip runs as a DaemonSet on all
   three, so the VIP fails over mid-drain and `kubectl drain` reports
   `connection reset by peer` against several pods. It is harmless — re-run the drain and it

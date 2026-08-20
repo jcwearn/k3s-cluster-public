@@ -5,6 +5,12 @@ metadata:
   namespace: coder
 spec:
   instances: 1
+  # A single-instance cluster has no replica to protect, but CNPG still generates
+  # a PDB with minAvailable: 1, which reports 0 allowed disruptions. Any drain of
+  # this pod's node then hangs rather than failing, so it has to be relaxed by
+  # hand every time -- it blocked the Proxmox 8->9 window, and an unattended
+  # system-upgrade-controller Job would simply sit there until its deadline.
+  enablePDB: false
   imageName: ghcr.io/cloudnative-pg/postgresql:16
   # Backups and WAL archiving, via the barman-cloud CNPG-I plugin installed in
   # cnpg-system. isWALArchiver is what makes archive_command point here; without

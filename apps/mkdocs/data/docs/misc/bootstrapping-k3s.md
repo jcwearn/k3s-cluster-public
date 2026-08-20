@@ -58,10 +58,17 @@ going forward — the symlink is only needed for initial bootstrap.
 
 ## 5 Install k3s on the **first** node
 
+Pin the version. Without `INSTALL_K3S_VERSION` the script installs whatever the
+`stable` channel resolves to that day, which is how a rebuilt node ends up on a
+different minor from the two it is joining. The running cluster's version is the
+one to use — `kubectl get nodes` — and upgrades happen afterwards through
+system-upgrade-controller, never by re-running this script.
+
 ```bash
 VIP="10.0.0.5"    # pick a free IP on your LAN
+K3S_VERSION="v1.32.4+k3s1"    # match the running cluster
 
-curl -sfL https://get.k3s.io | INSTALL_K3S_EXEC="
+curl -sfL https://get.k3s.io | INSTALL_K3S_VERSION="$${K3S_VERSION}" INSTALL_K3S_EXEC="
   server
   --cluster-init
   --tls-san=$${VIP}
@@ -84,8 +91,9 @@ sudo cat /var/lib/rancher/k3s/server/token
 ```bash
 export K3S_TOKEN=<token-from-first-node>
 VIP="10.0.0.5"
+K3S_VERSION="v1.32.4+k3s1"    # same version as the first node
 
-curl -sfL https://get.k3s.io | INSTALL_K3S_EXEC="
+curl -sfL https://get.k3s.io | INSTALL_K3S_VERSION="$${K3S_VERSION}" INSTALL_K3S_EXEC="
   server
   --server https://$${VIP}:6443
   --disable servicelb

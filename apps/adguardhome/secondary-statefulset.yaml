@@ -47,13 +47,22 @@ spec:
     spec:
       affinity:
         podAntiAffinity:
-          preferredDuringSchedulingIgnoredDuringExecution:
-            - weight: 100
-              podAffinityTerm:
-                topologyKey: kubernetes.io/hostname
-                labelSelector:
-                  matchLabels:
-                    app.kubernetes.io/name: adguardhome
+          # Hard, not preferred. These three instances are the LAN's only
+          # resolvers, one kube-vip VIP each, and a soft rule let two of them
+          # land on the same node -- which they had, so draining that one node
+          # would have taken DNS down to a single VIP. Required makes that
+          # impossible.
+          #
+          # The trade-off is deliberate: with three replicas and three nodes
+          # there is nowhere for a drained instance to go, so it stays Pending
+          # and its VIP has no backend until the node returns. Two of three VIPs
+          # answer throughout either way; this trades one instance's uptime for
+          # the guarantee that it is never two.
+          requiredDuringSchedulingIgnoredDuringExecution:
+            - topologyKey: kubernetes.io/hostname
+              labelSelector:
+                matchLabels:
+                  app.kubernetes.io/name: adguardhome
       initContainers:
         - name: move-config
           # nginx purely for the envsubst binary it ships for its own template feature.
