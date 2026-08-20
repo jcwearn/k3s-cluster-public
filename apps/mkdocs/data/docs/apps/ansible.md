@@ -6,6 +6,7 @@ Automated server management via Kubernetes CronJobs running Ansible playbooks.
 
 - **Weekly Linux updates:** Runs `apt dist-upgrade` on all Proxmox hypervisors and k3s VMs every Saturday at 3:00 AM. Sends an email summary reporting which hosts were updated and which need manual reboots.
 - **Host onboarding:** One-shot playbook to create an `ansible` user, configure sudo, and deploy SSH keys on new hosts.
+- **Node configuration:** On-demand playbooks for kernel sysctls, clean-shutdown ordering, and bounding the containerd image store by age.
 
 ## Architecture
 
@@ -20,12 +21,24 @@ Automated server management via Kubernetes CronJobs running Ansible playbooks.
 |------|----------|----------|
 | `ansible-update-linux` | Saturday 3:00 AM | `update-linux.yml` |
 | `ansible-configure-node-sysctl` | suspended | `configure-node-sysctl.yml` |
+| `ansible-configure-image-gc` | suspended | `configure-image-gc.yml` |
 | `ansible-configure-k3s-shutdown` | suspended | `configure-k3s-shutdown.yml` |
 
-Only the first runs on a schedule. The other two are **suspended**, and carry a placeholder
-schedule of `0 0 1 1 *` purely because a CronJob requires one — they exist to be triggered by hand
-when a node needs (re)configuring, not to run periodically. Triggering one is the same
+Only the first runs on a schedule. The others are **suspended**, and carry a placeholder schedule of
+`0 0 1 1 *` purely because a CronJob requires one — they exist to be triggered by hand when a node
+needs (re)configuring, not to run periodically. Triggering one is the same
 `create job --from=cronjob/...` as below.
+
+`configure-image-gc` writes a kubelet config drop-in setting `imageMaximumGCAge: 168h`, so images
+unused for a week are evicted regardless of disk pressure. It **does not restart k3s** — the setting
+lands on each node's next restart. Two things about it are easy to get wrong:
+
+- `imageMaximumGCAge` is a KubeletConfiguration field with **no command-line flag**. Setting it via
+  `kubelet-arg` hands kubelet an unrecognised flag and k3s fails to start, so it has to be a drop-in
+  (supported by k3s from v1.32).
+- Kubelet's own image GC only runs under **disk pressure**, evicting from 85% down to 80% and no
+  further. These nodes sat at 79–83% for months, so it never ran, and accumulated 244–318 images
+  each against 73 referenced cluster-wide.
 
 ## Manual operations
 
@@ -139,6 +152,7 @@ apps/ansible/
   cronjob-update-linux.yaml
   cronjob-configure-node-sysctl.yaml
   cronjob-configure-k3s-shutdown.yaml
+  cronjob-configure-image-gc.yaml
   secrets.sops.yaml
   kustomization.yaml
   data/
@@ -149,4 +163,5 @@ apps/ansible/
       onboard-host.yml
       configure-node-sysctl.yml
       configure-k3s-shutdown.yml
+      configure-image-gc.yml
 ```

@@ -1,0 +1,60 @@
+---
+# Playbook to bound the containerd image store on all k3s nodes.
+#
+# Kubelet garbage-collects images only under disk pressure: at
+# imageGCHighThresholdPercent (85%) it evicts down to imageGCLowThresholdPercent
+# (80%) and stops. These nodes sat at 79-83% for months, so it never ran once,
+# and 244-318 images accumulated per node against 73 referenced across the whole
+# cluster -- roughly 1.1 TiB of superseded layers. Even had it fired, trimming
+# 85% down to 80% would have freed about 24 GiB and left the rest.
+#
+# imageMaximumGCAge evicts images unused for longer than the given duration
+# regardless of disk pressure, which is the part that actually keeps the store
+# bounded.
+#
+# It is a KubeletConfiguration field with NO command-line flag equivalent, so it
+# cannot be set through kubelet-arg -- doing that hands kubelet an unrecognised
+# flag and k3s fails to start, which on three server nodes is a cluster outage.
+# It has to be a kubelet config drop-in, which k3s supports from v1.32.
+#
+# Deliberately does NOT restart k3s. The setting applies on the next restart of
+# each node; rolling three server nodes is a planned-window job, not something
+# an Ansible run should do to all three at once.
+#
+# Run manually:
+#   kubectl create job -n ansible --from=cronjob/ansible-configure-image-gc \
+#     ansible-configure-image-gc-$(date +%s)
+
+- name: Bound the k3s image store by age
+  hosts: k3s
+  become: true
+  gather_facts: false
+
+  tasks:
+    - name: Ensure the kubelet config drop-in directory exists
+      ansible.builtin.file:
+        path: /var/lib/rancher/k3s/agent/etc/kubelet.conf.d
+        state: directory
+
+    - name: Set imageMaximumGCAge
+      ansible.builtin.copy:
+        dest: /var/lib/rancher/k3s/agent/etc/kubelet.conf.d/10-image-gc.conf
+        content: |
+          apiVersion: kubelet.config.k8s.io/v1beta1
+          kind: KubeletConfiguration
+          # Evict images that have gone unused for seven days. Renovate replaces
+          # image tags continuously, so without this the superseded layers are
+          # never collected until the disk is nearly full.
+          #
+          # Image age is not tracked across kubelet restarts -- a reboot resets
+          # every image's clock, so the first eviction after one is a week out.
+          imageMaximumGCAge: 168h
+        mode: "0600"
+      register: image_gc_config
+
+    - name: Report that the setting is pending a restart
+      ansible.builtin.debug:
+        msg: >-
+          Drop-in written. imageMaximumGCAge takes effect after the next k3s
+          restart on this node; nothing has been restarted here.
+      when: image_gc_config.changed

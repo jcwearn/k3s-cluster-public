@@ -4,6 +4,7 @@ resources:
   - namespace.yaml
   - serviceaccount.yaml
   - cronjob-update-linux.yaml
+  - cronjob-configure-image-gc.yaml
   - cronjob-configure-k3s-shutdown.yaml
   - cronjob-configure-node-sysctl.yaml
   - secrets.sops.yaml
@@ -15,5 +16,6 @@ configMapGenerator:
       - data/inventory.yml
       - data/playbooks/update-linux.yml
       - data/playbooks/onboard-host.yml
+      - data/playbooks/configure-image-gc.yml
       - data/playbooks/configure-k3s-shutdown.yml
       - data/playbooks/configure-node-sysctl.yml
