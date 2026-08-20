@@ -15,10 +15,7 @@ kind: Kustomization
 resources:
   - crd.yaml
   - controller.yaml
-  # plan-k3s.yaml is deliberately absent. The controller is installed idle: with
-  # no Plan there is nothing to reconcile and no Job can be created. The first
-  # Plan arrives in its own PR, pinned to v1.32.13+k3s1, so that installing the
-  # machinery and using it are two separately reviewable changes.
+  - plan-k3s.yaml
 patches:
   - path: patch-controller-resources.yaml
   - path: patch-controller-env.yaml

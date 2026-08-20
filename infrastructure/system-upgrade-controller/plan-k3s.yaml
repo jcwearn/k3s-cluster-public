@@ -1,0 +1,67 @@
+# The k3s upgrade Plan. Bumping `version` below is what triggers an upgrade --
+# the controller hashes this spec, stamps the hash on each node it finishes, and
+# runs a Job on any node whose label disagrees. There is no imperative step.
+#
+# `SYSTEM_UPGRADE_JOB_KUBECTL_IMAGE` in patch-controller-env.yaml is the kubectl
+# that performs the drain, and kubectl is supported within one minor of the
+# apiserver. **Bump it in the same commit as `version` below, every time.**
+#
+# Upstream permits no minor-version skipping, so each hop is its own PR:
+#
+#   v1.32.4  -> v1.32.13 (here)  etcd 3.5.21 -> 3.5.26. Mandatory: there is no
+#                                safe path from etcd 3.5 to 3.6 without it, and
+#                                1.33 already carries 3.6.
+#            -> v1.33.13          etcd 3.6.14. One-way door -- no downgrade after
+#                                 this, only snapshot restore.
+#            -> v1.34.10          apiserver/etcd metric labels change.
+#            -> v1.35.7           cgroup v1 becomes an error.
+#            -> v1.36.3           target, supported to 2027-06-28.
+#
+# Full procedure, per-hop pre-checks and abort criteria:
+# docs/plans/k3s-eol-upgrade/plan.md
+apiVersion: upgrade.cattle.io/v1
+kind: Plan
+metadata:
+  name: k3s-server
+  namespace: system-upgrade
+spec:
+  # Pinned, never `channel:`. A channel resolves to the newest k3s release,
+  # which is four minors ahead of this cluster -- and the controller does not
+  # protect against an unsupported version jump, it just applies what it
+  # resolves.
+  version: v1.32.13+k3s1
+
+  # All three nodes are control-plane, so this one Plan covers the cluster. The
+  # server/agent pair in the upstream documentation exists so workers can wait
+  # for servers; there are no workers here.
+  nodeSelector:
+    matchExpressions:
+      - key: node-role.kubernetes.io/control-plane
+        operator: In
+        values:
+          - "true"
+
+  # Quorum across three etcd members survives exactly one node down.
+  concurrency: 1
+  exclusive: true
+
+  # The controller's only gate between nodes is "Job complete -> label node ->
+  # next node", and a node can report Ready before its etcd member has caught
+  # up. Without this, concurrency: 1 is not actually enough on an embedded-etcd
+  # cluster -- this is the settle time, and it is why the field exists.
+  postCompleteDelay: 10m
+
+  drain:
+    force: true
+    ignoreDaemonSets: true
+    deleteEmptydirData: true
+    # Must stay below SYSTEM_UPGRADE_JOB_ACTIVE_DEADLINE_SECONDS (3600), or the
+    # Job is killed before the drain gets to give up; the controller logs a
+    # warning if it is not.
+    timeout: 15m
+
+  serviceAccountName: system-upgrade
+  upgrade:
+    # Tag omitted on purpose: it defaults to .status.latestVersion, so the image
+    # follows `version` above with the `+` munged to `-`.
+    image: rancher/k3s-upgrade
