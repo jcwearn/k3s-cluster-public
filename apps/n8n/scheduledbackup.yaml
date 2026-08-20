@@ -11,7 +11,14 @@ spec:
   # with seconds. Written as a Kubernetes CronJob schedule this would run at
   # a quite different time.
   schedule: "0 0 2 * * *"
-  immediate: true
+  # Deliberately not immediate: true. Flux applies this and the Cluster's
+  # plugins: block in the same reconcile, but the plugin only reaches the
+  # instance pod once CNPG has rolled it -- about three minutes later. An
+  # immediate backup is requested against the pod that is still running, which
+  # has no plugin, and fails with "requested plugin is not available". It is
+  # self-correcting but leaves a permanent failed Backup object behind, on every
+  # cluster this is rolled out to. Take the first backup by hand instead; see
+  # docs/plans/postgres-backups/plan.md.
   backupOwnerReference: self
   cluster:
     name: n8n-database
