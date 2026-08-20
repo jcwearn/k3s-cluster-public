@@ -372,6 +372,48 @@ spec:
                 annotations:
                   summary: "Proxmox host {{ $labels.instance }} disk critically full ({{ $labels.mountpoint }})"
                   description: "Filesystem {{ $labels.mountpoint }} on {{ $labels.instance }} is above 95% used.\n  VALUE = {{ $value | humanizePercentage }}"
+      postgres-backups:
+        groups:
+          - name: postgres-backups
+            rules:
+              # These are the plugin's metrics, not the cnpg_collector_* ones of
+              # the same shape. The in-core metrics stopped updating when backups
+              # moved to the barman-cloud plugin, and they keep whatever value
+              # they last held -- n8n-database still reports a failed backup from
+              # the rollout race in #741 through the old metric. Alerting on those
+              # names would fire forever on a cluster that is fine.
+              - alert: PostgresBackupStale
+                expr: time() - max by (namespace, pod) (barman_cloud_cloudnative_pg_io_last_available_backup_timestamp > 0) > 36 * 3600
+                for: 1h
+                labels:
+                  severity: warning
+                annotations:
+                  summary: "Postgres backup is stale ({{ $labels.namespace }})"
+                  description: "The newest base backup for {{ $labels.pod }} is more than 36 hours old. Backups run nightly, so one missed run is tolerated before this fires. WAL archiving may still be working, in which case recovery is possible but slower."
+              # Ordered comparison rather than a threshold on the failure
+              # timestamp: a failure that is older than the last success is a
+              # problem that has already resolved itself.
+              - alert: PostgresBackupFailing
+                expr: barman_cloud_cloudnative_pg_io_last_failed_backup_timestamp > barman_cloud_cloudnative_pg_io_last_available_backup_timestamp
+                for: 15m
+                labels:
+                  severity: critical
+                annotations:
+                  summary: "Postgres backups are failing ({{ $labels.namespace }})"
+                  description: "The most recent backup attempt for {{ $labels.pod }} failed and no later one has succeeded. Check the plugin-barman-cloud container in the instance pod."
+              # The one that catches silent failure. Both timestamps read zero
+              # until a cluster's first successful backup, so a cluster that has
+              # never been backed up looks exactly like one whose backups are
+              # merely quiet -- and PostgresBackupStale cannot see it, because
+              # its `> 0` filter drops the series.
+              - alert: PostgresBackupMissing
+                expr: barman_cloud_cloudnative_pg_io_last_available_backup_timestamp == 0
+                for: 6h
+                labels:
+                  severity: critical
+                annotations:
+                  summary: "Postgres cluster has never been backed up ({{ $labels.namespace }})"
+                  description: "{{ $labels.pod }} reports no available backup at all. Either it was added without an ObjectStore and ScheduledBackup, or its first backup has never succeeded. A restore is not possible."
       pod-not-healthy:
         groups:
           - name: pod-not-healthy-group

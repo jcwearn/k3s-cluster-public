@@ -4,6 +4,7 @@ resources:
   - namespace.yaml
   - objectstore.yaml
   - postgres-backup-secrets.sops.yaml
+  - podmonitor.yaml
   - postgresql.yaml
   - scheduledbackup.yaml
   - secrets.sops.yaml

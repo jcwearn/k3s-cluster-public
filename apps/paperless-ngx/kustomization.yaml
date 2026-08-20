@@ -7,6 +7,7 @@ resources:
   - paperless-ngx-secrets.sops.yaml
   - objectstore.yaml
   - postgres-backup-secrets.sops.yaml
+  - podmonitor.yaml
   - postgresql.yaml
   - scheduledbackup.yaml
   - pvc.yaml

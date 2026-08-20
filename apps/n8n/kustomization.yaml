@@ -8,6 +8,7 @@ resources:
   - namespace.yaml
   - objectstore.yaml
   - postgres-backup-secrets.sops.yaml
+  - podmonitor.yaml
   - postgresql.yaml
   - pvc.yaml
   - scheduledbackup.yaml
