@@ -13,7 +13,7 @@
 
 ## Architecture
 
-* **PostgreSQL backend** — Uses a CloudNative-PG `Cluster` (`n8n-database`) instead of the default SQLite, providing proper backups and reliability.
+* **PostgreSQL backend** — Uses a CloudNative-PG `Cluster` (`n8n-database`) instead of the default SQLite. Backed up nightly at 02:00 to Cloudflare R2 with continuous WAL archiving; see [Postgres Backups](../infrastructure/postgres-backups.md) for the restore runbook.
 * **Encryption key** — All stored credentials are encrypted with `N8N_ENCRYPTION_KEY` (SOPS-encrypted in Git). Loss of this key makes saved credentials unrecoverable.
 * **Persistent volume** — `/home/node/.n8n` is backed by an NFS PVC for binary data and local cache.
 

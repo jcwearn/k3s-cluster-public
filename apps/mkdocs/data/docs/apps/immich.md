@@ -40,4 +40,18 @@ Uses CloudNativePG with vector extensions enabled:
 
 ---
 
-> **TODO** – Document backup strategy, storage sizing, and ML model configuration.
+## Database backups
+
+`immich-database` is backed up nightly at 02:45 to Cloudflare R2 with continuous WAL archiving —
+see [Postgres Backups](../infrastructure/postgres-backups.md).
+
+Restoring it requires pinning the **same** `cloudnative-vectorchord` image. A recovery bootstrap
+replays the data directory rather than running `initdb`, so `postInitApplicationSQL` never fires:
+`vchord` returns with the data and needs binaries that match it. Restored onto a stock postgres
+image, the cluster will not start.
+
+This covers the database only. The photo and video library on NFS is **not** backed up.
+
+---
+
+> **TODO** – Document library backup strategy, storage sizing, and ML model configuration.

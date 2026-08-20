@@ -13,7 +13,7 @@
 
 ## Architecture
 
-* **PostgreSQL backend** — Uses a CloudNative-PG `Cluster` (`paperless-ngx-database`) for reliable document metadata storage.
+* **PostgreSQL backend** — Uses a CloudNative-PG `Cluster` (`paperless-ngx-database`) for reliable document metadata storage. Backed up nightly at 02:30 to Cloudflare R2 with continuous WAL archiving; see [Postgres Backups](../infrastructure/postgres-backups.md). Note the cluster is `paperless-ngx-database` but the database inside it is `paperless`.
 * **Redis sidecar** — A `redis:7-alpine` container runs as a sidecar in the same pod, providing the message broker and caching layer Paperless-ngx requires. Connects via `redis://localhost:6379`.
 * **Three PVCs** — Storage is split into `data` (config/thumbnails), `media` (original and archived documents), and `consume` (transient inbox for new documents).
 * **OCR** — Tesseract runs inside the container for automatic text recognition. Memory limit is set to 4Gi to accommodate OCR processing spikes.

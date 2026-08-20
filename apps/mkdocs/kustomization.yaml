@@ -56,6 +56,7 @@ configMapGenerator:
       - data/docs/infrastructure/proxmox-monitoring.md
       - data/docs/infrastructure/truenas-monitoring.md
       - data/docs/infrastructure/llama-cpp.md
+      - data/docs/infrastructure/postgres-backups.md
   - name: mkdocs-misc
     namespace: mkdocs
     files:
