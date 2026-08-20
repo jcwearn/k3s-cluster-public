@@ -11,6 +11,7 @@ on the homelab.
 | **Updating kube-vip** | Quick guide for pulling the latest kube-vip manifest, recreating the symlink, and notes on better long-term management patterns. | [Read more](kube-vip-update.md) |
 | **Reinitializing Tailscale Machine** | Quick guide on how to refresh/reinitialize a tailscale machine that has gotten in a bad state. | [Read more](refreshing-tailscale-machines.md) |
 | **Flux GitHub App Authentication** | How Flux authenticates to GitHub via a GitHub App, and how to rotate the private key | [Read more](rotating-flux-github-pat.md) |
+| **Reclaiming Guest Disk Space** | Why the k3s guests filled with unused container images, and how to get the space back to the thin pool. | [Read more](reclaiming-guest-disk.md) |
 | **Proxmox Kernel Maintenance** | Why `autoremove` never prunes kernels on the hypervisors, and how to do it safely by hand. | [Read more](proxmox-kernel-maintenance.md) |
 | **Security Hardening** | Security Hardening Guide and Checklist | [Read more](security-hardening.md) |
 | **TrueNAS Docker Default Interface Fix** | Troubleshooting "Unable to determine default interface" Docker/Apps failure on TrueNAS | [Read more](truenas-docker-default-interface.md) |
