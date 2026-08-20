@@ -19,6 +19,13 @@ Automated server management via Kubernetes CronJobs running Ansible playbooks.
 | Name | Schedule | Playbook |
 |------|----------|----------|
 | `ansible-update-linux` | Saturday 3:00 AM | `update-linux.yml` |
+| `ansible-configure-node-sysctl` | suspended | `configure-node-sysctl.yml` |
+| `ansible-configure-k3s-shutdown` | suspended | `configure-k3s-shutdown.yml` |
+
+Only the first runs on a schedule. The other two are **suspended**, and carry a placeholder
+schedule of `0 0 1 1 *` purely because a CronJob requires one — they exist to be triggered by hand
+when a node needs (re)configuring, not to run periodically. Triggering one is the same
+`create job --from=cronjob/...` as below.
 
 ## Manual operations
 
@@ -130,6 +137,8 @@ apps/ansible/
   namespace.yaml
   serviceaccount.yaml
   cronjob-update-linux.yaml
+  cronjob-configure-node-sysctl.yaml
+  cronjob-configure-k3s-shutdown.yaml
   secrets.sops.yaml
   kustomization.yaml
   data/
@@ -138,4 +147,6 @@ apps/ansible/
     playbooks/
       update-linux.yml
       onboard-host.yml
+      configure-node-sysctl.yml
+      configure-k3s-shutdown.yml
 ```

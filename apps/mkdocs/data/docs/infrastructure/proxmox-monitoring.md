@@ -33,7 +33,6 @@ All cluster-side resources live in `infrastructure/prometheus/`:
 | `pve-exporter.yaml` | ConfigMap (auth config) + Deployment + ClusterIP Service |
 | `pve-exporter-secret.sops.yaml` | SOPS-encrypted API token for Proxmox authentication |
 | `proxmox-dashboard.yaml` | Grafana dashboard ConfigMap — "Proxmox via Prometheus" (10347) |
-| `k3s-nodes-dashboard.yaml` | Grafana dashboard ConfigMap — "Node Exporter Full" (1860) |
 | `helm.yaml` | Scrape configs (`pve` + `proxmox-nodes` jobs) + alert rules (`proxmox-health`) |
 
 ## Proxmox-Side Configuration

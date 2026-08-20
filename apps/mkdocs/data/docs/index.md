@@ -1,6 +1,6 @@
 # k3s-cluster Homelab
 
-Welcome to **`k3s-cluster`** - the GitOps repository that declaratively manages my bare-metal, three-node **k3s** Kubernetes homelab.
+Welcome to **`k3s-cluster`** - the GitOps repository that declaratively manages my three-node **k3s** Kubernetes homelab, running as virtual machines on Proxmox VE.
 
 ---
 
@@ -14,11 +14,34 @@ Welcome to **`k3s-cluster`** - the GitOps repository that declaratively manages 
 
 ## Hardware snapshot
 
-| Node | CPU/RAM | Storage | OS |
-|------|---------|---------|----|
-| `k3s-01` | Beelink SER8 - 8 core / 32 GiB | 1 TB NVMe | Ubuntu 24.04 LTS |
-| `k3s-02` | Beelink SER8 - 8 core / 32 GiB | 1 TB NVMe | Ubuntu 24.04 LTS |
-| `k3s-03` | Beelink SER8 - 8 core / 32 GiB | 1 TB NVMe | Ubuntu 24.04 LTS |
+There are **two layers**, and it is worth keeping them apart. Three Beelink SER8 mini-PCs run
+Proxmox VE; each hosts exactly one k3s node as a guest. `k3s-01/02/03` are virtual machines, not
+the hardware they run on.
+
+### Hypervisors — `pve-01`, `pve-02`, `pve-03`
+
+| | |
+|---|---|
+| Hardware | Beelink SER8 — 8 core / 16 thread, 32 GiB RAM, 1 TB NVMe |
+| Hypervisor | Proxmox VE 9.2 |
+| Storage | `local` (~94 GiB, directory) + `local-lvm` (~794 GiB LVM-thin) |
+| Clustering | Three-node PVE cluster. **No Ceph and no shared storage** |
+
+Because storage is local to each host, moving a guest means copying its disk rather than a fast
+live migration. Plan hypervisor work around that: drain the k3s node and shut the VM down, do not
+expect to migrate it away.
+
+### Guests
+
+| VM | VMID | Host | vCPU / RAM | Disk | OS |
+|----|------|------|-----------|------|-----|
+| `k3s-01` | 100 | `pve-01` | 16 / 32 GiB | 500 GiB on `local-lvm` | Ubuntu 24.04 LTS |
+| `k3s-02` | 201 | `pve-02` | 16 / 32 GiB | 500 GiB on `local-lvm` | Ubuntu 24.04 LTS |
+| `k3s-03` | 301 | `pve-03` | 16 / 32 GiB | 500 GiB on `local-lvm` | Ubuntu 24.04 LTS |
+
+RAM is ballooned, so each guest sees roughly 28 GiB of its configured 32 GiB. Each host also
+carries a stopped `ubuntu-cloud` cloud-init template (VMIDs 5000 / 6000 / 7000), which is not part
+of the cluster.
 
 ---
 

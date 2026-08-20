@@ -6,6 +6,8 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 This is a GitOps-managed Kubernetes homelab running on a 3-node k3s cluster. FluxCD continuously reconciles Git manifests to cluster state. All configuration is declarative - changes are made by editing YAML files and pushing to Git.
 
+The k3s nodes are **virtual machines**, one per Proxmox VE host (`k3s-01/02/03` on `pve-01/02/03`, VMIDs 100/201/301). Storage is local LVM-thin with no shared storage, so hypervisor work means draining the node and shutting the VM down rather than migrating it. The hardware is three Beelink SER8s; they are the hypervisors, not the k3s nodes.
+
 ## Repository Structure
 
 ```
