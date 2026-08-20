@@ -64,6 +64,7 @@ configMapGenerator:
       - data/docs/misc/adding-docs.md
       - data/docs/misc/bootstrapping-k3s.md
       - data/docs/misc/kube-vip-update.md
+      - data/docs/misc/proxmox-kernel-maintenance.md
       - data/docs/misc/refreshing-tailscale-machines.md
       - data/docs/misc/rotating-flux-github-pat.md
       - data/docs/misc/security-hardening.md
