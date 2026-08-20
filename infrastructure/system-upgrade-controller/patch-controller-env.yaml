@@ -18,5 +18,5 @@ metadata:
   name: default-controller-env
   namespace: system-upgrade
 data:
-  SYSTEM_UPGRADE_JOB_KUBECTL_IMAGE: rancher/kubectl:v1.32.13
+  SYSTEM_UPGRADE_JOB_KUBECTL_IMAGE: rancher/kubectl:v1.33.13
   SYSTEM_UPGRADE_JOB_ACTIVE_DEADLINE_SECONDS: "3600"
