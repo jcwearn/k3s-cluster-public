@@ -51,6 +51,30 @@ spec:
   values:
     prometheus:
       prometheusSpec:
+        # Until 2026-08-20 the TSDB was on an emptyDir, so every pod restart
+        # took the history with it -- which is how a capacity question went
+        # unanswerable during the follow-up #3 investigation.
+        #
+        # Sized from the upstream formula against measured ingest: 7,355
+        # samples/sec over 278k active series at 1-2 bytes/sample is 18-36 GiB
+        # for 30 days. retentionSize is the backstop to the volume size, because
+        # a full TSDB volume is one of the ways this ends badly; Prometheus
+        # prunes at 50 GiB rather than discovering 60 GiB the hard way.
+        #
+        # Retention was never set here before -- the 10d everyone assumed was
+        # the chart default.
+        retention: 30d
+        retentionSize: 50GiB
+        # Cuts WAL write volume, which is worth having when the WAL is on NFS.
+        walCompression: true
+        storageSpec:
+          volumeClaimTemplate:
+            spec:
+              storageClassName: truenas-nfs-monitoring
+              accessModes: ["ReadWriteOnce"]
+              resources:
+                requests:
+                  storage: 60Gi
         additionalScrapeConfigs:
           - job_name: truenas
             honor_labels: true
@@ -169,6 +193,16 @@ spec:
               - url: "https://hc-ping.com/placeholder"
                 send_resolved: false
       alertmanagerSpec:
+        # Silences and the notification log. Small, but losing a silence on
+        # restart means a deliberately-quietened alert starts paging again.
+        storage:
+          volumeClaimTemplate:
+            spec:
+              storageClassName: truenas-nfs-monitoring
+              accessModes: ["ReadWriteOnce"]
+              resources:
+                requests:
+                  storage: 2Gi
         volumes:
           - name: password-file-volume
             secret:
@@ -181,6 +215,19 @@ spec:
             mountPath: /passwords
             readOnly: true
     grafana:
+      # Dashboards come from ConfigMaps, so what this preserves is the SQLite
+      # database: preferences, annotations, API keys and starred dashboards.
+      persistence:
+        enabled: true
+        type: pvc
+        storageClassName: truenas-nfs-monitoring
+        accessModes: ["ReadWriteOnce"]
+        size: 5Gi
+      # Required once persistence is on. Grafana is a Deployment, and the
+      # default RollingUpdate would start the replacement pod before the old one
+      # releases the volume -- which deadlocks on a single-writer claim.
+      deploymentStrategy:
+        type: Recreate
       sidecar:
         dashboards:
           folderAnnotation: grafana_folder

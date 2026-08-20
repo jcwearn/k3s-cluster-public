@@ -32,6 +32,13 @@ provisioner creates and reaps a directory per PVC inside its dataset.
 |---|---|---|---|
 | `truenas-nfs-rwx` | `k8s-nfs` | `/mnt/pool/k8s-nfs` | **yes** |
 | `truenas-nfs-postgres` | `k8s-nfs-postgres` | `/mnt/pool/k8s-nfs-postgres` | no |
+| `truenas-nfs-monitoring` | `k8s-nfs-monitoring` | `/mnt/pool/k8s-nfs-monitoring` | no |
+
+`truenas-nfs-monitoring` is the only class that sets `mountOptions` — `nfsvers=4.1,hard`. NFSv4.1 has
+integrated file locking, which is what makes running Prometheus' TSDB, Grafana's SQLite database and
+Alertmanager's notification log on NFS defensible; see
+[Prometheus](prometheus.md). `mountOptions` can only be set per StorageClass, which is the reason
+this is a separate share rather than a directory on the shared one.
 
 * **Helm Chart:** `nfs-subdir-external-provisioner` v4.0.18
 * **NFS Server:** `${LAN_PREFIX}.200` (same TrueNAS system)

@@ -9,7 +9,7 @@
 | Setting                | Value                                                                                                    |
 | ---------------------- | -------------------------------------------------------------------------------------------------------- |
 | **Chart**              | `kube-prometheus-stack`                                                                                  |
-| **Version**            | `72.3.0`                                                                                                 |
+| **Version**            | `88.3.0`                                                                                                 |
 | **Repository**         | `prometheus-community`                                                                                   |
 | **URL**                | [https://prometheus-community.github.io/helm-charts](https://prometheus-community.github.io/helm-charts) |
 | **HelmRelease**        | `prometheus/kube-prometheus-stack`                                                                       |
@@ -38,7 +38,7 @@ spec:
   chart:
     spec:
       chart: kube-prometheus-stack
-      version: 72.3.0
+      version: 88.3.0
       sourceRef:
         kind: HelmRepository
         name: prometheus-community
@@ -58,21 +58,23 @@ spec:
 ## Prometheus
 
 * **Service** - `LoadBalancer` with VIP **${LAN_PREFIX}.3**; exposed to the Tailnet via `tailscale.com/expose: "true"` (hostname `prometheus`).
-* **Ingress** - `prometheus.${DOMAIN}` served by the NGINX ingress controller with HTTPS enforced.
-* **Retention & storage** - default (2 weeks); backed by a TrueNAS NFS PVC (configured separately).
+* **Ingress** - `prometheus.${DOMAIN}`, `alerts.${DOMAIN}` and `grafana.${DOMAIN}` are served by
+  **Envoy Gateway** via `infrastructure/prometheus/httproute.yaml`. Every `ingress:` block in the
+  HelmRelease is `enabled: false`; the chart's own Ingress support is not used.
+* **Retention & storage** - 30 days, on a 60 GiB PVC from the `truenas-nfs-monitoring` StorageClass.
+  See [Storage](#storage) below.
 
 ### Key annotations
 
 ```yaml
 service:
+  type: LoadBalancer
   annotations:
     tailscale.com/expose: "true"
     tailscale.com/hostname: "prometheus"
     kube-vip.io/loadbalancerIPs: "${LAN_PREFIX}.3"
 ingress:
-  annotations:
-    nginx.ingress.kubernetes.io/force-ssl-redirect: "true"
-    external-dns.alpha.kubernetes.io/target: "k3s-ingress.${TAILNET}"
+  enabled: false
 ```
 
 ---
@@ -126,7 +128,7 @@ routes:
 ```yaml
 valuesFrom:
   - name: prometheus-secrets
-    valuesKey: HEALTHCHECK_WATCHDOG_URL
+    valuesKey: HEALTHCHECK_PING_URL
     targetPath: alertmanager.config.receivers[2].webhook_configs[0].url
 ```
 
@@ -145,7 +147,7 @@ With these settings, an email fires roughly **10 minutes** after the cluster sto
 
 ## Grafana
 
-* **Ingress** - `grafana.${DOMAIN}` (HTTPS enforced).
+* **Ingress** - `grafana.${DOMAIN}`, via the Envoy Gateway HTTPRoute rather than the chart's Ingress.
 * **Admin credentials** - pulled from `prometheus-secrets` (`GRAFANA_ADMIN_USER` / `GRAFANA_ADMIN_PASSWORD`).
 * **Prune** - set to `true`, so only your hand-picked dashboards are kept; built-in example dashboards are removed on every sync.
 
@@ -161,6 +163,69 @@ This cluster runs **k3s**, so several Kubernetes control-plane exporters and rul
 * Corresponding default rule groups for alerting/recording
 
 ---
+
+## Storage
+
+All three stateful components claim from `truenas-nfs-monitoring`, a dedicated NFS share:
+
+| Component | Size | Holds |
+|---|---|---|
+| Prometheus | 60 GiB | the TSDB |
+| Grafana | 5 GiB | SQLite — preferences, annotations, API keys (dashboards come from ConfigMaps) |
+| Alertmanager | 2 GiB | silences and the notification log |
+
+Until 2026-08-20 all three ran on `emptyDir`. Alerts were unaffected, since they evaluate over recent
+windows, but everything cumulative was lost on each pod restart — which is how a capacity question
+during the follow-up #3 investigation turned out to be unanswerable.
+
+### Why NFS, given upstream says not to
+
+Prometheus is explicit: *"Non-POSIX compliant filesystems are not supported for Prometheus' local
+storage as unrecoverable corruptions may happen. NFS filesystems (including AWS's EFS) are not
+supported."* This runs on NFS anyway, deliberately:
+
+- k3s here was bootstrapped with `--disable local-storage`, so there is no local provisioner. The
+  supported alternatives all **pin Prometheus to one node**, meaning monitoring goes down during
+  exactly the node maintenance when it is most wanted.
+- The blast radius is bounded. The TSDB is derived data — the worst case is deleting a corrupt volume
+  and losing history, not losing something irreplaceable.
+- `archiveOnDelete` defaults to `true`, so a deleted PVC becomes an `archived-*` directory on TrueNAS
+  rather than being destroyed.
+
+The mitigation is the mount options, and it is the reason for a separate StorageClass:
+**`nfsvers=4.1` provides integrated file locking**, which is the specific weakness behind the warning.
+`mountOptions` can only be set per StorageClass, so this could not be done on the shared
+`truenas-nfs-rwx` without affecting every volume in the cluster.
+
+Confirm the options actually took effect — a silent fallback to v3 would defeat the whole point:
+
+```bash
+ssh -n <k3s node> 'mount | grep k8s-nfs-monitoring'   # expect vers=4.1, hard
+```
+
+### Sizing
+
+From the upstream formula, `retention_seconds × samples_per_second × bytes_per_sample`, against
+measured ingest of ~7,355 samples/sec over ~278k active series at 1–2 bytes/sample: **18–36 GiB for
+30 days**. The 60 GiB volume leaves headroom, and `retentionSize: 50GiB` makes Prometheus prune
+before the volume fills rather than discovering the limit the hard way.
+
+### Watching for trouble
+
+Given the NFS decision, TSDB health is worth an occasional look:
+
+```promql
+prometheus_tsdb_wal_corruptions_total     # the signal that matters; should stay 0
+prometheus_tsdb_compactions_failed_total
+```
+
+### The share itself
+
+The dataset and NFS export are **not** managed here — they live in
+[`jcwearn/truenas-infra`](https://github.com/jcwearn/truenas-infra) (`k8s-nfs.tf`). The dataset key
+there and `nfs.path` in `infrastructure/truenas-nfs/helmrelease-monitoring.yaml` are a contract kept
+in step by hand, not generated from each other. Changing one without the other leaves the PVCs
+`Pending` with no obvious cause.
 
 ## Custom Prometheus rules
 

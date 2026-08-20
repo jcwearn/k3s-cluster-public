@@ -108,8 +108,13 @@ spec:
     substituteFrom:
       - kind: Secret
         name: cluster-vars
+  # truenas-nfs provides the StorageClass the TSDB, Grafana and Alertmanager
+  # volumes are claimed from. Without this they sit in the same dependency tier,
+  # and a cold bootstrap can reach wait: true with no provisioner yet and fail
+  # on the 5m timeout.
   dependsOn:
     - name: cluster-vars
+    - name: truenas-nfs
   wait: true
 ---
 apiVersion: kustomize.toolkit.fluxcd.io/v1

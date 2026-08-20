@@ -1,0 +1,54 @@
+# Storage for the monitoring stack's own state.
+#
+# A third share rather than reusing truenas-nfs-rwx, for one reason:
+# mountOptions can only be set per StorageClass, and this is the only volume in
+# the cluster that needs nfsvers=4.1.
+#
+# Prometheus upstream does not support NFS for its TSDB -- "unrecoverable
+# corruptions may happen" -- because most NFS implementations are not POSIX
+# compliant, and file locking is the specific weakness. NFSv4.1 has integrated
+# locking, which is what makes running it here defensible rather than merely
+# convenient. Grafana (SQLite) and Alertmanager (notification log) are
+# lock-sensitive in the same way, so all three share this class.
+#
+# The dataset and export are managed in jcwearn/truenas-infra (k8s-nfs.tf). The
+# key there and nfs.path here are a contract kept in step by hand, not
+# generated -- change one without the other and the PVCs sit Pending.
+apiVersion: helm.toolkit.fluxcd.io/v2
+kind: HelmRelease
+metadata:
+  name: truenas-nfs-monitoring
+  namespace: storage
+spec:
+  interval: 10m
+  chart:
+    spec:
+      chart: nfs-subdir-external-provisioner
+      version: 4.0.18
+      sourceRef:
+        kind: HelmRepository
+        name: nfs-subdir-external-provisioner
+        namespace: flux-system
+  install:
+    createNamespace: true
+  values:
+    nfs:
+      server: ${LAN_PREFIX}.200
+      path: /mnt/pool/k8s-nfs-monitoring
+      # Lands on the StorageClass, so every PV provisioned from it inherits
+      # these. Setting it also switches the provisioner's own root mount from an
+      # inline nfs volume to a static PV/PVC pair, named after this release --
+      # which is why the other two releases are unaffected.
+      mountOptions:
+        - nfsvers=4.1
+        - hard
+    storageClass:
+      name: truenas-nfs-monitoring
+      defaultClass: false
+    resources:
+      requests:
+        cpu: 25m
+        memory: 64Mi
+      limits:
+        cpu: 100m
+        memory: 128Mi
