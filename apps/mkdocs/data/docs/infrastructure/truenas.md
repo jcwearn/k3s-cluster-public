@@ -5,32 +5,73 @@
 
 * **External Service:** `${LAN_PREFIX}.200:443`  
   Namespace: `truenas`
-* **UI exposure:**  
-  * `Service` with `EndpointSlice` pointing to external TrueNAS server.  
-  * Ingress `truenas.${DOMAIN}` (TLS & Cloudflare DNS via external-dns).
+* **UI exposure:** `apps/external/truenas/`  
+  * Envoy Gateway `Backend` pointing at `${LAN_PREFIX}.200:443`, with
+    `insecureSkipVerify` (the box serves a self-signed certificate) and
+    `alpnProtocols: [http/1.1]`.
+  * `HTTPRoute` for `truenas.${DOMAIN}` on the main gateway (TLS via
+    cert-manager, DNS via external-dns).
+  * A `BackendTrafficPolicy` raises the idle and request timeouts to 3600s.
 * **Access:** HTTPS web interface for storage management and configuration.
 
 | Feature | Status |
 |---|---|
 | Web UI | Available via `truenas.${DOMAIN}` |
 | Storage pools | Managed via TrueNAS web interface |
-| SMB/NFS shares | Configured on TrueNAS system |
+| SMB/NFS shares | Datasets and NFS exports in [`jcwearn/truenas-infra`](https://github.com/jcwearn/truenas-infra); SMB still manual |
 | Backup services | Available via TrueNAS interface |
 | NFS Provisioner | Available via `truenas-nfs-rwx` StorageClass |
 
 ## NFS Integration
 
-The cluster includes an NFS provisioner that connects to the TrueNAS system for persistent storage:
+The cluster runs one `nfs-subdir-external-provisioner` per TrueNAS dataset, all
+in the `storage` namespace, defined in `infrastructure/truenas-nfs/`. Each
+provisioner creates and reaps a directory per PVC inside its dataset.
 
-* **Helm Chart:** `nfs-subdir-external-provisioner` v4.0.2
+| StorageClass | Dataset | NFS path | Default |
+|---|---|---|---|
+| `truenas-nfs-rwx` | `k8s-nfs` | `/mnt/pool/k8s-nfs` | **yes** |
+| `truenas-nfs-postgres` | `k8s-nfs-postgres` | `/mnt/pool/k8s-nfs-postgres` | no |
+
+* **Helm Chart:** `nfs-subdir-external-provisioner` v4.0.18
 * **NFS Server:** `${LAN_PREFIX}.200` (same TrueNAS system)
-* **NFS Path:** `/mnt/pool/k8s-nfs`
-* **StorageClass:** `truenas-nfs-rwx` (not set as default)
-* **Namespace:** `storage`
 
 This allows Kubernetes workloads to use TrueNAS as persistent storage via NFS, providing ReadWriteMany (RWX) access for applications that need shared storage across multiple pods.
 
-> **Note** - The web UI is an external service running outside the Kubernetes cluster, accessed via EndpointSlice routing through the ingress controller. The NFS provisioner runs inside the cluster and connects to the same TrueNAS system for storage.
+> **Note** - The web UI is an external service running outside the Kubernetes cluster, reached through the Envoy Gateway. The NFS provisioner runs inside the cluster and connects to the same TrueNAS system for storage.
+
+## Configuration as code
+
+Datasets, NFS exports and the NFS service are managed with OpenTofu in
+[`jcwearn/truenas-infra`](https://github.com/jcwearn/truenas-infra), the way the
+`pveum` monitoring user is recorded in
+[Proxmox Monitoring](proxmox-monitoring.md). Changes go through plan-on-PR and
+apply-on-merge, with a nightly drift check.
+
+**Adding a dataset for the cluster is now two pull requests, and they are
+ordered:**
+
+1. In `truenas-infra`, add an entry to `local.k8s_nfs` in `k8s-nfs.tf`. Merging
+   creates the dataset and its export with the same permissions as every other
+   k8s export.
+2. Here, add an `nfs-subdir-external-provisioner` HelmRelease under
+   `infrastructure/truenas-nfs/`, with `nfs.path` matching
+   `/mnt/pool/<dataset>`.
+
+Doing them in the other order leaves PVCs `Pending` until the first one lands.
+The two sides are not generated from each other; the path is the contract.
+
+That repository also reaches this box through the `truenas.${DOMAIN}` route
+above, so its CI depends on the gateway being healthy. If the cluster is down,
+TrueNAS is managed by hand until it is back.
+
+### Still manual
+
+SMB shares, users, snapshot tasks, the Reporting Exporter and the SMTP settings
+described in [TrueNAS Monitoring](truenas-monitoring.md) are not yet in
+`truenas-infra` -- they exist on the box and are unmanaged, which is safe:
+OpenTofu cannot destroy what it does not know about. Adopting them is Phase 4
+of that repository's plan.
 
 ## Troubleshooting
 
