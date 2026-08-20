@@ -48,6 +48,42 @@ Tracking another product is a one-line edit to `EOL_PRODUCTS` in
 `infrastructure/prometheus/eol-exporter.yaml` -- plus an arm in the recording rule if its running
 version is not already scraped.
 
+## What is not tracked, and why
+
+**TrueNAS.** Deliberately absent, for three reasons -- the third is the one that matters.
+
+1. **endoflife.date has no TrueNAS product.** None of `truenas`, `truenas-scale`, `truenas-core`
+   or `freenas` exist; nothing in the 464-product catalogue matches. A pending upstream PR
+   ([endoflife-date/endoflife.date#9230](https://github.com/endoflife-date/endoflife.date/pull/9230),
+   open since 2025-12-29) would add it, covering 23.10 through 25.10. If it merges, this half
+   becomes a one-word change to `EOL_PRODUCTS`.
+2. **The running version is not scraped.** The `truenas` job reaches Prometheus through Netdata and
+   the graphite-exporter, which publishes 115 metrics -- all cgroup, disk and ARC counters, no
+   version anywhere. There is also no TrueNAS API credential in the cluster: `truenas-nfs` speaks
+   plain NFS. Supplying one would mean a new SOPS secret hand-carried out of `truenas-infra`.
+3. **iXsystems publishes no end-of-life dates.** The
+   [software status page](https://www.truenas.com/docs/softwarestatus/) contains no occurrence of
+   "EOL" or "End of Life" at all; the policy is simply that **the two most recent releases are
+   maintained**. The pending PR reflects this -- only 24.10 carries a real date, while 24.04 and
+   23.10 are a bare `eol: true`.
+
+Point 3 is why solving points 1 and 2 would still not buy much. `ReleaseEndOfLife` is a boolean and
+would work. `ReleaseEndOfLifeApproaching` -- the ninety-day warning, the alert this whole component
+exists for -- **can never fire for TrueNAS**, because there is no forward-looking date to count down
+from. No amount of work here creates one.
+
+**The tripwire to watch instead.** As of 2026-08-20 this NAS runs **25.04 (Fangtooth)**. The newest
+stable train is 25.10, and 26.0 was still at `BETA.3`. Under the two-newest rule 25.04 is currently
+maintained -- but **when 26.0 ships, 25.04 leaves the window** and becomes unmaintained silently.
+That is a release event, not a date, so nothing in this component can watch for it. Check it when a
+TrueNAS upgrade is next considered.
+
+The general shape of the missing check is "the running cycle is not among the N newest", which is
+expressible from `eol_cycle_info` -- the exporter already publishes an entry for *every* cycle,
+including ones newer than what is installed. It would work today for Proxmox VE, Debian and Ubuntu.
+It is not implemented because none of them is close to that condition, and TrueNAS, the one product
+that needs it, is the one whose version is not scraped.
+
 ## Metrics
 
 | Metric | Meaning |
