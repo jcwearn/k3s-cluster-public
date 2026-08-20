@@ -1,1 +1,5 @@
 .claude/settings.local.json
+
+# Python bytecode from linting the exporter script under infrastructure/prometheus/data/
+__pycache__/
+*.pyc

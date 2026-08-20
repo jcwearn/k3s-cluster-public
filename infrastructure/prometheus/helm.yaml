@@ -162,6 +162,13 @@ spec:
                 target_label: instance
               - target_label: __address__
                 replacement: blackbox-exporter-svc.prometheus.svc.cluster.local:9115
+          # The endoflife.date catalogue. A plain self-scrape -- unlike blackbox
+          # and pve there is no target to pass through, the exporter holds the
+          # whole catalogue. Scraped slowly because it refreshes every six hours.
+          - job_name: eol
+            scrape_interval: 5m
+            static_configs:
+              - targets: ['eol-exporter-svc.prometheus.svc.cluster.local:9099']
       service:
         type: LoadBalancer
         annotations:

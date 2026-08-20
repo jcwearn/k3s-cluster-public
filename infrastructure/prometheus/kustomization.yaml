@@ -2,6 +2,7 @@ apiVersion: kustomize.config.k8s.io/v1beta1
 kind: Kustomization
 resources:
   - blackbox-exporter.yaml
+  - eol-exporter.yaml
   - graphite-exporter.yaml
   - helm.yaml
   - httproute.yaml
@@ -11,3 +12,12 @@ resources:
   - proxmox-dashboard.yaml
   - secrets.sops.yaml
   - truenas-dashboard.yaml
+configMapGenerator:
+  # Keeps the poller a real .py file -- editable, highlightable and lintable --
+  # rather than a block scalar inside eol-exporter.yaml. The generator's
+  # name-suffix hash also rolls the Deployment whenever the script changes, so
+  # no reloader annotation is needed.
+  - name: eol-exporter-config
+    namespace: prometheus
+    files:
+      - data/eol_exporter.py

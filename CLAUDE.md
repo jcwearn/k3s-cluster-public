@@ -207,8 +207,9 @@ Rules when editing:
 - **Never write the domain, a `${LAN_PREFIX}.x` address, the tailnet or the Cloudflare account ID
   literally.** Use the variable. `.github/workflows/validate.yaml` cannot catch a literal — only a human review can.
 - **Substitution only reaches the kustomize build output.** It applies to manifests and to
-  anything pulled in by a `configMapGenerator` (all `apps/*/data/` except `apps/coder/data/`).
-  It does not reach `.github/`, `.claude/`, `README.md`, `CLAUDE.md` or `docs/`.
+  anything pulled in by a `configMapGenerator` — all `apps/*/data/` except `apps/coder/data/`,
+  plus `infrastructure/prometheus/data/`. It does not reach `.github/`, `.claude/`,
+  `README.md`, `CLAUDE.md` or `docs/`.
 - **A braced `${...}` that is not one of the five above will be replaced with an empty string,
   silently.** If a file needs a literal `${FOO}` — a shell variable in a doc, a regex capture
   group in an exporter config — escape it as `$${FOO}`. A literal `$$` must be written `$$$$`.
