@@ -99,7 +99,16 @@ spec:
           - job_name: truenas
             honor_labels: true
             static_configs:
+              # Two sources, one job. Everything TrueNAS pushes arrives via
+              # graphite-exporter; disk temperature does not, and is read from
+              # the API by truenas-disk-temp-exporter instead. Keeping both under
+              # job="truenas" means the alert rules do not have to know which
+              # path a metric took, and instance="truenas" is true of both --
+              # they describe the same machine.
               - targets: ['graphite-exporter-svc.prometheus.svc.cluster.local:9108']
+                labels:
+                  instance: truenas
+              - targets: ['truenas-disk-temp-exporter-svc.prometheus.svc.cluster.local:9101']
                 labels:
                   instance: truenas
           - job_name: pve

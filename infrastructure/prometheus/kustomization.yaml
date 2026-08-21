@@ -13,6 +13,8 @@ resources:
   - proxmox-dashboard.yaml
   - secrets.sops.yaml
   - truenas-dashboard.yaml
+  - truenas-disk-temp-exporter.yaml
+  - truenas-api-secret.sops.yaml
 configMapGenerator:
   # Keeps the poller a real .py file -- editable, highlightable and lintable --
   # rather than a block scalar inside eol-exporter.yaml. The generator's
@@ -22,3 +24,7 @@ configMapGenerator:
     namespace: prometheus
     files:
       - data/eol_exporter.py
+  - name: truenas-disk-temp-exporter-config
+    namespace: prometheus
+    files:
+      - data/truenas_disk_temp_exporter.py

@@ -1,0 +1,119 @@
+# Disk temperature, read from the TrueNAS API instead of arriving over graphite.
+#
+# Every other TrueNAS metric is pushed: netdata ships to graphite-exporter and
+# nothing dials the box. Disk temperature is the exception, and it is one on
+# purpose.
+#
+# TrueNAS 25.10 moved disk temperature to a python.d chart collecting every
+# 300s, and netdata does not ship that chart over the graphite exporter. That
+# was confirmed rather than assumed -- a full collection cycle passed with no
+# sample arriving in any form, mapped or unmapped, while netdata held fresh
+# values throughout. Six NVMe drives in a NAS had no thermal alerting from the
+# upgrade until this landed.
+#
+# The API has the readings, correct and current, and is not subject to whatever
+# netdata decides to export. The cost is that this one metric depends on the
+# cluster being able to reach TrueNAS, where everything else survives the box
+# being unreachable from the cluster. That inversion is confined to this pod.
+#
+# The poller is data/truenas_disk_temp_exporter.py, pulled in by the
+# configMapGenerator in kustomization.yaml so it stays a real Python file. It
+# uses no libraries beyond the standard library -- see the module docstring for
+# why it speaks the WebSocket protocol by hand rather than taking a dependency.
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: truenas-disk-temp-exporter
+  namespace: prometheus
+  labels:
+    app: truenas-disk-temp-exporter
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: truenas-disk-temp-exporter
+  template:
+    metadata:
+      labels:
+        app: truenas-disk-temp-exporter
+    spec:
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 65534
+        runAsGroup: 65534
+      containers:
+        - name: exporter
+          image: python:3.14-alpine@sha256:05b2b8b732ecd268fee8727a369f936f022d1321b59befd13c30ede22769dcdc
+          imagePullPolicy: IfNotPresent
+          command: ["python", "/app/truenas_disk_temp_exporter.py"]
+          env:
+            # The gateway route, not the box directly: TrueNAS serves a
+            # self-signed certificate and this client verifies TLS. Reaching it
+            # here means this pod depends on the Envoy Gateway being healthy,
+            # which is the same dependency truenas-infra's CI already has.
+            - name: TRUENAS_URL
+              value: "https://truenas.${DOMAIN}"
+            - name: TRUENAS_USERNAME
+              value: "truenas_admin"
+            # The chart this replaces collected every 300s. 60s is chosen for
+            # the alert rules rather than the hardware: TrueNASDiskTemperature
+            # Critical has for: 2m, which needs more than two samples inside the
+            # window to be meaningful.
+            - name: POLL_SECONDS
+              value: "60"
+            - name: PYTHONDONTWRITEBYTECODE
+              value: "1"
+          envFrom:
+            - secretRef:
+                name: truenas-api-key
+          ports:
+            - name: http
+              containerPort: 9101
+              protocol: TCP
+          # Gated on having read real temperatures, not on the port being open,
+          # so a pod that has never reached TrueNAS is never scraped as though
+          # its empty result were the truth.
+          readinessProbe:
+            httpGet:
+              path: /-/ready
+              port: http
+            initialDelaySeconds: 10
+            periodSeconds: 30
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop: ["ALL"]
+          volumeMounts:
+            - name: config
+              mountPath: /app
+              readOnly: true
+          resources:
+            requests:
+              cpu: 10m
+              memory: 32Mi
+            limits:
+              cpu: 100m
+              memory: 96Mi
+      volumes:
+        - name: config
+          configMap:
+            name: truenas-disk-temp-exporter-config
+            defaultMode: 0444
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: truenas-disk-temp-exporter-svc
+  namespace: prometheus
+  labels:
+    app: truenas-disk-temp-exporter
+spec:
+  type: ClusterIP
+  selector:
+    app: truenas-disk-temp-exporter
+  ports:
+    - name: http
+      port: 9101
+      targetPort: http
+      protocol: TCP
