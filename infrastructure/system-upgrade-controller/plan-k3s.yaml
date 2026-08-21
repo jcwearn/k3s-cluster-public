@@ -15,8 +15,8 @@
 #                                 this, only snapshot restore.
 #            -> v1.34.10 (done)   apiserver/etcd metric labels change. Also the
 #                                 floor for Flux 2.9, which landed after it.
-#            -> v1.35.7 (here)    cgroup v1 becomes an error, not a warning.
-#            -> v1.36.3           target, supported to 2027-06-28.
+#            -> v1.35.7 (done)    cgroup v1 becomes an error, not a warning.
+#            -> v1.36.3 (here)    target, supported to 2027-06-28.
 #
 # Full procedure, per-hop pre-checks and abort criteria:
 # docs/plans/k3s-eol-upgrade/plan.md
@@ -26,11 +26,13 @@ metadata:
   name: k3s-server
   namespace: system-upgrade
 spec:
-  # Pinned, never `channel:`. A channel resolves to the newest k3s release,
-  # which is one minor ahead of this cluster -- and the controller does not
-  # protect against an unsupported version jump, it just applies what it
-  # resolves.
-  version: v1.35.7+k3s1
+  # Pinned, never `channel:`. This now happens to equal the `stable` channel
+  # head, which is exactly when a channel starts to look harmless -- it is not.
+  # A channel follows stable forward on its own, and the controller does not
+  # protect against an unsupported version jump; it applies whatever it
+  # resolves. The next k3s minor would roll the control plane unattended,
+  # having asked nobody. Keep this pinned and keep moving it by PR.
+  version: v1.36.3+k3s1
 
   # All three nodes are control-plane, so this one Plan covers the cluster. The
   # server/agent pair in the upstream documentation exists so workers can wait
