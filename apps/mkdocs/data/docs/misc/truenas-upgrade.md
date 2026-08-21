@@ -133,8 +133,9 @@ be unhappy for a few minutes after the NAS returns.
 Then suspend Renovate. It runs every 30 minutes against an NFS-backed cache on the box you are
 about to reboot, and `concurrencyPolicy: Forbid` means a job that hangs on `/cache` blocks every
 subsequent tick until its deadline expires — so a single run caught by the outage costs the next
-half hour too. Neither pod-health rule would tell you: the general one excludes the namespace, and
-the Renovate-specific one does not match `Pending`.
+tick too. A pod waiting on a PVC that cannot bind sits in `Pending`, which
+`KubernetesPodNotHealthy` does now alert on after 10 minutes; suspending is how you avoid spending
+the outage acknowledging an alert you already knew about.
 
 ```bash
 kubectl -n renovate patch cronjob renovate-bot -p '{"spec":{"suspend":true}}'

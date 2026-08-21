@@ -127,6 +127,19 @@ consecutive missed runs). That is the honest question for a CronJob, it rides ou
 node-drain window, and unlike any pod-phase rule it also catches a CronJob left suspended — for
 instance by [the TrueNAS upgrade runbook](../misc/truenas-upgrade.md) and never resumed.
 
+`KubernetesPodNotHealthy` keeps a Renovate-specific copy in
+`infrastructure/prometheus/helm.yaml`, and the phase it leaves out has been inverted:
+
+| Phase | Alerts? | Why |
+|---|---|---|
+| `Pending` | **yes**, after 10m | Was excluded while the `chown` kept pods in `PodInitializing` for half an hour. Now a run is ~3 minutes, so `Pending` means something real: unschedulable, image pull stuck, or a PVC that will not bind because the NAS is down. |
+| `Unknown` | yes, after 10m | The node is gone. |
+| `Failed` | **no** | With `backoffLimit: 0` a failed run is normal and self-correcting, but the pod holds `Failed` for the full 24h TTL — so a gauge rule latches for a day off one transient event. `RenovateStale` is what catches failures that are not transient. |
+
+The general rule excludes `namespace="renovate"` and this one covers it, which is why there are two
+rules sharing the `KubernetesPodNotHealthy` name. The split is about *phases*, not about Renovate
+being less important.
+
 
 ## Validating a config change
 

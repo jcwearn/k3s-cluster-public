@@ -681,14 +681,29 @@ spec:
                 annotations:
                   summary: Kubernetes Pod not healthy (instance {{ $labels.instance }})
                   description: "Pod {{ $labels.namespace }}/{{ $labels.pod }} has been in a non-running state for longer than 10 minutes.\n  VALUE = {{ $value }}\n  LABELS = {{ $labels }}"
+              # Renovate needs its own copy of the rule above, but note it excludes the
+              # opposite phase to what it used to. Until #775 the exclusion was `Pending`,
+              # because a 30+ minute `chown -R` over NFS left the pod in PodInitializing
+              # and this rule fired on every single run. That chown is gone and a run is
+              # now ~3 minutes, so `Pending` is meaningful again -- it is what catches a
+              # pod that cannot schedule, cannot pull, or is waiting on a PVC that will
+              # not bind because the NAS is down.
+              #
+              # `Failed` is excluded instead, and for a different reason: it does not
+              # decay. With backoffLimit: 0 a failed run is normal and self-correcting --
+              # a drained node, a github blip, the next tick 30 minutes later is the retry
+              # -- but the pod sits in Failed for the full ttlSecondsAfterFinished (24h),
+              # so a `> 0` gauge latches for a day off one transient event. That is the
+              # exact shape that made KubeJobFailed unreadable before it was null-routed.
+              # RenovateStale is what covers a run that is genuinely, repeatedly failing.
               - alert: KubernetesPodNotHealthy
-                expr: sum by (namespace, pod) (kube_pod_status_phase{phase=~"Unknown|Failed", namespace="renovate"}) > 0
-                for: 20m
+                expr: sum by (namespace, pod) (kube_pod_status_phase{phase=~"Pending|Unknown", namespace="renovate"}) > 0
+                for: 10m
                 labels:
                   severity: critical
                 annotations:
                   summary: Kubernetes Pod not healthy (instance {{ $labels.instance }})
-                  description: "Pod {{ $labels.namespace }}/{{ $labels.pod }} has been in a non-running state for longer than 20 minutes.\n  VALUE = {{ $value }}\n  LABELS = {{ $labels }}"
+                  description: "Pod {{ $labels.namespace }}/{{ $labels.pod }} has been in a non-running state for longer than 10 minutes.\n  VALUE = {{ $value }}\n  LABELS = {{ $labels }}"
               - alert: KubernetesDaemonsetRolloutStuck
                 expr: kube_daemonset_status_number_ready / kube_daemonset_status_desired_number_scheduled * 100 < 100 or kube_daemonset_status_desired_number_scheduled - kube_daemonset_status_current_number_scheduled > 0
                 for: 10m
