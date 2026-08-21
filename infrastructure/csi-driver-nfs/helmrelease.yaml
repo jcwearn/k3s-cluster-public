@@ -1,11 +1,15 @@
-# The replacement for nfs-subdir-external-provisioner, which was abandoned at
-# image v4.0.2 (2021) while still backing the default StorageClass.
+# Provisions every persistent volume in the cluster, from the three TrueNAS NFS
+# shares. Replaced nfs-subdir-external-provisioner, which was abandoned at image
+# v4.0.2 (2021) while still backing the default StorageClass.
 #
-# This release installs the driver only. It creates no StorageClass and nothing
-# consumes it: all existing PVs use the in-tree `spec.nfs` volume source, which
-# kubelet mounts itself without any provisioner involved. The three
-# nfs-subdir releases keep serving until the next PR takes over their class
-# names. See docs/plans/csi-driver-nfs-migration/.
+# The three StorageClasses live beside this file rather than being created by the
+# chart (storageClass.create: false below), because a class's provisioner and
+# parameters are immutable and a Helm-owned one could never be edited again.
+#
+# Volumes created before the migration still carry an in-tree `spec.nfs` source,
+# which kubelet mounts itself without any provisioner involved. They are not
+# managed by this driver and do not need to be.
+# See docs/plans/csi-driver-nfs-migration/.
 apiVersion: helm.toolkit.fluxcd.io/v2
 kind: HelmRelease
 metadata:

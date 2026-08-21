@@ -81,6 +81,7 @@ of the cluster.
 │   ├── cert-manager/       # TLS certificate automation
 │   ├── cloudnative-pg/     # PostgreSQL operator
 │   ├── coredns/            # DNS server configuration
+│   ├── csi-driver-nfs/     # NFS CSI driver + StorageClasses
 │   ├── envoy-gateway/      # Gateway API ingress (Envoy proxy)
 │   ├── external-dns/       # DNS record sync to Cloudflare
 │   ├── flux-operator/      # Flux Operator + FluxInstance + webhook receiver
@@ -89,8 +90,7 @@ of the cluster.
 │   ├── prometheus/         # Monitoring stack (kube-prometheus-stack + TrueNAS/Proxmox monitoring)
 │   ├── reloader/           # Auto-restart on ConfigMap/Secret changes
 │   ├── system-upgrade-controller/ # Declarative k3s node upgrades
-│   ├── tailscale-operator/ # Private VPN overlay
-│   └── truenas-nfs/        # NFS storage provisioner
+│   └── tailscale-operator/ # Private VPN overlay
 └── README.md
 ```
 

@@ -20,6 +20,7 @@ infrastructure/          # Cluster infrastructure components
   ├── cert-manager/      # TLS certificate automation (Let's Encrypt + Cloudflare)
   ├── cloudnative-pg/    # PostgreSQL operator
   ├── coredns/           # DNS server configuration
+  ├── csi-driver-nfs/    # NFS CSI driver + StorageClasses
   ├── descheduler/       # Pod eviction for even node utilization
   ├── envoy-gateway/     # Gateway API ingress (Envoy proxy)
   ├── external-dns/      # DNS record sync to Cloudflare
@@ -29,8 +30,7 @@ infrastructure/          # Cluster infrastructure components
   ├── prometheus/        # Monitoring stack (kube-prometheus-stack + TrueNAS/Proxmox monitoring)
   ├── reloader/          # Auto-restart on ConfigMap/Secret changes
   ├── system-upgrade-controller/ # Declarative k3s node upgrades
-  ├── tailscale-operator/ # Private VPN network overlay
-  └── truenas-nfs/       # NFS storage provisioner
+  └── tailscale-operator/ # Private VPN network overlay
 
 apps/                    # User-facing applications
   ├── adguardhome/       # DNS resolver & ad blocker
@@ -108,9 +108,9 @@ Current external services: homeassistant, proxmox, truenas, unifi.
 Defined in `clusters/prod/infrastructure.yaml` and `clusters/prod/apps.yaml`:
 
 1. cert-manager → cert-manager-issuer
-2. external-dns, envoy-gateway → envoy-gateway-config, kube-vip, prometheus, reloader, truenas-nfs, cloudnative-pg, coredns, llama-cpp, flux-operator, system-upgrade-controller
+2. external-dns, envoy-gateway → envoy-gateway-config, kube-vip, prometheus, reloader, csi-driver-nfs, cloudnative-pg, coredns, llama-cpp, flux-operator, system-upgrade-controller
 3. tailscale-operator → tailscale-connector
-4. **apps** (depends on: cert-manager-issuer, external-dns, envoy-gateway-config, prometheus, tailscale-connector, truenas-nfs, cloudnative-pg, llama-cpp)
+4. **apps** (depends on: cert-manager-issuer, external-dns, envoy-gateway-config, prometheus, tailscale-connector, csi-driver-nfs, cloudnative-pg, llama-cpp)
 
 ## Working with Secrets
 
@@ -233,7 +233,15 @@ mirror by `.publicignore` and may reference real values freely.
 
 ## Storage
 
-Default storage class is `truenas-nfs-rwx` backed by TrueNAS NFS server (`${LAN_PREFIX}.200`).
+Default storage class is `truenas-nfs-rwx`, provisioned by `csi-driver-nfs`
+(`nfs.csi.k8s.io`) against the TrueNAS NFS server (`${LAN_PREFIX}.200`). The three
+StorageClasses are plain manifests in `infrastructure/csi-driver-nfs/`, not chart output,
+because a StorageClass's `provisioner` and `parameters` are immutable.
+
+**When editing those manifests, keep the `$$` in `subDir`.** That path has `postBuild`
+substitution enabled, so an unescaped `${...}` is silently replaced with an empty string and
+every volume in the cluster collapses onto one directory named `--`. Neither CI nor
+`flux envsubst --strict` catches it -- render the file and read `subDir` by eye.
 
 ## MkDocs Documentation
 

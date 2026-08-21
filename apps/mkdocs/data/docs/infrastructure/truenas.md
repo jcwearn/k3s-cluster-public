@@ -20,27 +20,36 @@
 | Storage pools | Managed via TrueNAS web interface |
 | SMB/NFS shares | Datasets and NFS exports in [`jcwearn/truenas-infra`](https://github.com/jcwearn/truenas-infra); SMB still manual |
 | Backup services | Available via TrueNAS interface |
-| NFS Provisioner | Available via `truenas-nfs-rwx` StorageClass |
+| CSI driver | `csi-driver-nfs`; default class `truenas-nfs-rwx` |
 
 ## NFS Integration
 
-The cluster runs one `nfs-subdir-external-provisioner` per TrueNAS dataset, all
-in the `storage` namespace, defined in `infrastructure/truenas-nfs/`. Each
-provisioner creates and reaps a directory per PVC inside its dataset.
+One CSI driver, [`csi-driver-nfs`](csi-driver-nfs.md), serves all three datasets. It
+creates and reaps a directory per PVC inside whichever share its StorageClass
+names. The three classes are plain manifests in
+`infrastructure/csi-driver-nfs/`, not chart output.
 
-| StorageClass | Dataset | NFS path | Default |
+| StorageClass | Dataset | `share` | Default |
 |---|---|---|---|
 | `truenas-nfs-rwx` | `k8s-nfs` | `/mnt/pool/k8s-nfs` | **yes** |
 | `truenas-nfs-postgres` | `k8s-nfs-postgres` | `/mnt/pool/k8s-nfs-postgres` | no |
 | `truenas-nfs-monitoring` | `k8s-nfs-monitoring` | `/mnt/pool/k8s-nfs-monitoring` | no |
 
+Every class sets `subDir` to `<namespace>-<pvcName>-<pvName>` and
+`mountPermissions: "0777"`, which together reproduce exactly what the previous
+provisioner did — so the directories already on these shares needed no rename
+when the driver changed. `onDelete: archive` renames a removed volume to
+`archived-<subDir>` rather than deleting it; those directories hold space until
+swept by hand.
+
 `truenas-nfs-monitoring` is the only class that sets `mountOptions` — `nfsvers=4.1,hard`. NFSv4.1 has
 integrated file locking, which is what makes running Prometheus' TSDB, Grafana's SQLite database and
 Alertmanager's notification log on NFS defensible; see
 [Prometheus](prometheus.md). `mountOptions` can only be set per StorageClass, which is the reason
-this is a separate share rather than a directory on the shared one.
+this is a separate share rather than a directory on the shared one. Verified in
+practice: that class mounts `vers=4.1` while `truenas-nfs-rwx` negotiates `vers=4.2`.
 
-* **Helm Chart:** `nfs-subdir-external-provisioner` v4.0.18
+* **Helm Chart:** `csi-driver-nfs` v4.13.4 (provisioner `nfs.csi.k8s.io`)
 * **NFS Server:** `${LAN_PREFIX}.200` (same TrueNAS system)
 
 This allows Kubernetes workloads to use TrueNAS as persistent storage via NFS, providing ReadWriteMany (RWX) access for applications that need shared storage across multiple pods.
@@ -61,9 +70,15 @@ ordered:**
 1. In `truenas-infra`, add an entry to `local.k8s_nfs` in `k8s-nfs.tf`. Merging
    creates the dataset and its export with the same permissions as every other
    k8s export.
-2. Here, add an `nfs-subdir-external-provisioner` HelmRelease under
-   `infrastructure/truenas-nfs/`, with `nfs.path` matching
-   `/mnt/pool/<dataset>`.
+2. Here, add a `StorageClass` manifest under `infrastructure/csi-driver-nfs/`,
+   with `parameters.share` matching `/mnt/pool/<dataset>`, and list it in that
+   directory's `kustomization.yaml`. Copy an existing one -- in particular keep
+   the `$$` in `subDir`, which is **not** a typo: this path has Flux
+   substitution enabled, and an unescaped `$${...}` that is not a cluster
+   variable is silently replaced with an empty string, collapsing every volume
+   in the cluster onto one directory named `--`. Neither CI nor
+   `flux envsubst --strict` can catch it; render the file and read `subDir`
+   with your eyes.
 
 Doing them in the other order leaves PVCs `Pending` until the first one lands.
 The two sides are not generated from each other; the path is the contract.

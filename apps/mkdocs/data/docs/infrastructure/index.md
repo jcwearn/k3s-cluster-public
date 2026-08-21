@@ -9,6 +9,7 @@ Helm values, and any cluster-specific tweaks.
 |--------|--------------|------|
 | **kube-vip** | Keeps the API-server reachable on a floating VIP for HA control-plane and LoadBalancer-style Services. | [Read more](kube-vip.md) |
 | **cert-manager** | Automates ACME certificates via Let's Encrypt (DNS-01 using Cloudflare). | [Read more](cert-manager.md) |
+| **csi-driver-nfs** | Provisions every persistent volume in the cluster from the TrueNAS NFS shares. | [Read more](csi-driver-nfs.md) |
 | **descheduler** | Evicts pods from over-loaded nodes to rebalance the cluster after restarts. | [Read more](descheduler.md) |
 | **external-dns** | Reconciles Kubernetes Ingresses/Services → Cloudflare DNS records. | [Read more](external-dns.md) |
 | **Flux Operator** | Manages the Flux installation, GitHub App sync, and push-based webhook reconciliation. | [Read more](flux-operator.md) |

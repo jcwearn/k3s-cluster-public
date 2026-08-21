@@ -43,6 +43,7 @@ configMapGenerator:
     files:
       - data/docs/infrastructure/index.md
       - data/docs/infrastructure/cert-manager.md
+      - data/docs/infrastructure/csi-driver-nfs.md
       - data/docs/infrastructure/descheduler.md
       - data/docs/infrastructure/dns-monitoring.md
       - data/docs/infrastructure/eol-monitoring.md

@@ -59,7 +59,7 @@ version is not already scraped.
    becomes a one-word change to `EOL_PRODUCTS`.
 2. **The running version is not scraped.** The `truenas` job reaches Prometheus through Netdata and
    the graphite-exporter, which publishes 115 metrics -- all cgroup, disk and ARC counters, no
-   version anywhere. There is also no TrueNAS API credential in the cluster: `truenas-nfs` speaks
+   version anywhere. There is also no TrueNAS API credential in the cluster: `csi-driver-nfs` speaks
    plain NFS. Supplying one would mean a new SOPS secret hand-carried out of `truenas-infra`.
 3. **iXsystems publishes no end-of-life dates.** The
    [software status page](https://www.truenas.com/docs/softwarestatus/) contains no occurrence of

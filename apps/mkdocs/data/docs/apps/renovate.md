@@ -101,9 +101,12 @@ across 17 repos instead of cold-starting every datasource lookup.
 
     It never did anything. The init container inherits the pod's `runAsUser: 1000`, and a non-root
     uid cannot change a file's owner — the trailing `|| true` swallowed exactly that. What makes
-    `/cache` writable is `nfs-subdir-external-provisioner` creating the subdirectory `0777`, and
-    Renovate is its only writer. `fsGroup` is not the mechanism either: the in-tree NFS plugin
-    reports its mount as unmanaged, so kubelet never applies it.
+    `/cache` writable is the provisioner creating the subdirectory `0777`, and Renovate is its
+    only writer. That behaviour survived the move to `csi-driver-nfs`, which sets it explicitly as
+    `mountPermissions: "0777"` rather than by default. `fsGroup` is not the mechanism either: this
+    volume still uses an in-tree NFS mount, which kubelet reports as unmanaged, so it never applies
+    it -- and the driver is configured with `enableFSGroupPolicy: false` so that stays true for new
+    volumes too.
 
     The deadline was raised twice (1500 → 2400 → 2700) chasing the growth before the cause was
     found. Treat a rising `activeDeadlineSeconds` as a symptom to investigate, not a dial.

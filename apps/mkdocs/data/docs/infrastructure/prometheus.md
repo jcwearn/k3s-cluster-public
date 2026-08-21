@@ -223,7 +223,7 @@ prometheus_tsdb_compactions_failed_total
 
 The dataset and NFS export are **not** managed here — they live in
 [`jcwearn/truenas-infra`](https://github.com/jcwearn/truenas-infra) (`k8s-nfs.tf`). The dataset key
-there and `nfs.path` in `infrastructure/truenas-nfs/helmrelease-monitoring.yaml` are a contract kept
+there and `parameters.share` in `infrastructure/csi-driver-nfs/storageclass-monitoring.yaml` are a contract kept
 in step by hand, not generated from each other. Changing one without the other leaves the PVCs
 `Pending` with no obvious cause.
 
