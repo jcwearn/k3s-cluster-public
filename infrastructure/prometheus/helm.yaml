@@ -489,6 +489,125 @@ spec:
                 annotations:
                   summary: "TrueNAS filesystem usage high ({{ $labels.mountpoint }})"
                   description: "Filesystem {{ $labels.mountpoint }} on {{ $labels.instance }} is above 85% used.\n  VALUE = {{ $value }}%"
+              # Guards, not alerts about the NAS.
+              #
+              # Every rule above depends on a metric family that can stop
+              # arriving without anything failing. Four of the six rules in this
+              # group could not fire at all until 2026-08-21, and every one of
+              # them failed the same way: the expression returned an empty vector
+              # and Prometheus reported the alert as healthily inactive. Nothing
+              # says "this alert has had no data for a month".
+              #
+              # `up` does not cover this. It is scraped from graphite-exporter,
+              # not from the NAS -- TrueNAS pushes, Prometheus scrapes the
+              # exporter -- so if netdata stops sending, the exporter stays
+              # perfectly scrapeable and `up` stays 1 while the series vanish.
+              # That has already happened: a TrueNAS update reset
+              # /etc/netdata/netdata.conf and silently dropped arcstats,
+              # diskspace, meminfo and disk I/O, and it went unnoticed until an
+              # unrelated audit.
+              #
+              # One rule per family rather than an `or` chain. absent() returns a
+              # series carrying the matcher's labels, so every branch of a chain
+              # produces an identical {job="truenas"} label set -- it fires
+              # without naming what went missing, which is the only useful thing
+              # it could say. The repetition below is the price of the alert
+              # telling you what broke.
+              #
+              # `for: 10m` rides out a Prometheus restart or a rolling deploy of
+              # the exporter. Note the graphite-sourced families inherit a slower
+              # floor: graphite_exporter holds samples for 15m (see
+              # graphite-exporter.yaml), so worst-case detection there is nearer
+              # 25 minutes than 10.
+              - alert: TrueNASMetricSeriesMissing
+                expr: absent(cpu_total{job="truenas"})
+                for: 10m
+                labels:
+                  severity: warning
+                  series: cpu_total
+                annotations:
+                  summary: "TrueNAS has stopped reporting cpu_total"
+                  description: >-
+                    Source: netdata /proc/stat, via graphite. CPU usage alerting goes blind.
+                    The scrape target is likely still up -- this alert exists because a
+                    metric family that simply stops arriving is invisible, and an alert
+                    built on it reads as permanently healthy rather than broken.
+              - alert: TrueNASMetricSeriesMissing
+                expr: absent(physical_memory{job="truenas"})
+                for: 10m
+                labels:
+                  severity: warning
+                  series: physical_memory
+                annotations:
+                  summary: "TrueNAS has stopped reporting physical_memory"
+                  description: >-
+                    Source: netdata /proc/meminfo, via graphite. Memory pressure alerting goes blind. Dropped by a TrueNAS update resetting netdata.conf.
+                    The scrape target is likely still up -- this alert exists because a
+                    metric family that simply stops arriving is invisible, and an alert
+                    built on it reads as permanently healthy rather than broken.
+              - alert: TrueNASMetricSeriesMissing
+                expr: absent(truenas_arcstats{job="truenas"})
+                for: 10m
+                labels:
+                  severity: warning
+                  series: truenas_arcstats
+                annotations:
+                  summary: "TrueNAS has stopped reporting truenas_arcstats"
+                  description: >-
+                    Source: netdata /proc/spl/kstat/zfs/arcstats, via graphite. ARC hit ratio alerting goes blind. Dropped by a TrueNAS update resetting netdata.conf.
+                    The scrape target is likely still up -- this alert exists because a
+                    metric family that simply stops arriving is invisible, and an alert
+                    built on it reads as permanently healthy rather than broken.
+              - alert: TrueNASMetricSeriesMissing
+                expr: absent(disk_bytes_used{job="truenas"})
+                for: 10m
+                labels:
+                  severity: warning
+                  series: disk_bytes_used
+                annotations:
+                  summary: "TrueNAS has stopped reporting disk_bytes_used"
+                  description: >-
+                    Source: netdata diskspace, via graphite. Pool capacity alerting goes blind. Dropped by a TrueNAS update resetting netdata.conf.
+                    The scrape target is likely still up -- this alert exists because a
+                    metric family that simply stops arriving is invisible, and an alert
+                    built on it reads as permanently healthy rather than broken.
+              - alert: TrueNASMetricSeriesMissing
+                expr: absent(disk_temperature{job="truenas"})
+                for: 10m
+                labels:
+                  severity: warning
+                  series: disk_temperature
+                annotations:
+                  summary: "TrueNAS has stopped reporting disk_temperature"
+                  description: >-
+                    Source: truenas-disk-temp-exporter, read from the API. Thermal alerting on six NVMe drives goes blind. This is the one that was already broken for a day without anyone noticing.
+                    The scrape target is likely still up -- this alert exists because a
+                    metric family that simply stops arriving is invisible, and an alert
+                    built on it reads as permanently healthy rather than broken.
+              # absent() cannot see this one.
+              #
+              # truenas-disk-temp-exporter deliberately keeps its last readings
+              # when a poll fails, because a failed scrape is not a cold drive.
+              # That means disk_temperature stays present but stale, and the
+              # guard above never fires. This is the metric that says the
+              # readings are old. Same shape as EolCatalogMissing.
+              #
+              # If the pod dies outright, this series disappears too and the
+              # absent() guard on disk_temperature is what catches it. The two
+              # together cover both failures; neither covers both alone.
+              - alert: TrueNASDiskTempExporterFailing
+                expr: truenas_disk_temp_scrape_success == 0
+                for: 10m
+                labels:
+                  severity: warning
+                annotations:
+                  summary: "TrueNAS disk temperature exporter cannot reach the API"
+                  description: >-
+                    The exporter is running and serving its last known readings, so
+                    disk_temperature still resolves and looks healthy -- but the values
+                    are frozen at whatever they were when polling last worked. Check the
+                    pod log; the likely causes are the API key being revoked, its account
+                    losing the REPORTING_READ role, or the gateway route being down.
       proxmox-health:
         groups:
           - name: proxmox-health
