@@ -108,13 +108,13 @@ spec:
     substituteFrom:
       - kind: Secret
         name: cluster-vars
-  # truenas-nfs provides the StorageClass the TSDB, Grafana and Alertmanager
+  # csi-driver-nfs provides the StorageClass the TSDB, Grafana and Alertmanager
   # volumes are claimed from. Without this they sit in the same dependency tier,
   # and a cold bootstrap can reach wait: true with no provisioner yet and fail
   # on the 5m timeout.
   dependsOn:
     - name: cluster-vars
-    - name: truenas-nfs
+    - name: csi-driver-nfs
   wait: true
 ---
 apiVersion: kustomize.toolkit.fluxcd.io/v1
@@ -182,32 +182,6 @@ spec:
   dependsOn:
     - name: cluster-vars
     - name: tailscale-operator
-  wait: true
----
-apiVersion: kustomize.toolkit.fluxcd.io/v1
-kind: Kustomization
-metadata:
-  name: truenas-nfs
-  namespace: flux-system
-spec:
-  interval: 10m
-  retryInterval: 1m
-  timeout: 5m
-  path: ./infrastructure/truenas-nfs
-  prune: true
-  sourceRef:
-    kind: GitRepository
-    name: flux-system
-  decryption:
-    provider: sops
-    secretRef:
-      name: sops-age
-  postBuild:
-    substituteFrom:
-      - kind: Secret
-        name: cluster-vars
-  dependsOn:
-    - name: cluster-vars
   wait: true
 ---
 apiVersion: kustomize.toolkit.fluxcd.io/v1

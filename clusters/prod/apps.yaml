@@ -30,7 +30,7 @@ spec:
     # on the Connector meant an unhealthy exit node blocked Flux from redeploying the
     # apps -- including AdGuard, which is what you would need to fix it.
     - name: tailscale-operator
-    - name: truenas-nfs
+    - name: csi-driver-nfs
     - name: cloudnative-pg
     - name: llama-cpp
   wait: true
