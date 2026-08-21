@@ -5,7 +5,18 @@ metadata:
   namespace: flux-system
 spec:
   distribution:
-    version: "2.7.5"
+    # Pinned exactly, not a range. Flux minor versions cannot be skipped --
+    # each removes the APIs the previous one deprecated -- so moving this is a
+    # decision, not a bump. The constraint is about *stored objects* rather than
+    # the version number, so check before assuming it bites: compare every Flux
+    # CRD's .status.storedVersions against the versions the target's
+    # manifests.tar.gz actually serves. For 2.7.5 -> 2.9.4 they already matched
+    # everywhere, so `flux migrate` had nothing to do and this went in one step.
+    # The commands are in docs/plans/k3s-eol-upgrade/progress.md.
+    #
+    # 2.9 requires Kubernetes >= 1.34. Read that from the per-release notes --
+    # the installation page's table lags a release behind and says 1.33.
+    version: "2.9.4"
     registry: "ghcr.io/fluxcd"
   components:
     - source-controller
