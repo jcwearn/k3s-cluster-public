@@ -39,21 +39,55 @@ All cluster-side resources live in `infrastructure/prometheus/`:
     - **Update Every**: `15` (seconds)
     - **Send Names Instead Of Ids**: enabled
 
-### Step 2: Restore Netdata Collectors (TrueNAS 25.04)
+### Step 2: Restore Netdata Collectors
 
-TrueNAS 25.04 disabled many Netdata collectors for security hardening. To restore full metrics (disk SMART temps, ZFS ARC stats, etc.), deploy a custom Netdata config.
+TrueNAS ships with many Netdata collectors disabled for security hardening, and **every update resets
+`/etc/netdata/netdata.conf` back to that state.** Restoring them is a manual step after each upgrade
+— see [Upgrading TrueNAS](../misc/truenas-upgrade.md), where it is the step most likely to be
+skipped, because nothing fails loudly. The dashboard just goes flat.
 
-Download the configuration from the Supporterino project and apply it:
+It is not only the dashboard. The collectors this restores are what four of the `truenas-health`
+alert rules are built on:
+
+| Collector | What stops working without it |
+|---|---|
+| `/proc/spl/kstat/zfs/arcstats` | `truenas_arcstats` — the ARC hit rate alert |
+| `diskspace` | `disk_bytes_used` — the pool capacity alert |
+| `/proc/meminfo` | `physical_memory` — the memory pressure alert |
+| `/proc/diskstats`, physical disk metrics | disk I/O charts, and `disk_temperature` coverage |
+
+Apply the config from the Supporterino project, **pinned to a commit**:
 
 ```bash
-# SSH into TrueNAS
-sudo cp /etc/netdata/netdata.conf /etc/netdata/netdata.conf.bak
-sudo curl -o /etc/netdata/netdata.conf \
-  https://raw.githubusercontent.com/Supporterino/truenas-graphite-to-prometheus/main/netdata.conf
+# On TrueNAS
+SHA=b092856a7fb21196629b3c3cd2e57cbcad736e78
+SUM=37df02c6cdd8f0f8cf1548941889fc6760557842a63e0c357a518d112d1fb134
+
+# Keep the file the update installed, named for the release that installed it
+sudo cp -a /etc/netdata/netdata.conf "/etc/netdata/netdata.conf.$(cat /etc/version).stock"
+
+# Fetch to a temp path and verify BEFORE anything is written to /etc
+curl -fsSL -o /tmp/netdata.conf \
+  "https://raw.githubusercontent.com/Supporterino/truenas-graphite-to-prometheus/$SHA/netdata.conf"
+echo "$SUM  /tmp/netdata.conf" | sha256sum -c -
+
+sudo install -o root -g root -m 644 /tmp/netdata.conf /etc/netdata/netdata.conf
 sudo systemctl restart netdata
 ```
 
-**Important**: This file must be reapplied after each TrueNAS update, as updates reset `/etc/netdata/netdata.conf`.
+Confirm it took — the count is the quickest signal, since the stock file enables 8 and this one 20:
+
+```bash
+grep -c "= yes" /etc/netdata/netdata.conf   # expect 20
+systemctl is-active netdata                 # expect: active
+```
+
+> **Note**
+> **Pin the SHA; do not fetch `main`.** This procedure writes a third-party file into `/etc` on the
+> storage box. Tracking a branch means the content is whatever upstream happened to push that day,
+> and the machine that runs this is the one holding every backup in the house. The pin above and
+> `main` were byte-identical when this was written — pinning costs nothing today and is the whole
+> protection later. When bumping the pin, re-read the diff and update `SUM` in the same commit.
 
 ### Step 3: Configure Email Alerts (Optional)
 
