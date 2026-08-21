@@ -116,45 +116,82 @@ you cannot tell afterwards which one the upgrade caused.
 
 ### 4. Quiesce the cluster
 
-Write down what you are stopping and the exact commands to start it again **before** you stop
-anything — the NFS outage is also an outage of anything whose only copy lives on an NFS-backed
-volume.
+Everything with a PVC on one of the three TrueNAS StorageClasses gets stopped, because an NFS stall
+does not fail a pod — it hangs it, and some stay hung after the server returns. Stopping them is
+cheaper than diagnosing them.
 
-The CloudNativePG clusters are what matter. Each is single-instance on an NFS-backed PVC with no
-replica to fail over to, so an unclean stall is the realistic way to lose one:
+**Suspend Flux first.** Kustomizations reconcile every ten minutes, so anything scaled to zero
+without this comes straight back up in the middle of the window. This is also what makes the restore
+trivial: every workload is `replicas: 1` in git, so resuming Flux is what puts them back — there is
+no list of replica counts to keep.
 
 ```bash
-for ns in immich n8n paperless-ngx; do
-  kubectl -n $ns get cluster
-done
-
-# Hibernate each cluster -- a clean shutdown, not a drain
-for ns in immich n8n paperless-ngx; do
-  kubectl cnpg hibernate on -n $ns "$(kubectl -n $ns get cluster -o name | cut -d/ -f2)"
-done
+flux suspend kustomization apps prometheus llama-cpp
+flux get kustomizations | grep -E 'apps|prometheus|llama-cpp'   # SUSPENDED must be True
 ```
 
-Scale down the apps in front of them first so they are not writing into a database that is going
-away. Prometheus can be left running — a gap in the TSDB is not a corruption — but expect its pod to
-be unhappy for a few minutes after the NAS returns.
+Leave `cloudnative-pg` running. The operator has to be up to act on the hibernation below.
 
-Then suspend Renovate. It runs every 30 minutes against an NFS-backed cache on the box you are
-about to reboot, and `concurrencyPolicy: Forbid` means a job that hangs on `/cache` blocks every
-subsequent tick until its deadline expires — so a single run caught by the outage costs the next
-tick too. A pod waiting on a PVC that cannot bind sits in `Pending`, which
-`KubernetesPodNotHealthy` does now alert on after 10 minutes; suspending is how you avoid spending
-the outage acknowledging an alert you already knew about.
+**Then stop the workloads.** Operator-managed resources are patched at the custom resource, not the
+StatefulSet — the operator reverts a scaled StatefulSet the same way Flux reverts a scaled
+Deployment.
 
 ```bash
+# CronJob
 kubectl -n renovate patch cronjob renovate-bot -p '{"spec":{"suspend":true}}'
 
-# Drop anything already mid-flight
-kubectl -n renovate delete job -l batch.kubernetes.io/job-name --field-selector status.successful!=1
+# Plain Deployments and StatefulSets
+kubectl -n ebooks scale deploy/calibre-web deploy/shelfmark --replicas=0
+kubectl -n immich scale deploy/immich-server deploy/immich-machine-learning deploy/immich-valkey --replicas=0
+kubectl -n jellyfin scale deploy/jellyfin --replicas=0
+kubectl -n llama-cpp scale deploy/llama-cpp-1-7b deploy/llama-cpp-4b deploy/llama-cpp-8b --replicas=0
+kubectl -n n8n scale deploy/n8n --replicas=0
+kubectl -n ntfy scale deploy/ntfy-deployment deploy/alertmanager-ntfy-deployment --replicas=0
+kubectl -n open-webui scale deploy/open-webui-redis sts/open-webui --replicas=0
+kubectl -n paperless-ngx scale deploy/paperless-ngx --replicas=0
+kubectl -n prometheus scale deploy/kube-prometheus-stack-grafana --replicas=0
+kubectl -n uptime-kuma scale sts/uptime-kuma --replicas=0
+kubectl -n zeroclaw scale deploy/zeroclaw --replicas=0
+
+# Prometheus and Alertmanager are operator-managed -- patch the CR
+kubectl -n prometheus patch prometheus kube-prometheus-stack-prometheus --type=merge -p '{"spec":{"replicas":0}}'
+kubectl -n prometheus patch alertmanager kube-prometheus-stack-alertmanager --type=merge -p '{"spec":{"replicas":0}}'
+
+# CloudNativePG clusters cannot be scaled -- `instances` has a floor of 1.
+# Declarative hibernation is the supported stop, and does not need the kubectl plugin
+for ns in immich n8n paperless-ngx; do
+  kubectl -n $ns annotate cluster --all cnpg.io/hibernation=on --overwrite
+done
 ```
 
-`suspend` is not declared in `apps/renovate/cronjob.yaml`, so `kustomize-controller` does not own
-the field and will not reconcile it back — the patch holds until you undo it in step 6. That also
-means nothing will undo it *for* you if you forget, which is what `RenovateStale` is for.
+Confirm nothing is left holding a mount before you reboot the NAS:
+
+```bash
+kubectl get pods -A -o wide | grep -vE 'Running|Completed' ; echo '--- still up on NFS namespaces ---'
+for ns in ebooks immich jellyfin llama-cpp n8n ntfy open-webui paperless-ngx prometheus uptime-kuma zeroclaw; do
+  kubectl -n $ns get pods --no-headers 2>/dev/null | grep -v Completed
+done
+```
+
+> **Note**
+> **AdGuard stays running.** Its three StatefulSets have NFS volumes, but only `/opt/adguardhome/work`
+> — the query log and stats — is on the NAS. The config is not, so DNS resolution does not depend on
+> the NAS being up, and taking DNS away from the whole house for the window costs more than the
+> exposure is worth. Worst case a pod wedges on a blocked query-log write and needs restarting in
+> step 6. Set a fallback resolver on your workstation anyway.
+
+Nothing else here needs DNS: `kubectl` reaches the API server through the kube-vip VIP by address,
+and the NAS is reached at `${LAN_PREFIX}.200` directly.
+
+**Record what is already firing before you stop anything.** Otherwise every alert waiting for you
+afterwards looks like upgrade fallout:
+
+```bash
+kubectl -n prometheus exec sts/alertmanager-kube-prometheus-stack-alertmanager -c alertmanager -- \
+  wget -qO- http://localhost:9093/api/v2/alerts
+```
+
+Do this before scaling Alertmanager to zero, for obvious reasons.
 
 ### 5. Upgrade
 
@@ -206,8 +243,26 @@ Then, in the UI and the cluster:
   skipped**, because nothing fails loudly — the Grafana dashboard just goes flat.
 - **The healthchecks.io cron task still exists** under Data Protection. It is not managed by
   `truenas-infra`, so nothing would restore it.
-- **NFS and SMB are serving.** Un-hibernate the databases, confirm PVCs are `Bound` and pods are
-  `Running`, and let a Time Machine backup complete.
+- **NFS and SMB are serving.** Bring the cluster back — the reverse of step 4, databases first so
+  nothing starts against a database that is not there yet:
+
+  ```bash
+  # Databases out of hibernation first
+  for ns in immich n8n paperless-ngx; do
+    kubectl -n $ns annotate cluster --all cnpg.io/hibernation=off --overwrite
+  done
+  kubectl get cluster -A          # wait for "Cluster in healthy state"
+
+  # Then let Flux put everything else back. Every workload is replicas: 1 in git,
+  # so this restores the replica counts and un-suspends the CronJob on its own --
+  # there is no list to remember, which is the point of suspending rather than editing
+  flux resume kustomization apps prometheus llama-cpp
+  flux reconcile kustomization apps --with-source
+  ```
+
+  Then confirm PVCs are `Bound`, pods are `Running`, and let a Time Machine backup complete. If an
+  AdGuard pod wedged on a blocked query-log write, `kubectl -n adguardhome rollout restart sts`
+  clears it.
 - **Renovate is un-suspended and its next run completes.** This is the symmetric half of the step 4
   suspend, and the check that proves the export came back usable for a client that mounts it fresh
   on every run rather than holding a mount across the reboot:
@@ -222,6 +277,13 @@ Then, in the UI and the cluster:
   "TrueNAS Scale / Overview" dashboard has data again.
 - **Expect a new REST API deprecation alert.** That is `discover.sh` and `check-credentials.sh`
   doing their job on a 25.10 box, not a fault.
+- **Expect cluster alert noise that is not about the upgrade.** `KubeJobFailed` fires on
+  `kube_job_failed > 0` with `for: 15m` and stays latched until the failed Job object is reaped, so a
+  CronJob run that died against the down NAS pages *after* the window looks exactly like a
+  consequence of it. Compare against the list captured in step 4 before chasing anything. The
+  renovate CronJob is the usual source: it runs `*/30` in UTC — which is the Kubernetes schedule,
+  not the `schedule` in `renovate.json`, which is Renovate's own gate on when it opens pull requests
+  and says nothing about when the pod runs.
 
 Finally, re-run `discover.sh` and commit the refreshed `imports/*.json` as the after-picture.
 
@@ -240,6 +302,13 @@ rewrite, for one. Re-run `tf.sh plan` after rolling back too.
 
 ## History
 
+- **2026-08-21** — rewrote step 4 after walking it. The original said to hibernate the databases and
+  leave everything else alone, which was wrong three ways: Flux reconciles every ten minutes and
+  would have undone any scale-down mid-window, the `cnpg` kubectl plugin it assumed is not installed
+  anywhere here, and it named three databases when thirteen namespaces hold PVCs on the NAS. Step 4
+  now suspends Flux first, patches operator-managed resources at the custom resource rather than the
+  StatefulSet, and uses declarative hibernation annotations instead of the plugin. Step 6 gained the
+  matching restore, which is mostly just resuming Flux.
 - **2026-08-21** — walked steps 1 to 3 for real. Added the `Keep` flag to step 3: every boot
   environment on the box had `Keep: No`, so the rollback target was unprotected, which the page did
   not previously say to check. Also corrected the API note — `/boot/environment` and
