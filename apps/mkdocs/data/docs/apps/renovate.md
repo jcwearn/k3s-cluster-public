@@ -95,7 +95,7 @@ across 17 repos instead of cold-starting every datasource lookup.
 !!! warning "Do not add a `chown` init container to guard it"
     One existed from April to August 2026 and ran `chown -R 1000:1000 /cache` on every tick. It
     reached **34 minutes** against three minutes of actual work — one serial NFS `SETATTR`
-    round-trip per file, over a cache that grows without bound. Runs outlasted the 30-minute
+    round-trip per file, over a cache that was growing without bound at the time. Runs outlasted the 30-minute
     schedule, so `concurrencyPolicy: Forbid` chained them back-to-back and a Renovate pod was
     running against the NAS permanently.
 
@@ -110,6 +110,61 @@ across 17 repos instead of cold-starting every datasource lookup.
 
     The deadline was raised twice (1500 → 2400 → 2700) chasing the growth before the cause was
     found. Treat a rising `activeDeadlineSeconds` as a symptom to investigate, not a dial.
+
+### What is in `/cache`, and what sweeps it
+
+Two different things used to live under `RENOVATE_CACHE_DIR`, with two different lifecycles, and
+only one of them was ever cleaned up.
+
+| Path | Written by | Swept by |
+|---|---|---|
+| `renovate/renovate-cache-v1/` | Renovate's own datasource cache (cacache) | Renovate, **every run**. `FileCache.destroy()` streams every entry at shutdown and removes anything without a future expiry. |
+| `others/npm`, `others/yarn`, `others/berry`, `others/pnpm`, `others/go`, … | the package managers, via `ensureCacheDir(name)` | **nothing** |
+
+`others/` was the growth. Renovate hands each package manager a cache directory under
+`others/` — `GOPATH` from the gomod manager, `NPM_CONFIG_CACHE`, `YARN_CACHE_FOLDER`,
+`YARN_GLOBAL_FOLDER`, pnpm's store and cache dirs — and never expires any of it. npm's
+`_cacache` of tarballs and its `_logs` accumulate for the life of the volume.
+
+Those are all passed as `extraEnv`, and `getChildEnv()` merges
+`{...extraEnv, ...parentEnv, ...globalConfigEnv, ...userConfiguredEnv, ...forcedEnv}` — so
+`customEnvVariables` (which is `globalConfigEnv`) **wins over** the directory the manager
+computed. Every one of them is now redirected to `/tmp/renovate/`, the pod's `work-volume`
+`emptyDir`, extending what `GOCACHE`/`GOMODCACHE`/`GOBIN` already did. The only thing left on
+the PVC that grows is the cacache tree, which Renovate expires by TTL on its own.
+
+`ensureCacheDir()` calls `ensureDir` before it returns the path, and the managers call it whether
+or not the value is then overridden — so empty `others/npm`, `others/yarn` and friends still
+appear on the share. Empty skeleton directories reappearing is the expected result; files inside
+them are not.
+
+The one exception is `others/terraform`. Its path is used directly in JavaScript rather than
+passed as an environment variable, so no config can move it — but it does not need moving:
+provider archives are downloaded under a random name and removed in a `finally`. Any
+`others/terraform/extract` left on the share is residue from an older Renovate.
+
+!!! note "The `emptyDir` now has a `sizeLimit`"
+    Moving those caches to node-local scratch means they are bounded by the node's disk unless
+    something says otherwise, so `work-volume` carries `sizeLimit: 4Gi`. Exceeding it evicts the
+    pod, which surfaces as a failed run rather than as a node under disk pressure.
+
+### The 5Gi request enforces nothing
+
+It never has, and not because of a provisioner choice. `nfs-subdir-external-provisioner` and
+`nfs.csi.k8s.io` both create a *subdirectory* on a dataset shared with every other `rwx` volume;
+neither has any way to hold one directory to a size. The request is documentation.
+
+Nor is the volume observable. `kubelet_volume_stats_used_bytes` reports `statfs` of the NFS
+mount, which is the whole dataset — every NFS PVC in this cluster reports the identical number —
+and for this PVC there is no series at all, since it is mounted about three minutes in every
+thirty and its PV is an in-tree `spec.nfs` volume, which emits no volume stats. The chart's
+`KubePersistentVolumeFillingUp` is therefore green for these volumes by construction.
+
+The only real ceiling is the `refquota` on the `k8s-nfs` dataset, shared with everything else on
+`truenas-nfs-rwx`, and it is managed in
+[`jcwearn/truenas-infra`](https://github.com/jcwearn/truenas-infra).
+
+### Job settings
 
 | Setting | Value | Why |
 |---|---|---|

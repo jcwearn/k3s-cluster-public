@@ -81,7 +81,14 @@ spec:
           restartPolicy: Never
           volumes:
             - name: work-volume
-              emptyDir: {}
+              # Renovate's own cache lives on the PVC; every package manager's
+              # cache is pointed here by customEnvVariables, so this is now
+              # node-local scratch that grows during a run and dies with the
+              # pod. sizeLimit is what keeps that from being the node's
+              # problem -- without it an emptyDir is bounded only by the
+              # node's disk.
+              emptyDir:
+                sizeLimit: 4Gi
             - name: shared-volume
               emptyDir: {}
             - name: private-key-volume

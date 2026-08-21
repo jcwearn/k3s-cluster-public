@@ -82,7 +82,16 @@
     "customEnvVariables": {
         "GOCACHE": "/tmp/renovate/go-build",
         "GOMODCACHE": "/tmp/renovate/go-mod",
-        "GOBIN": "/tmp/renovate/go-bin"
+        "GOBIN": "/tmp/renovate/go-bin",
+        "GOPATH": "/tmp/renovate/go",
+        "NPM_CONFIG_CACHE": "/tmp/renovate/npm",
+        "YARN_CACHE_FOLDER": "/tmp/renovate/yarn",
+        "YARN_GLOBAL_FOLDER": "/tmp/renovate/berry",
+        "npm_config_store": "/tmp/renovate/pnpm",
+        "npm_config_cache_dir": "/tmp/renovate/pnpm/cache",
+        "npm_config_store_dir": "/tmp/renovate/pnpm/store",
+        "pnpm_config_cache_dir": "/tmp/renovate/pnpm/cache",
+        "pnpm_config_store_dir": "/tmp/renovate/pnpm/store"
     },
     "binarySource": "global",
     "timezone": "America/New_York",
