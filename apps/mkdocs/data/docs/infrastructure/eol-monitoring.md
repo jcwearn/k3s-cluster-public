@@ -78,6 +78,12 @@ maintained -- but **when 26.0 ships, 25.04 leaves the window** and becomes unmai
 That is a release event, not a date, so nothing in this component can watch for it. Check it when a
 TrueNAS upgrade is next considered.
 
+**Checked 2026-08-21.** 25.04.2.6 is the final Fangtooth release (2025-10-30) and the train is in
+Maintenance; 25.10.6 is what iX now recommends for Community Edition. The upgrade was evaluated and
+planned -- see [Upgrading TrueNAS](../misc/truenas-upgrade.md). That is the manual check this
+section says has to stand in for an alert, and it only happened because somebody thought to run it.
+Re-check on the same terms when 26.0 ships.
+
 The general shape of the missing check is "the running cycle is not among the N newest", which is
 expressible from `eol_cycle_info` -- the exporter already publishes an entry for *every* cycle,
 including ones newer than what is installed. It would work today for Proxmox VE, Debian and Ubuntu.

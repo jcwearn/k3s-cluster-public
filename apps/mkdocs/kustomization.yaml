@@ -72,4 +72,5 @@ configMapGenerator:
       - data/docs/misc/rotating-flux-github-pat.md
       - data/docs/misc/security-hardening.md
       - data/docs/misc/truenas-docker-default-interface.md
+      - data/docs/misc/truenas-upgrade.md
       - data/docs/misc/updating-flux.md

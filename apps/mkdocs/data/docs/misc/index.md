@@ -15,6 +15,7 @@ on the homelab.
 | **Proxmox Kernel Maintenance** | Why `autoremove` never prunes kernels on the hypervisors, and how to do it safely by hand. | [Read more](proxmox-kernel-maintenance.md) |
 | **Security Hardening** | Security Hardening Guide and Checklist | [Read more](security-hardening.md) |
 | **TrueNAS Docker Default Interface Fix** | Troubleshooting "Unable to determine default interface" Docker/Apps failure on TrueNAS | [Read more](truenas-docker-default-interface.md) |
+| **Upgrading TrueNAS** | Moving the NAS between major TrueNAS releases: why it is manual, the two ways it can lock you out, and the verify-and-rollback procedure. | [Read more](truenas-upgrade.md) |
 | **Updating flux** | Quick guide for updating to the latest version of flux | [Read more](updating-flux.md) |
 | **kubectl Cheat Sheet** | *Coming soon* — common commands, JSONPath tricks, log tailing, and context juggling. | |
 | **Flux Cheat Sheet** | *Coming soon* — reconciling Kustomizations, suspending HelmReleases, and debugging drift. | |

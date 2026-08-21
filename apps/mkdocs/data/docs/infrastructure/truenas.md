@@ -80,6 +80,12 @@ described in [TrueNAS Monitoring](truenas-monitoring.md) are not yet in
 OpenTofu cannot destroy what it does not know about. Adopting them is Phase 4
 of that repository's plan.
 
+## Maintenance
+
+- [Upgrading TrueNAS](../misc/truenas-upgrade.md) -- Moving between major releases. Done by hand and
+  on the LAN, because the tailscale app that serves `truenas.${DOMAIN}` runs on the box being
+  upgraded, and because every NFS StorageClass above is an export on it.
+
 ## Troubleshooting
 
 - [TrueNAS Docker Default Interface Fix](../misc/truenas-docker-default-interface.md) -- Resolving "Unable to determine default interface" when Docker/Apps fail to start.
