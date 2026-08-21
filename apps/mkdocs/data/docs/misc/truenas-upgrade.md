@@ -96,12 +96,20 @@ the credential redaction.
 
 ### 3. Record the rollback target
 
-**System → Boot.** Write down the name of the **active boot environment**, verbatim.
+**System → Boot.** Two things here, and the second is easy to miss.
 
-This is the entire rollback plan, and it is one line. Rollback is one reboot if you have the name and
-a scavenger hunt if you do not — and the API does not help: `/bootenv` 404s on 25.04's REST API, so
-the UI is the only source. Also confirm here that the boot pool has room; anything above a few GB
-free is plenty for another boot environment.
+1. **Write down the name of the active boot environment**, verbatim. This is the entire rollback
+   plan, and it is one line. Rollback is one reboot if you have the name and a scavenger hunt if you
+   do not — and the API does not help: `/bootenv`, `/boot/environment` and `/system/boot_id` all 404
+   on 25.04's REST API, so the UI is the only source.
+2. **Set `Keep` to `Yes` on that environment** — the bookmark icon on its row. Boot environments are
+   created with `Keep: No`, which means nothing stops the system pruning your rollback target when
+   the boot pool needs room. Free space usually makes that unlikely, but *unlikely* is a worse
+   guarantee than a flag that costs one click. Leave it set until the new release has soaked, then
+   clear it so the environment can age out normally.
+
+Also confirm here that the boot pool has room; anything above a few GB free is plenty for another
+boot environment.
 
 Finally, check **System → Alerts** is empty. Starting an upgrade on top of an existing fault means
 you cannot tell afterwards which one the upgrade caused.
@@ -224,13 +232,18 @@ Finally, re-run `discover.sh` and commit the refreshed `imports/*.json` as the a
 3. Reboot.
 
 One reboot, and the old release is back with its configuration intact. This is why step 3 is not
-optional.
+optional — both halves of it. The name is what makes the environment findable; `Keep` is what makes
+it still be there.
 
 Rollback does **not** undo anything the 25.10 middleware migrated on first boot — the SMB preset
 rewrite, for one. Re-run `tf.sh plan` after rolling back too.
 
 ## History
 
+- **2026-08-21** — walked steps 1 to 3 for real. Added the `Keep` flag to step 3: every boot
+  environment on the box had `Keep: No`, so the rollback target was unprotected, which the page did
+  not previously say to check. Also corrected the API note — `/boot/environment` and
+  `/system/boot_id` 404 alongside `/bootenv`, so there is no read-only route to the name at all.
 - **2026-08-21** — evaluated 25.04.2.6 → 25.10.6 and wrote this page. Read-only recon found no VMs,
   no Incus instances, no scheduled SMART tests, no certificate authorities, no directory services and
   no replication tasks, so almost every 25.10 breaking change is inapplicable here. The plan and its
