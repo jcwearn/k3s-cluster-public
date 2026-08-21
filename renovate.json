@@ -71,6 +71,66 @@
         "ghcr.io/immich-app/immich-server"
       ],
       "pinDigests": false
+    },
+    {
+      "description": "Merging a k3s bump rolls all three control-plane nodes unattended. The bot's global config automerges every non-major update for '*', so this must opt out explicitly or a patch release would restart the control plane with nobody watching.",
+      "matchPackageNames": [
+        "k3s-io/k3s"
+      ],
+      "groupName": "k3s",
+      "groupSlug": "k3s",
+      "automerge": false,
+      "autoApprove": false
+    },
+    {
+      "description": "Same for Flux: merging it rolls the controllers that do the deploying.",
+      "matchPackageNames": [
+        "fluxcd/flux2"
+      ],
+      "groupName": "flux",
+      "groupSlug": "flux",
+      "automerge": false,
+      "autoApprove": false
+    },
+    {
+      "description": "Minor upgrades of either are deliberate, one at a time, and gated on a runbook -- k3s because upstream permits no minor skipping and each minor has its own removals, Flux because each minor drops the APIs the last deprecated and carries its own Kubernetes floor. The EOL alerting is what should prompt them, not a PR. Patch updates stay in scope.",
+      "matchPackageNames": [
+        "k3s-io/k3s",
+        "fluxcd/flux2"
+      ],
+      "matchUpdateTypes": [
+        "minor",
+        "major"
+      ],
+      "enabled": false
+    }
+  ],
+  "customManagers": [
+    {
+      "customType": "regex",
+      "description": "The k3s version the system-upgrade-controller Plan rolls the nodes to. Nothing else tracks it: k3s is installed on the hosts by a shell script, so it is neither an image nor an apt package, and it drifted six months past EOL unnoticed before this existed.",
+      "managerFilePatterns": [
+        "/^infrastructure/system-upgrade-controller/plan-k3s\\.yaml$/"
+      ],
+      "matchStrings": [
+        "\\n  version: (?<currentValue>v\\d+\\.\\d+\\.\\d+\\+k3s\\d+)\\n"
+      ],
+      "datasourceTemplate": "github-releases",
+      "depNameTemplate": "k3s-io/k3s",
+      "versioningTemplate": "regex:^v(?<major>\\d+)\\.(?<minor>\\d+)\\.(?<patch>\\d+)\\+k3s(?<build>\\d+)$"
+    },
+    {
+      "customType": "regex",
+      "description": "The Flux version the operator distributes. Renovate has no manager for the fluxcd.controlplane.io FluxInstance CRD, and neither the flux nor kubernetes managerFilePatterns match a filename without 'helm' in it, so this was invisible too.",
+      "managerFilePatterns": [
+        "/^infrastructure/flux-operator/fluxinstance\\.yaml$/"
+      ],
+      "matchStrings": [
+        "\\n    version: \"(?<currentValue>\\d+\\.\\d+\\.\\d+)\"\\n"
+      ],
+      "datasourceTemplate": "github-releases",
+      "depNameTemplate": "fluxcd/flux2",
+      "extractVersionTemplate": "^v(?<version>.+)$"
     }
   ]
 }
