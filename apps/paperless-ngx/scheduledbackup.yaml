@@ -2,7 +2,7 @@
 # these, which is what makes point-in-time recovery possible rather than only
 # restore-to-last-night.
 #
-# Staggered fifteen minutes apart from the other clusters. All four read from the
+# Staggered fifteen minutes apart from the other clusters. All three read from the
 # same NFS server and push over the same uplink, so running them together would
 # have them contend for both at once for no benefit.
 apiVersion: postgresql.cnpg.io/v1

@@ -28,15 +28,6 @@
 # its own source defeats itself. The script works without this file.
 .publicgate-extra
 
-# Local Coder CLI state. .coder/pprof is a unix socket, which rsync cannot copy and warns
-# about noisily.
-.coder/
-
-# Local Terraform provider and module cache under the Coder templates. Not present in CI,
-# where checkout only materializes tracked files, but a local dry run copies a few hundred
-# MB of provider binaries without this and tells you nothing useful.
-.terraform/
-
 # Internal planning notes. These discuss the cluster's real addresses, the hostname inventory
 # and this publishing effort itself. They are working documents, not portfolio material.
 docs/plans/

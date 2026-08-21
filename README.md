@@ -20,7 +20,7 @@ everything the cluster runs is here; what has been removed is addresses, not arc
 | **Automation** | Renovate for dependency PRs, Ansible Runner CronJobs for host-level tasks |
 
 Roughly twenty applications run on top of it — media, documents, photos, notes, dashboards,
-a Coder instance for cloud development environments, and a few self-hosted tools.
+and a few self-hosted tools.
 
 ## How the filtering works
 

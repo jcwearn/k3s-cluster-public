@@ -1,6 +1,6 @@
 # Postgres Backups
 
-Nightly base backups and continuous WAL archiving for all four CloudNativePG clusters, to
+Nightly base backups and continuous WAL archiving for all three CloudNativePG clusters, to
 Cloudflare R2, via the
 [barman-cloud CNPG-I plugin](https://cloudnative-pg.io/plugin-barman-cloud/docs/intro/).
 
@@ -31,7 +31,7 @@ true` on the Cluster's `plugins:` entry is what points Postgres' `archive_comman
 without that, base backups would exist with no WAL to replay onto them, and recovery would only
 ever reach the last full backup.
 
-Barman names the directory in the bucket after the **source cluster**, so all four share one
+Barman names the directory in the bucket after the **source cluster**, so all three share one
 bucket and one `destinationPath` without colliding.
 
 | Piece | Where it lives |
@@ -76,13 +76,12 @@ like bad credentials. The OpenTofu state backend carries the same workaround as
 
 ## Schedule
 
-Staggered a quarter hour apart. All four read from the same NFS server and push over the same
+Staggered a quarter hour apart. All three read from the same NFS server and push over the same
 uplink, so running them together would only have them contend.
 
 | Cluster | Time | Retention |
 |---|---|---|
 | `n8n-database` | 02:00 | 30d |
-| `coder-database` | 02:15 | 30d |
 | `paperless-ngx-database` | 02:30 | 30d |
 | `immich-database` | 02:45 | 30d |
 

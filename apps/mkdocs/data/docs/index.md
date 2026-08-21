@@ -52,7 +52,6 @@ of the cluster.
 ├── apps/
 │   ├── adguardhome/        # DNS resolver & ad blocker
 │   ├── ansible/            # Ansible Runner CronJobs (infra automation)
-│   ├── coder/              # Cloud development environments
 │   ├── ebooks/             # E-book library (Calibre-Web + Calibre)
 │   ├── headlamp/           # Kubernetes dashboard
 │   ├── hivemind/           # Party game (one snake, everybody steers)
@@ -129,7 +128,6 @@ FluxCD watches `clusters/prod/` and recursively applies everything under `apps/`
 |-----|------|-------|
 | **AdGuard Home** | 3 × StatefulSet + PVC | Local DNS / DoH / DoT resolver (one per node) |
 | **Ansible Runner** | CronJob | Automated infrastructure management |
-| **Coder** | Helm | Cloud development environments |
 | **Ebooks** | Deployment + PVC | Calibre-Web + Calibre e-book library |
 | **Headlamp** | Deployment | Kubernetes dashboard |
 | **hivemind** | Deployment | Party game; single replica, in-memory rooms |

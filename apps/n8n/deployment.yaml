@@ -19,25 +19,6 @@ spec:
         runAsUser: 1000
         runAsGroup: 1000
         fsGroup: 1000
-      initContainers:
-        - name: download-coder-cli
-          image: alpine:3.24@sha256:28bd5fe8b56d1bd048e5babf5b10710ebe0bae67db86916198a6eec434943f8b
-          imagePullPolicy: IfNotPresent
-          command: ["/bin/sh", "-c"]
-          args:
-            - |
-              wget -q -O /coder-bin/coder http://coder.coder.svc.cluster.local/bin/coder-linux-amd64 &&
-              chmod 755 /coder-bin/coder
-          volumeMounts:
-            - name: coder-bin
-              mountPath: /coder-bin
-          resources:
-            requests:
-              cpu: 50m
-              memory: 32Mi
-            limits:
-              cpu: 200m
-              memory: 64Mi
       containers:
         - name: n8n
           image: ghcr.io/n8n-io/n8n:2.35.3@sha256:31375a4f730081a139bba2d379bf2efaa8e662cc9e131d12bb5e15859d4f0282
@@ -82,13 +63,6 @@ spec:
               value: "America/New_York"
             - name: TZ
               value: "America/New_York"
-            - name: CODER_URL
-              value: "http://coder.coder.svc.cluster.local"
-            - name: CODER_SESSION_TOKEN
-              valueFrom:
-                secretKeyRef:
-                  name: coder-session
-                  key: CODER_SESSION_TOKEN
             - name: NODES_EXCLUDE
               value: "[]"
             - name: NODE_FUNCTION_ALLOW_EXTERNAL
@@ -115,13 +89,7 @@ spec:
           volumeMounts:
             - name: data-volume
               mountPath: /home/node/.n8n
-            - name: coder-bin
-              mountPath: /usr/local/bin/coder
-              subPath: coder
-              readOnly: true
       volumes:
         - name: data-volume
           persistentVolumeClaim:
             claimName: n8n-data
-        - name: coder-bin
-          emptyDir: {}

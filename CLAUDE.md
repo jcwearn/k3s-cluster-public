@@ -35,7 +35,6 @@ infrastructure/          # Cluster infrastructure components
 apps/                    # User-facing applications
   ├── adguardhome/       # DNS resolver & ad blocker
   ├── ansible/           # Ansible Runner CronJobs (infra automation)
-  ├── coder/             # Cloud development environments (code.${DOMAIN})
   ├── ebooks/            # E-book library (Calibre-Web + Calibre)
   ├── headlamp/          # Kubernetes dashboard
   ├── hivemind/          # Party game (one snake, everybody steers)
@@ -91,7 +90,7 @@ Apps in `apps/` typically include standard K8s manifests:
 Every container and initContainer in a Deployment/StatefulSet/CronJob **must** include a `resources:` block with both `requests` and `limits`.
 
 ### Applications (Helm-based)
-Some apps (immich, coder, open-webui) use Helm instead of raw manifests. These combine HelmRepository + HelmRelease into a single `helm.yaml` file alongside `namespace.yaml` and `kustomization.yaml`.
+Some apps (immich, open-webui) use Helm instead of raw manifests. These combine HelmRepository + HelmRelease into a single `helm.yaml` file alongside `namespace.yaml` and `kustomization.yaml`.
 
 Every `helm.yaml` HelmRelease **must** include a `resources:` block in its values (same rules as infrastructure above).
 
@@ -208,8 +207,8 @@ Rules when editing:
 - **Never write the domain, a `${LAN_PREFIX}.x` address, the tailnet or the Cloudflare account ID
   literally.** Use the variable. `.github/workflows/validate.yaml` cannot catch a literal — only a human review can.
 - **Substitution only reaches the kustomize build output.** It applies to manifests and to
-  anything pulled in by a `configMapGenerator` — all `apps/*/data/` except `apps/coder/data/`,
-  plus `infrastructure/prometheus/data/`. It does not reach `.github/`, `.claude/`,
+  anything pulled in by a `configMapGenerator` — all `apps/*/data/`, plus
+  `infrastructure/prometheus/data/`. It does not reach `.github/`, `.claude/`,
   `README.md`, `CLAUDE.md` or `docs/`.
 - **A braced `${...}` that is not one of the five above will be replaced with an empty string,
   silently.** If a file needs a literal `${FOO}` — a shell variable in a doc, a regex capture

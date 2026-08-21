@@ -110,10 +110,6 @@ data:
             description: Manual trigger for the WithJoy guest list export to Google Sheets
             icon: sh-google-sheets-light.webp
     - Development & AI:
-        - Coder:
-            href: https://code.${DOMAIN}/
-            description: Coder is a cloud development environment platform that provisions remote development workspaces
-            icon: sh-coder-light.webp
         - Open Web UI:
             href: https://chat.${DOMAIN}/
             description: Open Web UI is a user-friendly web interface for interacting with large language models

@@ -28,36 +28,6 @@
 * **CPU**: 250m (request) to 1 core (limit)
 * **Memory**: 256Mi (request) to 1Gi (limit)
 
-## Coder Integration
-
-n8n includes a built-in [Coder](https://coder.com/) integration that allows workflows to manage and interact with Coder workspaces via SSH.
-
-### How It Works
-
-An **initContainer** (`download-coder-cli`) runs before the n8n container starts:
-
-1. Downloads the Coder CLI binary from the in-cluster Coder server (`coder.coder.svc.cluster.local`)
-2. Mounts it at `/usr/local/bin/coder` in the n8n container (read-only)
-
-Two environment variables configure authentication:
-
-| Variable               | Source                                      |
-|------------------------|---------------------------------------------|
-| `CODER_URL`            | `http://coder.coder.svc.cluster.local`      |
-| `CODER_SESSION_TOKEN`  | SOPS-encrypted secret (`coder-session`)     |
-
-The `NODES_EXCLUDE` variable is set to `"[]"` to enable the **Execute Command** node, which is disabled by default in n8n. This allows workflows to run shell commands, including `coder ssh`.
-
-### Usage
-
-With this integration, n8n workflows can use **Execute Command** nodes to run commands inside Coder workspaces:
-
-```bash
-coder ssh <workspace> -- <command>
-```
-
-This enables automation scenarios such as running scripts, triggering builds, or collecting output from development environments.
-
 ## Notes
 
 * The n8n pod may briefly crash-loop on first deploy while CNPG provisions the database — this self-resolves.
