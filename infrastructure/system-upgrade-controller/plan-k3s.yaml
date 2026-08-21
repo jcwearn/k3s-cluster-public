@@ -11,9 +11,10 @@
 #   v1.32.4  -> v1.32.13 (done)  etcd 3.5.21 -> 3.5.26. Mandatory: there is no
 #                                safe path from etcd 3.5 to 3.6 without it, and
 #                                1.33 already carries 3.6.
-#            -> v1.33.13 (here)   etcd 3.6.14. One-way door -- no downgrade after
+#            -> v1.33.13 (done)   etcd 3.6.14. One-way door -- no downgrade after
 #                                 this, only snapshot restore.
-#            -> v1.34.10          apiserver/etcd metric labels change.
+#            -> v1.34.10 (here)   apiserver/etcd metric labels change. Also the
+#                                 floor for Flux 2.9, which lands next.
 #            -> v1.35.7           cgroup v1 becomes an error.
 #            -> v1.36.3           target, supported to 2027-06-28.
 #
@@ -26,10 +27,10 @@ metadata:
   namespace: system-upgrade
 spec:
   # Pinned, never `channel:`. A channel resolves to the newest k3s release,
-  # which is three minors ahead of this cluster -- and the controller does not
+  # which is two minors ahead of this cluster -- and the controller does not
   # protect against an unsupported version jump, it just applies what it
   # resolves.
-  version: v1.33.13+k3s2
+  version: v1.34.10+k3s1
 
   # All three nodes are control-plane, so this one Plan covers the cluster. The
   # server/agent pair in the upstream documentation exists so workers can wait

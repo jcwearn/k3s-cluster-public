@@ -7,6 +7,12 @@
 # for would be six. It has to move with the Plan version, so treat the two as
 # one edit: whenever plan-k3s.yaml changes, this changes with it.
 #
+# The tag will not always match the k3s version exactly -- rancher/kubectl lags
+# k3s, and there was no v1.34.10 when the cluster moved to v1.34.10+k3s1. Any
+# tag within one minor of the apiserver satisfies the skew policy, so take the
+# highest published patch of the matching minor and check the tag exists before
+# pinning it. A tag that does not exist fails the drain, not the build.
+#
 # SYSTEM_UPGRADE_JOB_ACTIVE_DEADLINE_SECONDS ships at 900. A Job here has to
 # drain a node, pull the upgrade image, swap the binary and restart k3s, and
 # the deadline is what stops a hung drain from blocking forever -- 15 minutes
@@ -18,5 +24,5 @@ metadata:
   name: default-controller-env
   namespace: system-upgrade
 data:
-  SYSTEM_UPGRADE_JOB_KUBECTL_IMAGE: rancher/kubectl:v1.33.13
+  SYSTEM_UPGRADE_JOB_KUBECTL_IMAGE: rancher/kubectl:v1.34.9
   SYSTEM_UPGRADE_JOB_ACTIVE_DEADLINE_SECONDS: "3600"
