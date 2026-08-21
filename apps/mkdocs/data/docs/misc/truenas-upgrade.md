@@ -121,9 +121,21 @@ does not fail a pod — it hangs it, and some stay hung after the server returns
 cheaper than diagnosing them.
 
 **Suspend Flux first.** Kustomizations reconcile every ten minutes, so anything scaled to zero
-without this comes straight back up in the middle of the window. This is also what makes the restore
-trivial: every workload is `replicas: 1` in git, so resuming Flux is what puts them back — there is
-no list of replica counts to keep.
+without this comes straight back up in the middle of the window.
+
+> **Warning**
+> Resuming Flux does **not** restore every replica count, and assuming it does will leave workloads
+> down after the window. Flux applies server-side, so it only resets `replicas` on workloads whose
+> manifests actually declare it. `immich`, `jellyfin` and `open-webui` declare no `replicas` field at
+> all — they rely on the Kubernetes default of 1 at creation — so once scaled to zero there is
+> nothing in git for Flux to put back. In `prometheus`, only the four exporters declare it. Check
+> before you rely on it:
+>
+> ```bash
+> grep -rn "replicas" apps/<name>/ infrastructure/<name>/
+> ```
+>
+> Step 6 scales the undeclared ones back explicitly.
 
 ```bash
 flux suspend kustomization apps prometheus llama-cpp
@@ -253,11 +265,31 @@ Then, in the UI and the cluster:
   done
   kubectl get cluster -A          # wait for "Cluster in healthy state"
 
-  # Then let Flux put everything else back. Every workload is replicas: 1 in git,
-  # so this restores the replica counts and un-suspends the CronJob on its own --
-  # there is no list to remember, which is the point of suspending rather than editing
+  # Then resume Flux. This restores every workload whose manifest declares
+  # `replicas`, and un-suspends the CronJob
   flux resume kustomization apps prometheus llama-cpp
   flux reconcile kustomization apps --with-source
+
+  # Then scale back the ones Flux cannot restore, because their manifests never
+  # declared replicas in the first place. Verify this list against the repo before
+  # trusting it -- it is a property of the manifests, not of the workloads
+  kubectl -n immich scale deploy/immich-server deploy/immich-machine-learning deploy/immich-valkey --replicas=1
+  kubectl -n jellyfin scale deploy/jellyfin --replicas=1
+  kubectl -n open-webui scale deploy/open-webui-redis sts/open-webui --replicas=1
+  kubectl -n prometheus scale deploy/kube-prometheus-stack-grafana --replicas=1
+  kubectl -n prometheus patch prometheus kube-prometheus-stack-prometheus --type=merge -p '{"spec":{"replicas":1}}'
+  kubectl -n prometheus patch alertmanager kube-prometheus-stack-alertmanager --type=merge -p '{"spec":{"replicas":1}}'
+  ```
+
+  Then confirm nothing is left at zero, which is the check that catches a workload this list has
+  forgotten:
+
+  ```bash
+  kubectl get deploy,sts -A -o json | python3 -c '
+  import json,sys
+  for i in json.load(sys.stdin)["items"]:
+      if (i["spec"].get("replicas") or 0) == 0:
+          print(i["metadata"]["namespace"], i["metadata"]["name"])'
   ```
 
   Then confirm PVCs are `Bound`, pods are `Running`, and let a Time Machine backup complete. If an
@@ -301,6 +333,14 @@ Rollback does **not** undo anything the 25.10 middleware migrated on first boot 
 rewrite, for one. Re-run `tf.sh plan` after rolling back too.
 
 ## History
+
+- **2026-08-21** — ran the whole thing, 25.04.2.6 to 25.10.6. Corrected the restore: `flux resume`
+  restores replica counts only for workloads whose manifests declare `replicas`, and several here do
+  not, so they stayed down after the window until scaled back by hand. Step 4's claim that resuming
+  Flux was the whole restore was wrong, and step 6 now scales the undeclared ones explicitly and
+  ends with a check for anything still at zero. Two things the page got right and are worth keeping:
+  the plan was clean on both sides of the reboot despite the SMB share schema being rewritten
+  underneath it, and `/etc/netdata/netdata.conf` was indeed overwritten.
 
 - **2026-08-21** — rewrote step 4 after walking it. The original said to hibernate the databases and
   leave everything else alone, which was wrong three ways: Flux reconciles every ten minutes and
