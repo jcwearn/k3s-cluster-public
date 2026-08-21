@@ -115,6 +115,14 @@ data:
     # the pre-25.10 form and are kept only because the 25.04 boot environment is
     # still a rollback target; they match nothing on 25.10.
     #
+    # This rule is also, as of writing, unreachable: netdata collects the chart
+    # but does not send it over the graphite exporter at all, so no sample ever
+    # arrives for it to match. It is correct as far as it can be checked -- the
+    # regex was validated against real graphite paths -- and is kept so that if
+    # the export side is ever fixed, the mapping is already right. Disk
+    # temperature currently reaches Prometheus by a different route; see
+    # truenas-disk-temp-exporter.yaml.
+    #
     # The chart is now python.d module `truenas_disk_temp`, one chart per disk,
     # id `truenas_disk_temp.{serial_lunid}<SERIAL>_<LUNID>` with a single `temp`
     # dimension. Netdata sanitises the braces for export, so the graphite path is
@@ -969,21 +977,25 @@ spec:
           args:
             - --graphite.mapping-config=/etc/graphite_exporter/graphite_mapping.conf
             - --graphite.listen-address=:2003
-            # Must exceed the slowest chart's update interval, or that chart is
-            # invisible. The default is exactly 5m, and TrueNAS collects disk
-            # temperature on a 300s cycle -- so each sample expired at the same
-            # moment its replacement was due, and any jitter in the netdata to
-            # graphite path meant the series was simply absent at scrape time.
-            # It cost two disk temperature alerts that could not fire on a NAS.
-            # Everything else here updates at 1s and was never affected.
+            # Defensive, not a fix for anything observed. An expiry equal to a
+            # chart's update interval is a latent trap -- the sample expires at
+            # the moment its replacement is due -- and the default is exactly 5m
+            # while the slowest chart this box sends runs at 300s. 15m is 3x
+            # that, so one missed collection is survivable rather than only
+            # jitter.
             #
-            # 15m is 3x the slowest chart, which tolerates one missed collection
-            # rather than only jitter. The cost is that when TrueNAS stops
-            # reporting entirely, its series linger for up to 15m before going
-            # absent -- so any absent()-based alerting on job="truenas" inherits
-            # that as its floor for detection time. That is a deliberate trade:
-            # a metric that is invisible while healthy is worse than one that
-            # takes a quarter of an hour to be declared missing.
+            # This was introduced believing it explained the missing disk
+            # temperature series. It did not: after deploying it, no
+            # disk-temperature sample arrived at all, mapped or unmapped, across
+            # a full collection cycle. Netdata does not ship that chart over the
+            # graphite exporter, so nothing here could have fixed it. Kept
+            # because the trap is real and worth closing on its own terms, not
+            # because it solved the thing it was written for.
+            #
+            # The cost, which is the part worth weighing: when TrueNAS stops
+            # reporting entirely, its series now linger up to 15m before going
+            # absent, so any absent()-based alerting on job="truenas" inherits
+            # that as its detection floor.
             - --graphite.sample-expiry=15m
           ports:
             - name: graphite
