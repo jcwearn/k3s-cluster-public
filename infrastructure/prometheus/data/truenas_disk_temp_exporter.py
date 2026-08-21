@@ -194,7 +194,12 @@ def poll_once(url: str, username: str, api_key: str) -> tuple[dict, dict]:
         }])
         if not isinstance(r, dict) or r.get("response_type") != "SUCCESS":
             rt = r.get("response_type") if isinstance(r, dict) else r
-            raise RuntimeError(f"authentication failed: {rt}")
+            # Name the account. login_ex validates the username and key as a
+            # pair, so a username that does not own the key fails identically to
+            # a bad key -- and the first time that happened the message said
+            # only AUTH_ERR, which sent the search to the credential rather than
+            # to the one line of config that was actually wrong.
+            raise RuntimeError(f"authentication failed for {username!r}: {rt}")
         temps = ws.call("disk.temperatures") or {}
         # disk.temperatures is keyed by device name. The alerts print the serial,
         # because that is the only part a human can match to a drive in a bay.

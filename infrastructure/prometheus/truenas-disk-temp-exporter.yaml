@@ -53,8 +53,16 @@ spec:
             # which is the same dependency truenas-infra's CI already has.
             - name: TRUENAS_URL
               value: "https://truenas.${DOMAIN}"
+            # Must match the account the key in truenas-api-key belongs to.
+            # auth.login_ex takes the username alongside the key and validates
+            # the pair, so a mismatch is an AUTH_ERR that looks exactly like a
+            # bad key. This said truenas_admin -- written before the scoped
+            # account existed -- while the key belonged to prom-exporter, and
+            # the pod failed every poll. It was not caught because the local
+            # verification passed the right username by hand instead of reading
+            # it from this file, so it tested something the cluster never ran.
             - name: TRUENAS_USERNAME
-              value: "truenas_admin"
+              value: "prom-exporter"
             # The chart this replaces collected every 300s. 60s is chosen for
             # the alert rules rather than the hardware: TrueNASDiskTemperature
             # Critical has for: 2m, which needs more than two samples inside the
