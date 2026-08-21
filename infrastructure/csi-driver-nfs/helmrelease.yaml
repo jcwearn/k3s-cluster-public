@@ -1,0 +1,110 @@
+# The replacement for nfs-subdir-external-provisioner, which was abandoned at
+# image v4.0.2 (2021) while still backing the default StorageClass.
+#
+# This release installs the driver only. It creates no StorageClass and nothing
+# consumes it: all existing PVs use the in-tree `spec.nfs` volume source, which
+# kubelet mounts itself without any provisioner involved. The three
+# nfs-subdir releases keep serving until the next PR takes over their class
+# names. See docs/plans/csi-driver-nfs-migration/.
+apiVersion: helm.toolkit.fluxcd.io/v2
+kind: HelmRelease
+metadata:
+  name: csi-driver-nfs
+  namespace: csi-driver-nfs
+spec:
+  interval: 10m
+  chart:
+    spec:
+      chart: csi-driver-nfs
+      version: 4.13.4
+      sourceRef:
+        kind: HelmRepository
+        name: csi-driver-nfs
+        namespace: flux-system
+  install:
+    createNamespace: true
+  values:
+    driver:
+      # nfs-subdir created every directory 0777, and the apps that run as a
+      # non-root UID depend on that. The chart default is 0, meaning "do not
+      # chmod", which would leave the first new PVC unwritable.
+      mountPermissions: "0777"
+
+    feature:
+      # The chart default (true) sets CSIDriver.fsGroupPolicy: File, which makes
+      # kubelet walk the whole volume chowning it to the pod's fsGroup on every
+      # mount. The in-tree NFS plugin reports Managed: false, so fsGroup has never
+      # been applied to these volumes -- the 0777 directories above are what makes
+      # n8n, renovate, paperless-ngx and zeroclaw work. Enabling it would stall
+      # immich-library (100Gi, over NFS) before its pod is allowed to start.
+      enableFSGroupPolicy: false
+
+    # StorageClasses are plain manifests in this directory rather than chart
+    # output. A StorageClass's provisioner, parameters, reclaimPolicy and
+    # volumeBindingMode are immutable, so a Helm-owned class cannot be edited --
+    # the release would fail with no recovery path. As kustomize-owned objects
+    # Flux can force a delete-and-recreate instead.
+    storageClass:
+      create: false
+
+    controller:
+      # Needs VolumeSnapshot CRDs, which this cluster does not have. The driver's
+      # snapshots are tar files written back to the same NFS share, which is not a
+      # backup worth having when CNPG already ships WAL to R2.
+      enableSnapshotter: false
+      # Chart default is 5, which logs every gRPC call.
+      logLevel: 2
+      resources:
+        csiProvisioner:
+          requests:
+            cpu: 10m
+            memory: 20Mi
+          limits:
+            cpu: 200m
+            memory: 400Mi
+        csiResizer:
+          requests:
+            cpu: 10m
+            memory: 20Mi
+          limits:
+            cpu: 200m
+            memory: 400Mi
+        livenessProbe:
+          requests:
+            cpu: 10m
+            memory: 20Mi
+          limits:
+            cpu: 100m
+            memory: 100Mi
+        nfs:
+          requests:
+            cpu: 10m
+            memory: 20Mi
+          limits:
+            cpu: 200m
+            memory: 200Mi
+
+    node:
+      logLevel: 2
+      resources:
+        livenessProbe:
+          requests:
+            cpu: 10m
+            memory: 20Mi
+          limits:
+            cpu: 100m
+            memory: 100Mi
+        nodeDriverRegistrar:
+          requests:
+            cpu: 10m
+            memory: 20Mi
+          limits:
+            cpu: 100m
+            memory: 100Mi
+        nfs:
+          requests:
+            cpu: 10m
+            memory: 20Mi
+          limits:
+            cpu: 200m
+            memory: 300Mi

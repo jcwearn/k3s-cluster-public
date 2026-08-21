@@ -213,6 +213,32 @@ spec:
 apiVersion: kustomize.toolkit.fluxcd.io/v1
 kind: Kustomization
 metadata:
+  name: csi-driver-nfs
+  namespace: flux-system
+spec:
+  interval: 10m
+  retryInterval: 1m
+  timeout: 5m
+  path: ./infrastructure/csi-driver-nfs
+  prune: true
+  sourceRef:
+    kind: GitRepository
+    name: flux-system
+  # No variables are substituted here yet. It is wired up now because the
+  # StorageClass manifests that replace the nfs-subdir releases carry
+  # ${LAN_PREFIX}.200, and adding postBuild later would mean re-auditing the
+  # path for braced references at the same time as the cutover.
+  postBuild:
+    substituteFrom:
+      - kind: Secret
+        name: cluster-vars
+  dependsOn:
+    - name: cluster-vars
+  wait: true
+---
+apiVersion: kustomize.toolkit.fluxcd.io/v1
+kind: Kustomization
+metadata:
   name: cloudnative-pg
   namespace: flux-system
 spec:
