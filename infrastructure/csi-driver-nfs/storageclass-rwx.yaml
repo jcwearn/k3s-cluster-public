@@ -1,0 +1,40 @@
+# The cluster default. Twelve claims omit storageClassName entirely and rely on
+# the annotation below -- three AdGuard, four ebooks, immich-library, two ntfy,
+# uptime-kuma, and Jellyfin's chart-generated config claim -- so it is
+# load-bearing, not decorative.
+#
+# subDir reproduces nfs-subdir's default layout exactly, so the directories
+# already on the share keep their names and a converted volume needs no rename.
+# The $$ is not a typo: this path has postBuild substitution enabled, and a
+# braced ${...} that is not a cluster variable is replaced with an empty string
+# silently. Unescaped, every PVC in the cluster would collide on a directory
+# called "--". flux envsubst --strict cannot catch this; read the rendered value.
+#
+# ${pv.metadata.name} is the part that matters for correctness. Without it, a PVC
+# deleted and recreated under the same name would silently adopt the previous
+# volume's contents.
+apiVersion: storage.k8s.io/v1
+kind: StorageClass
+metadata:
+  name: truenas-nfs-rwx
+  annotations:
+    storageclass.kubernetes.io/is-default-class: "true"
+    # provisioner and parameters are immutable. Without this, editing any of them
+    # later fails the apply with no way forward; with it, Flux deletes and
+    # recreates the object instead.
+    kustomize.toolkit.fluxcd.io/force: "Enabled"
+provisioner: nfs.csi.k8s.io
+parameters:
+  server: ${LAN_PREFIX}.200
+  share: /mnt/pool/k8s-nfs
+  subDir: $${pvc.metadata.namespace}-$${pvc.metadata.name}-$${pv.metadata.name}
+  # nfs-subdir created every directory 0777 and the non-root apps depend on it.
+  mountPermissions: "0777"
+  # The equivalent of the old archiveOnDelete: rename to archived-<subDir> rather
+  # than remove. Retiring Coder showed the cost -- archived directories hold space
+  # until swept by hand from the TrueNAS web Shell -- but a silent rm -rf of a
+  # 100Gi library on a mistaken delete is the worse failure.
+  onDelete: archive
+reclaimPolicy: Delete
+volumeBindingMode: Immediate
+allowVolumeExpansion: true

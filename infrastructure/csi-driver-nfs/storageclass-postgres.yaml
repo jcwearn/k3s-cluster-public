@@ -1,0 +1,24 @@
+# The three CloudNativePG clusters. Identical to truenas-nfs-rwx apart from the
+# share and the absence of the default-class annotation.
+#
+# The export behind this dataset squashes to postgres/tape rather than root/root,
+# which is what gives the database files their ownership. That lives in
+# jcwearn/truenas-infra and is unchanged by this migration.
+#
+# See storageclass-rwx.yaml for why subDir is written with $$.
+apiVersion: storage.k8s.io/v1
+kind: StorageClass
+metadata:
+  name: truenas-nfs-postgres
+  annotations:
+    kustomize.toolkit.fluxcd.io/force: "Enabled"
+provisioner: nfs.csi.k8s.io
+parameters:
+  server: ${LAN_PREFIX}.200
+  share: /mnt/pool/k8s-nfs-postgres
+  subDir: $${pvc.metadata.namespace}-$${pvc.metadata.name}-$${pv.metadata.name}
+  mountPermissions: "0777"
+  onDelete: archive
+reclaimPolicy: Delete
+volumeBindingMode: Immediate
+allowVolumeExpansion: true

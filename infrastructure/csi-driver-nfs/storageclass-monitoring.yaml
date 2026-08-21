@@ -1,0 +1,36 @@
+# Prometheus' TSDB, Grafana's SQLite database and Alertmanager's notification log.
+#
+# The only class that sets mountOptions, which is the entire reason it is a
+# separate share rather than a directory on the shared one. Prometheus upstream
+# does not support NFS for its TSDB -- "unrecoverable corruptions may happen" --
+# because most NFS implementations are not POSIX compliant, and file locking is
+# the specific weakness. NFSv4.1 has integrated locking, which is what makes
+# running it here defensible rather than merely convenient.
+#
+# Unlike parameters, mountOptions is mutable, so this one can be edited in place.
+#
+# One asymmetry worth knowing: the controller mounts the share itself when
+# creating and deleting directories, and does not use these options for that. The
+# archive-rename therefore happens over a default-negotiated mount rather than
+# 4.1. Harmless for a rename, but it is not an oversight.
+#
+# See storageclass-rwx.yaml for why subDir is written with $$.
+apiVersion: storage.k8s.io/v1
+kind: StorageClass
+metadata:
+  name: truenas-nfs-monitoring
+  annotations:
+    kustomize.toolkit.fluxcd.io/force: "Enabled"
+provisioner: nfs.csi.k8s.io
+parameters:
+  server: ${LAN_PREFIX}.200
+  share: /mnt/pool/k8s-nfs-monitoring
+  subDir: $${pvc.metadata.namespace}-$${pvc.metadata.name}-$${pv.metadata.name}
+  mountPermissions: "0777"
+  onDelete: archive
+mountOptions:
+  - nfsvers=4.1
+  - hard
+reclaimPolicy: Delete
+volumeBindingMode: Immediate
+allowVolumeExpansion: true

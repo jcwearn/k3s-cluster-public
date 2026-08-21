@@ -4,3 +4,6 @@ resources:
   - helmrelease.yaml
   - helmrepository.yaml
   - namespace.yaml
+  - storageclass-monitoring.yaml
+  - storageclass-postgres.yaml
+  - storageclass-rwx.yaml
