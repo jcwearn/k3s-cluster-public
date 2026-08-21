@@ -426,16 +426,46 @@ spec:
                 annotations:
                   summary: "TrueNAS high CPU usage ({{ $labels.instance }})"
                   description: "TrueNAS CPU usage is above 90% for more than 5 minutes.\n  VALUE = {{ $value }}%"
+              # Two things were wrong here, and the second is the interesting one.
+              #
+              # The expression used to be used/(used+free), which returned NOTHING:
+              # both sides carry a different `kind` label, so the vectors never
+              # matched and the whole rule evaluated empty. It could not fire.
+              #
+              # Fixing the matching alone would have been worse than leaving it
+              # broken. On a ZFS box `cached` is the ARC -- 8.6 GiB of 11.5 GiB
+              # here -- and used/(used+free) excludes it, leaving a denominator of
+              # about a quarter of RAM. That reads 79% on an idle box and climbs
+              # toward the 90% threshold as the ARC does exactly what it is for.
+              # It would have alerted on ZFS working correctly.
+              #
+              # Cache is not pressure. The denominator is total RAM.
               - alert: TrueNASHighMemoryUsage
-                expr: (physical_memory{job="truenas", kind="used"} / (physical_memory{job="truenas", kind="used"} + physical_memory{job="truenas", kind="free"}) * 100) > 90
+                expr: (sum(physical_memory{job="truenas", kind="used"}) / sum(physical_memory{job="truenas"}) * 100) > 90
                 for: 5m
                 labels:
                   severity: warning
                 annotations:
                   summary: "TrueNAS high memory usage ({{ $labels.instance }})"
                   description: "TrueNAS memory usage is above 90% for more than 5 minutes.\n  VALUE = {{ $value }}%"
+              # `type="cache"` never existed. The label values come straight from
+              # Netdata's chart and dimension names via the mapping in
+              # graphite-exporter.yaml, so they are ddhit/dmhit/ddmis/dmmis --
+              # demand data and demand metadata, hits and misses. This rule
+              # matched zero series at every point in the retention window and had
+              # never fired once since it was written.
+              #
+              # Verified against the box rather than assumed: hits+misses sums to
+              # 332.2665 against a reported dread of 332.2667, so the components
+              # are the whole of demand reads and nothing is being double counted.
+              #
+              # No guard against division by zero on an idle box: 0/0 is NaN and
+              # NaN < 50 is false, so it stays quiet. A minimum-traffic guard was
+              # considered and dropped -- demand reads never fell below 235/s over
+              # the retention window, so it would have been complexity the data
+              # does not support.
               - alert: TrueNASZfsArcHitRatioLow
-                expr: (truenas_arcstats{type="cache", subtype="hits"} / (truenas_arcstats{type="cache", subtype="hits"} + truenas_arcstats{type="cache", subtype="misses"}) * 100) < 50
+                expr: (sum(truenas_arcstats{job="truenas", type=~"ddhit|dmhit"}) / sum(truenas_arcstats{job="truenas", type=~"ddhit|dmhit|ddmis|dmmis"}) * 100) < 50
                 for: 15m
                 labels:
                   severity: warning
