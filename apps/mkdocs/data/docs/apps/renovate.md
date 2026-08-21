@@ -79,16 +79,18 @@ Note that `config:best-practices` already enables weekly lock file maintenance (
   `labels` is not mergeable and would replace the `security` label on vulnerability PRs.
 * `vulnerabilityAlerts` enabled, plus `osvVulnerabilityAlerts` for advisories from osv.dev beyond
   GitHub's own, and an unresolved-CVE summary on each repo's Dependency Dashboard issue.
-* `hostRules` throttles `api.github.com` to avoid secondary rate limits across 16 repos.
-* `automerge` is turned back off for `jcwearn/cloudflare-infra` via `matchRepositories`. Merging
-  there runs `tofu apply` against the live Cloudflare account, and the repo has no branch
-  protection, so the `tofu plan` comment on each PR is the only review gate.
+* `hostRules` throttles `api.github.com` to avoid secondary rate limits across 17 repos.
+* `automerge` is turned back off for `jcwearn/cloudflare-infra` and `jcwearn/truenas-infra` via
+  `matchRepositories`. Merging either runs `tofu apply` against live infrastructure, and neither
+  repo has branch protection, so the `tofu plan` comment on each PR is the only review gate. On
+  truenas-infra the `PjSalty/truenas` provider is pinned exactly on purpose — read the changelog
+  and re-run the acceptance checks before merging a bump.
 
 ## Cache and job lifecycle
 
 The cache is an NFS-backed PVC (`renovate-cache-pvc`, 5Gi on `truenas-nfs-rwx`) mounted at
 `/cache` and pointed at by `RENOVATE_CACHE_DIR`. It is what keeps a run at roughly three minutes
-across 16 repos instead of cold-starting every datasource lookup.
+across 17 repos instead of cold-starting every datasource lookup.
 
 !!! warning "Do not add a `chown` init container to guard it"
     One existed from April to August 2026 and ran `chown -R 1000:1000 /cache` on every tick. It

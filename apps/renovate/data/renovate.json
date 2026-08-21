@@ -12,6 +12,7 @@
         "jcwearn/k3s-cluster",
         "jcwearn/priceatronic2",
         "jcwearn/resume",
+        "jcwearn/truenas-infra",
         "jcwearn/udm-pro",
         "jcwearn/withjoy-exporter",
         "jcwearn/workflows",
@@ -52,10 +53,11 @@
         },
         {
             "matchRepositories": [
-                "jcwearn/cloudflare-infra"
+                "jcwearn/cloudflare-infra",
+                "jcwearn/truenas-infra"
             ],
             "automerge": false,
-            "description": "Merging to main runs tofu apply against the live Cloudflare account, and the repo has no branch protection. Read the plan comment, then merge by hand."
+            "description": "Merging to main runs tofu apply against live infrastructure, and neither repo has branch protection. Read the plan comment, then merge by hand."
         }
     ],
     "vulnerabilityAlerts": {
