@@ -111,6 +111,26 @@ data:
         instance: "$${1}"
         serial: "$${2}"
 
+    # TrueNAS 25.10 renamed the disk temperature chart. The two rules above are
+    # the pre-25.10 form and are kept only because the 25.04 boot environment is
+    # still a rollback target; they match nothing on 25.10.
+    #
+    # The chart is now python.d module `truenas_disk_temp`, one chart per disk,
+    # id `truenas_disk_temp.{serial_lunid}<SERIAL>_<LUNID>` with a single `temp`
+    # dimension. Netdata sanitises the braces for export, so the graphite path is
+    #
+    #   truenas.truenas.truenas_disk_temp._serial_lunid_<SERIAL>_<LUNID>.temp
+    #
+    # The serial is captured because the alert annotations print it, and it is
+    # the only part of that identifier a human can match to a physical drive.
+    - match: 'truenas\.([^.]+)\.truenas_disk_temp\._serial_lunid_([^_]+)_([^.]+)\.temp'
+      match_type: "regex"
+      name: "disk_temperature"
+      labels:
+        job: "truenas"
+        instance: "$${1}"
+        serial: "$${2}"
+
     ################################################
     # disk operation mappings
     ################################################
@@ -949,6 +969,22 @@ spec:
           args:
             - --graphite.mapping-config=/etc/graphite_exporter/graphite_mapping.conf
             - --graphite.listen-address=:2003
+            # Must exceed the slowest chart's update interval, or that chart is
+            # invisible. The default is exactly 5m, and TrueNAS collects disk
+            # temperature on a 300s cycle -- so each sample expired at the same
+            # moment its replacement was due, and any jitter in the netdata to
+            # graphite path meant the series was simply absent at scrape time.
+            # It cost two disk temperature alerts that could not fire on a NAS.
+            # Everything else here updates at 1s and was never affected.
+            #
+            # 15m is 3x the slowest chart, which tolerates one missed collection
+            # rather than only jitter. The cost is that when TrueNAS stops
+            # reporting entirely, its series linger for up to 15m before going
+            # absent -- so any absent()-based alerting on job="truenas" inherits
+            # that as its floor for detection time. That is a deliberate trade:
+            # a metric that is invisible while healthy is worse than one that
+            # takes a quarter of an hour to be declared missing.
+            - --graphite.sample-expiry=15m
           ports:
             - name: graphite
               containerPort: 2003
