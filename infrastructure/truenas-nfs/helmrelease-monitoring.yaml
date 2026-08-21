@@ -45,6 +45,11 @@ spec:
     storageClass:
       name: truenas-nfs-monitoring
       defaultClass: false
+      # Off for the same reason as the other two releases: nothing ever expired
+      # the archived-* directories, and this dataset carries the same
+      # hourly/daily/weekly ZFS snapshots. Metrics are the least of it either
+      # way -- Prometheus rebuilds from scrapes.
+      archiveOnDelete: false
     resources:
       requests:
         cpu: 25m
