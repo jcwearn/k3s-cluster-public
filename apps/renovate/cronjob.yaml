@@ -10,7 +10,7 @@ spec:
   failedJobsHistoryLimit: 1
   jobTemplate:
     spec:
-      activeDeadlineSeconds: 2700
+      activeDeadlineSeconds: 1500
       backoffLimit: 0
       ttlSecondsAfterFinished: 86400
       template:
@@ -21,21 +21,6 @@ spec:
             fsGroup: 1000
             fsGroupChangePolicy: "OnRootMismatch"
           initContainers:
-            - name: init-cache-permissions
-              image: busybox:1.38.0@sha256:dc2d74b28e4cf8984fa52af1f39bc7c3d9c73760b41a74d629f5d11b1ab28616
-              command: ["/bin/sh", "-c"]
-              args:
-                - mkdir -p /cache && chown -R 1000:1000 /cache || true
-              volumeMounts:
-                - name: renovate-cache
-                  mountPath: /cache
-              resources:
-                requests:
-                  cpu: 50m
-                  memory: 32Mi
-                limits:
-                  cpu: 100m
-                  memory: 64Mi
             - name: github-app-installation-token
               image: ghcr.io/mshekow/github-app-installation-token:2026.07.31@sha256:cb8752da9c957f470b47abf07926bb4eb579b4e1d82a0f19b585a0474d1f1bd7
               imagePullPolicy: IfNotPresent
@@ -85,7 +70,7 @@ spec:
                   cpu: 250m
                 limits:
                   memory: 2Gi
-                  cpu: "1"
+                  cpu: "2"
               env:
                 - name: LOG_LEVEL
                   value: info

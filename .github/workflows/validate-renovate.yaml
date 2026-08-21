@@ -1,0 +1,93 @@
+name: Validate Renovate Config
+
+# Renovate's config is the one thing in this repo that kustomize cannot check. The bot
+# config is mounted as a ConfigMap, so a misspelled option is valid JSON, builds cleanly,
+# renders cleanly -- and is then discarded at runtime behind a WARN that only appears in
+# pod logs. A deprecated `dockerUser` lived there that way until somebody read the logs
+# for an unrelated reason.
+#
+# Split out of validate.yaml rather than living beside the other checks, because `paths`
+# is a workflow-level trigger in GitHub Actions and cannot be applied to a single step.
+# The npm install costs ~45s, which is not worth paying on pull requests that do not
+# touch Renovate at all -- the vast majority of them.
+#
+# apps/renovate/** is deliberately broader than the two config files: the version below
+# is read from cronjob.yaml, so Renovate's own image bumps must re-trigger this and
+# re-validate the config against the version they introduce. A narrower filter would let
+# a bump that deprecates an option merge without ever checking.
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      # Kept in sync by hand with the pull_request list below -- GitHub Actions does not
+      # support YAML anchors, so there is no way to declare this once.
+      - "renovate.json"
+      - "apps/renovate/**"
+      - ".github/workflows/validate-renovate.yaml"
+  pull_request:
+    paths:
+      - "renovate.json"
+      - "apps/renovate/**"
+      - ".github/workflows/validate-renovate.yaml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  validate-renovate:
+    name: Validate Renovate config
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+
+      # Renovate 44 declares engines.node ^24.11.0, tighter than "whatever the runner
+      # ships", so the version is pinned rather than inherited.
+      - name: Install Node
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: "24"
+
+      - name: Install yq
+        env:
+          YQ_VERSION: "4.53.3"
+        run: |
+          set -euo pipefail
+          curl -fsSL -o yq \
+            "https://github.com/mikefarah/yq/releases/download/v${YQ_VERSION}/yq_linux_amd64"
+          sudo install -m 755 yq /usr/local/bin/yq
+
+      # The two files need opposite treatment, and getting it wrong makes the check
+      # weaker rather than louder:
+      #
+      #   apps/renovate/data/renovate.json is global self-hosted config -- repositories,
+      #   platform, hostRules -- which is the validator's default for named files.
+      #
+      #   renovate.json at the root is repo config. Only --no-global makes the validator
+      #   reject a global-only option placed there; by default it would validate as
+      #   global config, pass, and the bot would silently ignore the option at runtime.
+      #
+      # The version is read from the CronJob instead of pinned here, so it cannot drift
+      # from the binary that actually consumes these files. Warnings already exit
+      # non-zero; --strict additionally fails when a config migration is needed, which is
+      # the signal that would otherwise decay quietly across upgrades.
+      - name: Validate Renovate config
+        run: |
+          set -euo pipefail
+
+          version=$(yq -r '.spec.jobTemplate.spec.template.spec.containers[0].image' \
+            apps/renovate/cronjob.yaml | sed -E 's|.*renovate/renovate:([^@-]+).*|\1|')
+
+          if [ -z "$version" ]; then
+            echo "::error file=apps/renovate/cronjob.yaml::could not read the renovate image tag"
+            exit 1
+          fi
+          echo "Validating against renovate@${version}"
+
+          npx --yes --package "renovate@${version}" renovate-config-validator \
+            --strict apps/renovate/data/renovate.json
+
+          npx --yes --package "renovate@${version}" renovate-config-validator \
+            --strict --no-global renovate.json

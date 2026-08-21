@@ -5,7 +5,7 @@ opening PRs automatically.
 
 | Schedule | Image | Bot config |
 |---|---|---|
-| `*/30 * * * *` | `renovate/renovate:44.30.3-full` | `apps/renovate/data/renovate.json` |
+| `*/30 * * * *` | `renovate/renovate:*-full`, pinned by digest in `apps/renovate/cronjob.yaml` | `apps/renovate/data/renovate.json` |
 
 * Authenticates as a GitHub App. The app ID, installation ID and private key are SOPS-encrypted in
   `apps/renovate/secrets.sops.yaml`; an init container exchanges them for a short-lived installation
@@ -84,9 +84,83 @@ Note that `config:best-practices` already enables weekly lock file maintenance (
   there runs `tofu apply` against the live Cloudflare account, and the repo has no branch
   protection, so the `tofu plan` comment on each PR is the only review gate.
 
+## Cache and job lifecycle
+
+The cache is an NFS-backed PVC (`renovate-cache-pvc`, 5Gi on `truenas-nfs-rwx`) mounted at
+`/cache` and pointed at by `RENOVATE_CACHE_DIR`. It is what keeps a run at roughly three minutes
+across 16 repos instead of cold-starting every datasource lookup.
+
+!!! warning "Do not add a `chown` init container to guard it"
+    One existed from April to August 2026 and ran `chown -R 1000:1000 /cache` on every tick. It
+    reached **34 minutes** against three minutes of actual work — one serial NFS `SETATTR`
+    round-trip per file, over a cache that grows without bound. Runs outlasted the 30-minute
+    schedule, so `concurrencyPolicy: Forbid` chained them back-to-back and a Renovate pod was
+    running against the NAS permanently.
+
+    It never did anything. The init container inherits the pod's `runAsUser: 1000`, and a non-root
+    uid cannot change a file's owner — the trailing `|| true` swallowed exactly that. What makes
+    `/cache` writable is `nfs-subdir-external-provisioner` creating the subdirectory `0777`, and
+    Renovate is its only writer. `fsGroup` is not the mechanism either: the in-tree NFS plugin
+    reports its mount as unmanaged, so kubelet never applies it.
+
+    The deadline was raised twice (1500 → 2400 → 2700) chasing the growth before the cause was
+    found. Treat a rising `activeDeadlineSeconds` as a symptom to investigate, not a dial.
+
+| Setting | Value | Why |
+|---|---|---|
+| `activeDeadlineSeconds` | `1500` (25 min) | Deliberately **under** the 30-minute schedule. Under `Forbid`, a job that outlives its own interval silently eats the next tick. |
+| `backoffLimit` | `0` | No Kubernetes-level retry. PR state lives in GitHub and the next tick is ≤30 minutes away, so a retry only doubles the noise. |
+| `ttlSecondsAfterFinished` | `86400` | Failed Jobs and their pods stay a day so there is something to read. This is for debugging, not alerting. |
+| `failedJobsHistoryLimit` | `1` | One failed Job is enough to debug from. |
+
+Because `backoffLimit` is `0`, **any node drain kills the run in flight** — a rolling k3s upgrade
+will produce a failed job per hop. That is expected and self-correcting.
+
+### What alerts, and what deliberately does not
+
+`KubeJobFailed` is routed to `null` for the `renovate` namespace in the Alertmanager config. It is
+a bare `> 0` gauge, so against a 24-hour TTL a single dead pod held it firing for a full day and
+re-notified at the 12-hour repeat — one transient failure reading as a permanent outage.
+
+`RenovateStale` replaces it: it fires when the CronJob has not *succeeded* in six hours (~12
+consecutive missed runs). That is the honest question for a CronJob, it rides out a planned
+node-drain window, and unlike any pod-phase rule it also catches a CronJob left suspended — for
+instance by [the TrueNAS upgrade runbook](../misc/truenas-upgrade.md) and never resumed.
+
+
 ## Validating a config change
 
+CI does this — `.github/workflows/validate-renovate.yaml`, which is path-filtered to
+`renovate.json` and `apps/renovate/**` so unrelated pull requests do not pay its ~45s npm
+install. That filter covers `cronjob.yaml` deliberately: the validator's version is read from
+the CronJob image, so Renovate's own image bumps re-trigger the check and re-validate the
+config against the version they introduce, rather than merging a deprecation unnoticed.
+
+It validates the two files differently, which is the part worth knowing about:
+
+| File | Kind | Validated as |
+|---|---|---|
+| `apps/renovate/data/renovate.json` | Global self-hosted config | global (the default) |
+| `renovate.json` (repo root) | Repo config | repo, via `--no-global` |
+
+That split is load-bearing. Without `--no-global` the root config is validated as global config,
+which is a *superset* — so a global-only option accidentally put there (`binarySource`,
+`hostRules`, `repositories`) passes validation and is then silently ignored by the bot at runtime.
+`--strict` additionally fails when a config migration is needed; plain warnings, including
+deprecations, already exit non-zero on their own.
+
+To run it locally before pushing, against the same version:
+
 ```bash
-docker run --rm -v "$PWD/apps/renovate/data/renovate.json:/c.json:ro" \
-  renovate/renovate:44.30.3-full renovate-config-validator /c.json
+version=$(grep -o 'renovate/renovate:[^@-]*' apps/renovate/cronjob.yaml | cut -d: -f2)
+
+npx --yes --package "renovate@$version" renovate-config-validator \
+  --strict apps/renovate/data/renovate.json
+npx --yes --package "renovate@$version" renovate-config-validator \
+  --strict --no-global renovate.json
 ```
+
+!!! note "This is the check that catches the quiet failures"
+    A misspelled option is valid JSON. It builds, it renders, it reconciles — and Renovate then
+    discards it behind a `WARN` that only exists in pod logs. A deprecated `dockerUser` sat in the
+    bot config that way until someone read the logs for an unrelated reason.

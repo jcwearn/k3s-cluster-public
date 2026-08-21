@@ -130,6 +130,23 @@ Scale down the apps in front of them first so they are not writing into a databa
 away. Prometheus can be left running — a gap in the TSDB is not a corruption — but expect its pod to
 be unhappy for a few minutes after the NAS returns.
 
+Then suspend Renovate. It runs every 30 minutes against an NFS-backed cache on the box you are
+about to reboot, and `concurrencyPolicy: Forbid` means a job that hangs on `/cache` blocks every
+subsequent tick until its deadline expires — so a single run caught by the outage costs the next
+half hour too. Neither pod-health rule would tell you: the general one excludes the namespace, and
+the Renovate-specific one does not match `Pending`.
+
+```bash
+kubectl -n renovate patch cronjob renovate-bot -p '{"spec":{"suspend":true}}'
+
+# Drop anything already mid-flight
+kubectl -n renovate delete job -l batch.kubernetes.io/job-name --field-selector status.successful!=1
+```
+
+`suspend` is not declared in `apps/renovate/cronjob.yaml`, so `kustomize-controller` does not own
+the field and will not reconcile it back — the patch holds until you undo it in step 6. That also
+means nothing will undo it *for* you if you forget, which is what `RenovateStale` is for.
+
 ### 5. Upgrade
 
 All in the TrueNAS UI, on the LAN.
@@ -182,6 +199,16 @@ Then, in the UI and the cluster:
   `truenas-infra`, so nothing would restore it.
 - **NFS and SMB are serving.** Un-hibernate the databases, confirm PVCs are `Bound` and pods are
   `Running`, and let a Time Machine backup complete.
+- **Renovate is un-suspended and its next run completes.** This is the symmetric half of the step 4
+  suspend, and the check that proves the export came back usable for a client that mounts it fresh
+  on every run rather than holding a mount across the reboot:
+
+    ```bash
+    kubectl -n renovate patch cronjob renovate-bot -p '{"spec":{"suspend":false}}'
+
+    # Within ~30 min: one job, Complete, and a DURATION of roughly 3 minutes
+    kubectl -n renovate get jobs
+    ```
 - **Prometheus' `truenas` job is UP** at `https://prometheus.${DOMAIN}/targets`, and the
   "TrueNAS Scale / Overview" dashboard has data again.
 - **Expect a new REST API deprecation alert.** That is `discover.sh` and `check-credentials.sh`

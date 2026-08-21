@@ -77,7 +77,6 @@
             "maxRequestsPerSecond": 8
         }
     ],
-    "dockerUser": "1000:1000",
     "customEnvVariables": {
         "GOCACHE": "/tmp/renovate/go-build",
         "GOMODCACHE": "/tmp/renovate/go-mod",

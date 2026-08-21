@@ -7,6 +7,9 @@ name: Validate Manifests
 #      unresolved ${VAR}.
 #   3. The encrypted secrets are structurally sound -- see scripts/check-sops-files.sh.
 #
+# Renovate's own config is checked separately in validate-renovate.yaml, which is path-filtered
+# so it does not pay a ~45s npm install on every unrelated pull request.
+#
 # The second one is the guard that matters. postBuild replaces a variable it cannot resolve
 # with an empty string and reports success, so a typo'd name or a stray ${1} from an
 # upstream config produces a healthy-looking reconcile and a silently broken resource.

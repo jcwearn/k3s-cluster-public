@@ -203,6 +203,17 @@ spec:
             - receiver: "null"
               matchers:
                 - alertname = "InfoInhibitor"
+            # Renovate's Jobs are the retry mechanism, not the incident. A run that
+            # dies -- a node drained under it, a github blip -- is corrected by the
+            # next tick 30 minutes later, but the failed Job object lingers for
+            # ttlSecondsAfterFinished (24h) and KubeJobFailed is a bare `> 0` gauge,
+            # so one dead pod alerted for a full day. The Job is kept that long on
+            # purpose, for logs; it just must not page. RenovateStale covers the case
+            # where the failures are not transient.
+            - receiver: "null"
+              matchers:
+                - alertname = "KubeJobFailed"
+                - namespace = "renovate"
             # Lifecycle alerts are standing conditions, not incidents -- an
             # end-of-life release stays end-of-life for weeks by design. At the
             # global 12h repeat a 90-day warning window would be roughly 180
@@ -718,6 +729,29 @@ spec:
                 annotations:
                   summary: Kubernetes pod crash looping (instance {{ $labels.instance }})
                   description: "Pod {{ $labels.namespace }}/{{ $labels.pod }} is crash looping\n  VALUE = {{ $value }}\n  LABELS = {{ $labels }}"
+      renovate:
+        groups:
+          - name: renovate-group
+            rules:
+              # A CronJob is healthy when it recently *succeeded*, not when no failed
+              # Job object happens to exist. The upstream KubeJobFailed is a bare
+              # `> 0` gauge, so with ttlSecondsAfterFinished at 24h a single dead pod
+              # held it firing for a full day and re-notified at the 12h repeat -- one
+              # transient failure read as a permanent outage. That alert is routed to
+              # "null" for this namespace; this is what replaces it.
+              #
+              # 6h is ~12 consecutive missed runs against the */30 schedule: wide
+              # enough to sit out a rolling k3s upgrade draining nodes under a job
+              # with backoffLimit: 0, narrow enough to still mean something. Unlike
+              # any pod-phase rule, this also catches "never ran at all".
+              - alert: RenovateStale
+                expr: time() - kube_cronjob_status_last_successful_time{namespace="renovate", cronjob="renovate-bot"} > 21600
+                for: 15m
+                labels:
+                  severity: warning
+                annotations:
+                  summary: Renovate has not completed a successful run in over 6 hours
+                  description: "renovate-bot last succeeded {{ $value | humanizeDuration }} ago. Runs are scheduled every 30 minutes, so this is ~12 consecutive failures or a CronJob that is suspended and was never resumed."
       flux-reconciliation:
         groups:
           - name: flux-reconciliation-group
