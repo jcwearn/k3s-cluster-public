@@ -18,7 +18,7 @@ spec:
           serviceAccountName: ansible-runner
           containers:
             - name: ansible
-              image: ghcr.io/jcwearn/ansible-runner:0.1.43@sha256:984825a11c2b76c62604d97589a0ce7aceafd26f7266e41494a0fc31a4f1bfbf
+              image: ghcr.io/jcwearn/ansible-runner:0.1.44@sha256:8eaa61a36f71e62a19958419232b81197fd471bb46b877e14a8b338d84052fc5
               imagePullPolicy: IfNotPresent
               securityContext:
                 runAsUser: 0
