@@ -154,27 +154,44 @@ sha256sum scripts/on-box/nvme-metrics.sh
 scp scripts/on-box/nvme-metrics.sh truenas_admin@${LAN_PREFIX}.200:/tmp/nvme-metrics.sh
 ```
 
-Then in the TrueNAS **Shell** as root (`sudo` from an SSH session has no TTY here, and root SSH is
-disabled — the web Shell is the path):
+Then in the TrueNAS **Shell**, which is where the privilege comes from. Root SSH is disabled and
+`sudo` over SSH has no TTY to read a password from, so the web Shell is the only way up — but note
+it is **not** a root shell. On 25.10 it runs as whichever account you signed in as, and `sudo` is
+what escalates. It has a real TTY, so the password prompt works there.
+
+One `sudo` for the whole sequence rather than one per line, so the password is typed once and there
+is nothing after it on the line for the prompt to swallow:
 
 ```bash
-# Verify BEFORE anything is installed
-echo "$SUM  /tmp/nvme-metrics.sh" | sha256sum -c -
+echo "$SUM  /tmp/nvme-metrics.sh" | sha256sum -c -   # verify BEFORE anything is installed
 
-install -o root -g root -m 0700 /tmp/nvme-metrics.sh /mnt/pool/admin-scripts/nvme-metrics.sh
-chown root:root /mnt/pool/admin-scripts
-chmod 0700      /mnt/pool/admin-scripts
-rm -f /tmp/nvme-metrics.sh
-
-# Prove it reads the drives before letting cron have it
-/mnt/pool/admin-scripts/nvme-metrics.sh --dry-run
+sudo sh -c 'set -e
+  install -o root -g root -m 0700 /tmp/nvme-metrics.sh /mnt/pool/admin-scripts/nvme-metrics.sh
+  chmod 0700 /mnt/pool/admin-scripts
+  rm -f /tmp/nvme-metrics.sh'
 ```
 
-The dry run prints Graphite lines and sends nothing. Expect nine per drive plus three heartbeat
-lines, and a trailing `6 drives, 0 failed`. A line looks like:
+Note the `set -e`. Written as separate lines, a failed `install` still reaches the `rm` and deletes
+the staged copy, so the next attempt starts by re-copying the file. That is not hypothetical — it
+is what happened the first time this was run.
+
+Then prove it reads the drives before letting cron have it:
+
+```bash
+sudo /mnt/pool/admin-scripts/nvme-metrics.sh --dry-run | \
+  awk '{a[NR]=$0} END{print NR " lines"; for(i=NR-2;i<=NR;i++) print a[i]}'
+```
+
+Pipe it rather than redirecting to a file. A `> /tmp/...` redirect inside that `sudo` shell is
+refused with "Permission denied" even though `/tmp` is a world-writable tmpfs with gigabytes free —
+some confinement on the escalated shell, not anything about this setup.
+
+The dry run prints Graphite lines and sends nothing. Expect 57 lines — nine per drive plus three
+heartbeat lines — ending `drives_total 6` and `drives_failed 0`, with a trailing
+`6 drives, 0 failed` on stderr. A line looks like:
 
 ```
-truenas.truenas.nvme_smart.nvme0n1.25094E778896.percentage_used_ratio 0.09 1787412000
+truenas.truenas.nvme_smart.nvme0n1.25094E778896.percentage_used_ratio 0.04 1787414296
 ```
 
 > **Note**

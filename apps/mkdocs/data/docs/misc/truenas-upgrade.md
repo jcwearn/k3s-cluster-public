@@ -268,7 +268,9 @@ Then, in the UI and the cluster:
   here takes ten seconds:
 
   ```bash
-  ls -l /mnt/pool/admin-scripts/nvme-metrics.sh   # expect -rwx------ root root
+  # In the web Shell. It is not a root shell on 25.10 -- it runs as the account you
+  # signed in as -- and the directory is 0700 root, so this needs the sudo.
+  sudo ls -l /mnt/pool/admin-scripts/nvme-metrics.sh   # expect -rwx------ root root
   ```
 - **NFS and SMB are serving.** Bring the cluster back — the reverse of step 4, databases first so
   nothing starts against a database that is not there yet:
