@@ -121,7 +121,7 @@ data:
     # regex was validated against real graphite paths -- and is kept so that if
     # the export side is ever fixed, the mapping is already right. Disk
     # temperature currently reaches Prometheus by a different route; see
-    # truenas-disk-temp-exporter.yaml.
+    # truenas-api-exporter.yaml.
     #
     # The chart is now python.d module `truenas_disk_temp`, one chart per disk,
     # id `truenas_disk_temp.{serial_lunid}<SERIAL>_<LUNID>` with a single `temp`

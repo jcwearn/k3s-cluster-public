@@ -1,20 +1,30 @@
 #!/usr/bin/env python3
-"""Export TrueNAS disk temperatures to Prometheus.
+"""Export what the TrueNAS graphite pipeline cannot push: disk temperatures and
+per-dataset space.
 
 Why this exists at all
 ----------------------
-TrueNAS pushes its metrics to graphite-exporter, and every other metric from the
-box arrives that way. Disk temperature does not. TrueNAS 25.10 moved it to a
-python.d chart that collects every 300s, and netdata does not ship that chart
-over the graphite exporter -- confirmed by watching a full collection cycle with
-no sample arriving in any form, mapped or unmapped, while netdata itself held
-fresh values the whole time.
+TrueNAS pushes its metrics to graphite-exporter, and most metrics from the box
+arrive that way. Two do not.
 
-So this reads the temperatures from the API instead, where they are correct,
-current and version-stable. It is the one metric that dials TrueNAS rather than
-waiting to be pushed. That is a deliberate exception to the design and not a
-precedent: everything else stays push-only so it survives the cluster being
-unreachable from the box.
+**Disk temperature.** TrueNAS 25.10 moved it to a python.d chart that collects
+every 300s, and netdata does not ship that chart over the graphite exporter --
+confirmed by watching a full collection cycle with no sample arriving in any
+form, mapped or unmapped, while netdata itself held fresh values the whole time.
+
+**Per-dataset space.** netdata's `diskspace` collector reports only boot-pool
+filesystems -- `_root`, `_var_log`, `_tmp`, `_usr` and the rest. There is no
+`/mnt/pool*` mountpoint in `disk_bytes_used` at all, so every dataset behind
+every PVC in the cluster was unwatched and `TrueNASHighDiskUtilization` was
+green by construction rather than by health. That gap let a Renovate cache reach
+34G -- a third of the shared dataset -- across 141 days with nothing able to see
+it. See k3s-cluster#802.
+
+So this reads both from the API instead, where they are correct, current and
+version-stable. It is the one thing that dials TrueNAS rather than waiting to be
+pushed. That is a deliberate exception to the design and not a precedent:
+everything else stays push-only so it survives the cluster being unreachable
+from the box.
 
 Why it speaks WebSocket by hand
 -------------------------------
@@ -50,7 +60,12 @@ LISTEN_PORT = int(os.environ.get("LISTEN_PORT", "9101"))
 TIMEOUT = int(os.environ.get("TIMEOUT_SECONDS", "30"))
 
 _state_lock = threading.Lock()
-_state: dict = {"temps": {}, "serials": {}, "ok": False, "last_success": 0.0, "error": ""}
+_state: dict = {"temps": {}, "serials": {}, "ok": False, "last_success": 0.0, "error": "",
+                # Datasets carry their own success flag. The two reads need
+                # different roles and can fail independently, so one signal
+                # covering both would go red for the wrong reason and send the
+                # next person to the wrong half.
+                "datasets": {}, "ds_ok": False, "ds_last_success": 0.0, "ds_error": ""}
 
 
 # --------------------------------------------------------------------------
@@ -184,7 +199,49 @@ class WebSocket:
 
 
 # --------------------------------------------------------------------------
-def poll_once(url: str, username: str, api_key: str) -> tuple[dict, dict]:
+# Properties read off each dataset. rawvalue is always bytes as a string;
+# `value` is human-formatted ("1 TiB") and is not what a gauge wants.
+#
+# refquota and quota are 0 when unset, which is ZFS's own encoding for "none"
+# and is why the alerts guard on `> 0` rather than on absence.
+_DATASET_PROPS = ("usedbydataset", "usedbysnapshots", "available", "refquota", "quota")
+
+
+def _dataset_bytes(row: dict, prop: str) -> int | None:
+    v = row.get(prop)
+    if not isinstance(v, dict):
+        return None
+    raw = v.get("rawvalue")
+    if raw is None:
+        return None
+    try:
+        return int(raw)
+    except (TypeError, ValueError):
+        return None
+
+
+def poll_datasets(ws) -> dict:
+    """Per-dataset space, keyed by dataset id (`pool/k8s-nfs`).
+
+    flat: True returns every dataset as a sibling rather than nesting children
+    under parents, which keeps this a loop rather than a tree walk.
+    """
+    rows = ws.call("pool.dataset.query", [[], {"extra": {"flat": True}}]) or []
+    out = {}
+    for row in rows:
+        name = row.get("id")
+        if not name:
+            continue
+        vals = {p: _dataset_bytes(row, p) for p in _DATASET_PROPS}
+        if all(v is None for v in vals.values()):
+            # A dataset that reports no space at all is locked or unmounted.
+            # Emitting zeros for it would read as "empty" rather than "unknown".
+            continue
+        out[name] = vals
+    return out
+
+
+def poll_once(url: str, username: str, api_key: str) -> tuple[dict, dict, dict | None]:
     ws = WebSocket(url.rstrip("/").replace("https://", "wss://") + "/api/current")
     try:
         # auth.login_ex with API_KEY_PLAIN, not auth.login_with_api_key: TrueNAS
@@ -217,7 +274,19 @@ def poll_once(url: str, username: str, api_key: str) -> tuple[dict, dict]:
             print(f"serial lookup unavailable ({type(exc).__name__}); "
                   f"exporting temperatures without serial labels", file=sys.stderr, flush=True)
             serials = {}
-        return temps, serials
+        # Same bargain as the serials above, one role further out:
+        # pool.dataset.query needs DATASET_READ, which the key may not carry.
+        # A key scoped to temperatures alone keeps exporting them rather than
+        # the whole poll failing. None means "not read", which render() reports
+        # as a scrape failure -- distinct from an empty dict, which would mean
+        # the box genuinely has no datasets.
+        try:
+            datasets = poll_datasets(ws)
+        except Exception as exc:  # noqa: BLE001
+            print(f"dataset query unavailable ({type(exc).__name__}: {exc}); "
+                  f"exporting temperatures only", file=sys.stderr, flush=True)
+            datasets = None
+        return temps, serials, datasets
     finally:
         ws.close()
 
@@ -227,6 +296,8 @@ def render() -> str:
         temps = dict(_state["temps"])
         serials = dict(_state["serials"])
         ok, last, err = _state["ok"], _state["last_success"], _state["error"]
+        datasets = {k: dict(v) for k, v in _state["datasets"].items()}
+        ds_ok, ds_last = _state["ds_ok"], _state["ds_last_success"]
     out = [
         "# HELP disk_temperature Disk temperature in celsius, read from the TrueNAS API.",
         "# TYPE disk_temperature gauge",
@@ -247,6 +318,43 @@ def render() -> str:
     ]
     if err:
         out.append(f"# last error: {err[:200]}")
+
+    # Dataset space. One metric family per ZFS property rather than one family
+    # with a `property` label, so an alert can be written against the number it
+    # means without a matcher that silently selects the wrong series.
+    #
+    # usedbydataset, NOT used: `used` includes snapshots, and refquota does not
+    # bound snapshots. Dividing one by the other would overstate consumption of
+    # the quota -- measurably so here, where wiping 34G moved 27.5 GiB into
+    # usedbysnapshots while refquota headroom recovered in full immediately.
+    families = [
+        ("truenas_dataset_used_bytes", "usedbydataset",
+         "Space referenced by the dataset itself, excluding snapshots. This is what refquota bounds."),
+        ("truenas_dataset_snapshots_bytes", "usedbysnapshots",
+         "Space held by this dataset's snapshots. Released only as they expire."),
+        ("truenas_dataset_available_bytes", "available",
+         "Space still writable, after refquota and pool free space."),
+        ("truenas_dataset_refquota_bytes", "refquota",
+         "Referenced-data limit in bytes. 0 means no refquota is set."),
+        ("truenas_dataset_quota_bytes", "quota",
+         "Total limit including snapshots, in bytes. 0 means no quota is set."),
+    ]
+    for metric, prop, help_text in families:
+        out += [f"# HELP {metric} {help_text}", f"# TYPE {metric} gauge"]
+        for name in sorted(datasets):
+            v = datasets[name].get(prop)
+            if v is None:
+                continue
+            out.append(f'{metric}{{dataset="{name}"}} {v}')
+
+    out += [
+        "# HELP truenas_dataset_scrape_success Whether the last pool.dataset.query succeeded.",
+        "# TYPE truenas_dataset_scrape_success gauge",
+        f"truenas_dataset_scrape_success {1 if ds_ok else 0}",
+        "# HELP truenas_dataset_last_success_timestamp_seconds Unix time of the last successful dataset query.",
+        "# TYPE truenas_dataset_last_success_timestamp_seconds gauge",
+        f"truenas_dataset_last_success_timestamp_seconds {ds_last}",
+    ]
     return "\n".join(out) + "\n"
 
 
@@ -290,16 +398,26 @@ def main() -> int:
 
     while True:
         try:
-            temps, serials = poll_once(url, username, api_key)
+            temps, serials, datasets = poll_once(url, username, api_key)
             with _state_lock:
                 _state.update(temps=temps, serials=serials, ok=True,
                               last_success=time.time(), error="")
+                # None means the dataset call was refused or failed while the
+                # rest of the poll succeeded. Keep the last good readings and
+                # let truenas_dataset_scrape_success carry the bad news, the
+                # same way a wholly failed poll does for temperatures.
+                if datasets is None:
+                    _state.update(ds_ok=False, ds_error="pool.dataset.query unavailable")
+                else:
+                    _state.update(datasets=datasets, ds_ok=True,
+                                  ds_last_success=time.time(), ds_error="")
         except Exception as exc:  # noqa: BLE001
             # Keep the last good readings rather than dropping to zero: a failed
             # poll is a scrape problem, not a cold drive. truenas_disk_temp_
             # scrape_success is what says the readings are stale.
             with _state_lock:
-                _state.update(ok=False, error=f"{type(exc).__name__}: {exc}")
+                _state.update(ok=False, error=f"{type(exc).__name__}: {exc}",
+                              ds_ok=False, ds_error=f"{type(exc).__name__}: {exc}")
             print(f"poll failed: {type(exc).__name__}: {exc}", file=sys.stderr, flush=True)
         time.sleep(POLL_SECONDS)
 

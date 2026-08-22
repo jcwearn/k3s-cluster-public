@@ -16,26 +16,26 @@
 # cluster being able to reach TrueNAS, where everything else survives the box
 # being unreachable from the cluster. That inversion is confined to this pod.
 #
-# The poller is data/truenas_disk_temp_exporter.py, pulled in by the
+# The poller is data/truenas_api_exporter.py, pulled in by the
 # configMapGenerator in kustomization.yaml so it stays a real Python file. It
 # uses no libraries beyond the standard library -- see the module docstring for
 # why it speaks the WebSocket protocol by hand rather than taking a dependency.
 apiVersion: apps/v1
 kind: Deployment
 metadata:
-  name: truenas-disk-temp-exporter
+  name: truenas-api-exporter
   namespace: prometheus
   labels:
-    app: truenas-disk-temp-exporter
+    app: truenas-api-exporter
 spec:
   replicas: 1
   selector:
     matchLabels:
-      app: truenas-disk-temp-exporter
+      app: truenas-api-exporter
   template:
     metadata:
       labels:
-        app: truenas-disk-temp-exporter
+        app: truenas-api-exporter
     spec:
       securityContext:
         runAsNonRoot: true
@@ -45,7 +45,7 @@ spec:
         - name: exporter
           image: python:3.14-alpine@sha256:05b2b8b732ecd268fee8727a369f936f022d1321b59befd13c30ede22769dcdc
           imagePullPolicy: IfNotPresent
-          command: ["python", "/app/truenas_disk_temp_exporter.py"]
+          command: ["python", "/app/truenas_api_exporter.py"]
           env:
             # The gateway route, not the box directly: TrueNAS serves a
             # self-signed certificate and this client verifies TLS. Reaching it
@@ -106,20 +106,20 @@ spec:
       volumes:
         - name: config
           configMap:
-            name: truenas-disk-temp-exporter-config
+            name: truenas-api-exporter-config
             defaultMode: 0444
 ---
 apiVersion: v1
 kind: Service
 metadata:
-  name: truenas-disk-temp-exporter-svc
+  name: truenas-api-exporter-svc
   namespace: prometheus
   labels:
-    app: truenas-disk-temp-exporter
+    app: truenas-api-exporter
 spec:
   type: ClusterIP
   selector:
-    app: truenas-disk-temp-exporter
+    app: truenas-api-exporter
   ports:
     - name: http
       port: 9101

@@ -11,6 +11,9 @@ TrueNAS (Netdata) --[Graphite/TCP:2003]--> graphite-exporter --[HTTP:9108]--> Pr
 ```
 
 - **graphite-exporter**: Runs in the `prometheus` namespace, exposed as a LoadBalancer Service on `${LAN_PREFIX}.32`
+- **API exporter**: `truenas-api-exporter` — the one component that *dials* TrueNAS instead of
+  waiting to be pushed, for the two things netdata will not send. Named for disk temperature, which
+  was the only one when it was written; it now carries dataset space too.
 - **Mapping config**: Translates Graphite metric names to Prometheus labels (from [Supporterino/truenas-graphite-to-prometheus](https://github.com/Supporterino/truenas-graphite-to-prometheus))
 - **Dashboard**: Auto-provisioned Grafana dashboard covering CPU, memory, disk temps, network, ZFS ARC, and filesystem usage
 
@@ -119,6 +122,47 @@ SMTP and verify the alert service is enabled.
     - Application Update Available
     - Pool Status (degraded ZFS pools)
 
+## What the graphite pipeline does not carry
+
+Two families come from the API exporter (`data/truenas_api_exporter.py`) rather than netdata,
+because netdata does not send them at all.
+
+| Family | Why not graphite |
+|---|---|
+| `disk_temperature` | TrueNAS 25.10 moved it to a python.d chart netdata declines to export. |
+| `truenas_dataset_*` | netdata's `diskspace` collector reports **boot-pool paths only** — `_root`, `_var_log`, `_tmp`, `_usr`. There is no `/mnt/pool*` mountpoint in `disk_bytes_used`. |
+
+!!! warning "`TrueNASBootPoolHighDiskUtilization` is boot-pool only"
+    It was called `TrueNASHighDiskUtilization` and read like the pool capacity alert. It never
+    watched a single dataset behind a PVC, and reported healthy the whole time it was not watching
+    them — a Renovate cache reached 34G, a third of `pool/k8s-nfs`, over 141 days with nothing able
+    to see it. The rule is kept because a full `/var/log` on the NAS still matters; the
+    `TrueNASDataset*` rules are what cover the pool.
+
+The dataset metrics, keyed by `dataset` (e.g. `pool/k8s-nfs`):
+
+| Metric | Meaning |
+|---|---|
+| `truenas_dataset_used_bytes` | `usedbydataset` — referenced data, **excluding** snapshots |
+| `truenas_dataset_snapshots_bytes` | `usedbysnapshots` — released only as snapshots expire |
+| `truenas_dataset_available_bytes` | writable space remaining |
+| `truenas_dataset_refquota_bytes` | referenced-data limit; **0 means unset** |
+| `truenas_dataset_quota_bytes` | total limit including snapshots; 0 means unset |
+
+Two things about the alert expressions are load-bearing:
+
+* **`usedbydataset`, not `used`.** `refquota` bounds referenced data and does not count snapshots.
+  Measured 2026-08-22: wiping 34G moved 27.5 GiB into `usedbysnapshots` while refquota headroom
+  recovered in full immediately. Dividing `used` by `refquota` would page for space the quota does
+  not bound.
+* **The `> 0` filter on the denominator.** `0` is ZFS's encoding for "no refquota", so without it
+  every unbounded dataset divides by zero, returns `+Inf`, and fires. Verified:
+  `vector(100) / (vector(0) > 0)` is empty, `vector(100) / vector(0)` is `+Inf`.
+
+The exporter needs `DATASET_READ` on the `prom-exporter` account, granted in
+[`jcwearn/truenas-infra`](https://github.com/jcwearn/truenas-infra). Without it the exporter keeps
+serving temperatures and `truenas_dataset_scrape_success` goes to 0 — it degrades rather than dies.
+
 ## Alert Rules
 
 The following Prometheus alert rules are defined in `helm.yaml`:
@@ -130,7 +174,12 @@ The following Prometheus alert rules are defined in `helm.yaml`:
 | TrueNASHighCpuUsage | CPU usage > 90% | 5m | warning |
 | TrueNASHighMemoryUsage | Memory usage > 90% | 5m | warning |
 | TrueNASZfsArcHitRatioLow | ZFS ARC hit ratio < 50% | 15m | warning |
-| TrueNASHighDiskUtilization | Filesystem usage > 85% | 10m | warning |
+| TrueNASBootPoolHighDiskUtilization | Boot-pool filesystem usage > 85% | 10m | warning |
+| TrueNASDatasetNearRefquota | Dataset `usedbydataset` > 80% of its refquota | 30m | warning |
+| TrueNASDatasetRefquotaCritical | Dataset `usedbydataset` > 95% of its refquota | 10m | critical |
+| TrueNASPoolLowFreeSpace | Pool free space < 500 GiB | 30m | warning |
+| TrueNASPoolCriticallyLowFreeSpace | Pool free space < 200 GiB | 10m | critical |
+| TrueNASDatasetExporterFailing | `pool.dataset.query` failing, values frozen | 10m | warning |
 
 Alerts flow through the existing pipeline: Prometheus > Alertmanager > alertmanager-ntfy bridge > ntfy push notifications.
 
