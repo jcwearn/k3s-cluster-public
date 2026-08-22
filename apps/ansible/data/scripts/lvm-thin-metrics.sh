@@ -30,9 +30,19 @@ TMP=$OUT.tmp
 
     # lv_attr starts with t on thin pools. --select keeps this to pools rather
     # than every LV, most of which report an empty data_percent.
-    lvs --noheadings --nameprefixes --readonly \
+    #
+    # Deliberately NOT --readonly. That flag skips the metadata read, so both
+    # percentages come back as empty strings and lv_attr reports XX in the state
+    # positions -- lvs exits 0 and the pool is selected, it just reports nothing
+    # about it. The guard below then drops every row and the file ends up as
+    # four header lines with no metrics, which is exactly what the first run of
+    # this script produced. lvs is a read-only command either way.
+    #
+    # stderr is left alone rather than sent to /dev/null so an lvs failure lands
+    # in the journal. Only stdout is captured into the file.
+    lvs --noheadings --nameprefixes \
         --select 'lv_attr=~"^t"' \
-        -o vg_name,lv_name,data_percent,metadata_percent 2>/dev/null |
+        -o vg_name,lv_name,data_percent,metadata_percent |
         sed -e 's/^ *//' |
         while IFS= read -r line; do
             [ -n "$line" ] || continue
