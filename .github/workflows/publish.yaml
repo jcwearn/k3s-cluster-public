@@ -21,7 +21,7 @@ on:
 
 jobs:
   publish:
-    uses: jcwearn/workflows/.github/workflows/public-sync.yaml@c9e49bd4c2226fa829a0179277df707b4585ce9e # v1
+    uses: jcwearn/workflows/.github/workflows/public-sync.yaml@8c9f2690f495be5546bbef78c555345e464cc593 # v1
     with:
       target-repo: jcwearn/k3s-cluster-public
       readme-override: .github/public-README.md
