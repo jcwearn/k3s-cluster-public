@@ -1,0 +1,69 @@
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: ansible-configure-lvm-thin-metrics
+  namespace: ansible
+spec:
+  # Unlike the other configure-* jobs, this one is not suspended. Those write a
+  # setting once; this one installs a collector, and re-asserting it weekly means
+  # a rebuilt or reimaged host starts reporting again without anyone remembering
+  # to run a playbook. The playbook is idempotent, so a run that finds everything
+  # in place changes nothing.
+  schedule: "0 4 * * 0"
+  timeZone: America/New_York
+  concurrencyPolicy: Forbid
+  successfulJobsHistoryLimit: 3
+  failedJobsHistoryLimit: 3
+  jobTemplate:
+    spec:
+      backoffLimit: 0
+      template:
+        spec:
+          serviceAccountName: ansible-runner
+          containers:
+            - name: ansible
+              image: ghcr.io/jcwearn/ansible-runner:0.1.44@sha256:8eaa61a36f71e62a19958419232b81197fd471bb46b877e14a8b338d84052fc5
+              imagePullPolicy: IfNotPresent
+              securityContext:
+                runAsUser: 0
+              command: ["ansible-playbook"]
+              args: ["/ansible/playbooks/configure-lvm-thin-metrics.yml"]
+              env:
+                - name: ANSIBLE_CONFIG
+                  value: /ansible/ansible.cfg
+              volumeMounts:
+                - name: ansible-data
+                  mountPath: /ansible
+                - name: ssh-key
+                  mountPath: /secrets
+                  readOnly: true
+              resources:
+                requests:
+                  cpu: 100m
+                  memory: 128Mi
+                limits:
+                  cpu: 500m
+                  memory: 256Mi
+          restartPolicy: Never
+          volumes:
+            - name: ansible-data
+              configMap:
+                name: ansible-data
+                items:
+                  - key: ansible.cfg
+                    path: ansible.cfg
+                  - key: inventory.yml
+                    path: inventory.yml
+                  - key: configure-lvm-thin-metrics.yml
+                    path: playbooks/configure-lvm-thin-metrics.yml
+                  - key: lvm-thin-metrics.sh
+                    path: scripts/lvm-thin-metrics.sh
+            - name: ssh-key
+              secret:
+                secretName: ansible-secrets
+                defaultMode: 0400
+                items:
+                  - key: ssh-private-key
+                    path: ssh-private-key
+                  - key: ssh-public-key
+                    path: ssh-public-key

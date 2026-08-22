@@ -88,15 +88,87 @@ The following Prometheus alert rules are defined in `helm.yaml` under the `proxm
 | ProxmoxHighMemory | Node memory > 90% (API) | 10m | warning |
 | ProxmoxStorageAlmostFull | Storage > 85% used | 10m | warning |
 | ProxmoxStorageFull | Storage > 95% used | 5m | critical |
+| ProxmoxStorageFillingUp | Storage over half full **and** projected to fill within 30 days | 6h | warning |
+
+Every one of these is wrapped in `max by (id)`. Each pve-exporter target reports the whole
+cluster, so all three scrapes carry all three nodes and all six storages; without the aggregation
+a single node going down raised the same alert three times, distinguished only by which host
+answered. The `id` label already names the subject, so dropping `instance` loses nothing.
+
+`ProxmoxStorage*` is additionally filtered to `id=~"storage/.*"`. Unfiltered it also evaluated
+`node/*` — the host root filesystem, already covered below — and `qemu/*`, where usage reads 0
+without the guest agent and the ratio means nothing.
 
 ### Host-Level Alerts (node_exporter)
 
 | Alert | Condition | Duration | Severity |
 |-------|-----------|----------|----------|
 | ProxmoxHostHighCPU | OS-level CPU > 90% | 10m | warning |
-| ProxmoxHostHighMemory | OS-level memory > 90% | 10m | warning |
 | ProxmoxHostDiskAlmostFull | Filesystem > 85% used | 10m | warning |
 | ProxmoxHostDiskFull | Filesystem > 95% used | 5m | critical |
+
+### NVMe Health (node_exporter textfile collector)
+
+The hosts have been exporting a full NVMe SMART set through `nvme.prom` all along and nothing
+read any of it. The drives sit at 9-10% wear after roughly 474 days, which is fine, and is
+exactly why it is worth watching: the number only becomes interesting long after anyone has
+stopped thinking about it. A drive wearing out gives no warning through a filesystem — it reports
+healthy right up to the point the controller goes read-only.
+
+| Alert | Condition | Duration | Severity |
+|-------|-----------|----------|----------|
+| ProxmoxNvmeWearHigh | > 80% of rated write endurance consumed | 1h | warning |
+| ProxmoxNvmeWearCritical | > 90% of rated write endurance consumed | 1h | critical |
+| ProxmoxNvmeSpareLow | Available spare at or below the drive's own reported threshold | 15m | critical |
+| ProxmoxNvmeCriticalWarning | The controller's critical-warning bitfield is non-zero | 5m | critical |
+| ProxmoxNvmeMediaErrors | Any increase in unrecovered data-integrity errors | 5m | warning |
+
+### LVM Thin-Pool Alerts (node_exporter textfile collector)
+
+The guests live on local LVM-thin. The PVE API reports the **data** fullness of those pools, which
+`ProxmoxStorageAlmostFull` already watches. It does not report **metadata** fullness, and that is
+the one that does not forgive: when the metadata LV fills, the pool goes read-only and deleting
+data does not recover it, because freeing a block is itself a metadata write. Recovery is
+`lvconvert --repair` against a spare LV, offline, on a hypervisor whose guests have all stopped
+writing.
+
+It is also the failure nothing else would hint at, because metadata grows with the number of
+distinct blocks rather than their volume — it can approach full while data sits at 13%, which is
+where these pools are today.
+
+| Alert | Condition | Duration | Severity |
+|-------|-----------|----------|----------|
+| ProxmoxThinPoolMetadataAlmostFull | Thin-pool metadata > 80% | 15m | warning |
+| ProxmoxThinPoolMetadataFull | Thin-pool metadata > 90% | 5m | critical |
+| ProxmoxThinPoolMetricsStale | `lvm_thin.prom` not rewritten in over 20 minutes | 10m | warning |
+| ProxmoxThinPoolMetricsMissing | No host reporting `lvm_thin_metadata_percent` | 6h | warning |
+
+The last two exist because a stopped timer looks like nothing at all: node_exporter keeps serving
+whatever the file last contained, so `lvm_thin_metadata_percent` stays resolvable and stays low.
+
+#### Installing the collector
+
+The metrics come from `/usr/local/bin/lvm-thin-metrics.sh` and a systemd timer, installed by
+`apps/ansible/data/playbooks/configure-lvm-thin-metrics.yml`. The textfile collector itself was
+already enabled on all three hosts — it serves `apt.prom` and `nvme.prom` out of
+`/var/lib/prometheus/node-exporter` — so nothing about node_exporter changes.
+
+Unlike the other `configure-*` CronJobs, this one is **not suspended**. Those write a setting
+once; this installs a collector, and re-asserting it weekly (Sundays 04:00) means a rebuilt or
+reimaged host starts reporting again without anyone remembering to run a playbook. The playbook is
+idempotent.
+
+Run it immediately rather than waiting for the first weekly tick:
+
+```bash
+kubectl create job -n ansible \
+  --from=cronjob/ansible-configure-lvm-thin-metrics \
+  ansible-configure-lvm-thin-metrics-manual
+kubectl logs -n ansible -l job-name=ansible-configure-lvm-thin-metrics-manual -f
+```
+
+`ProxmoxThinPoolMetricsMissing` uses a 6h `for:` rather than the 10m the other staleness guards
+use, precisely to cover the window between these rules landing through Flux and that job running.
 
 Alerts flow through the existing pipeline: Prometheus > Alertmanager > alertmanager-ntfy bridge > ntfy push notifications.
 

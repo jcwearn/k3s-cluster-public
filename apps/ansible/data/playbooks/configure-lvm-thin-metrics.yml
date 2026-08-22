@@ -1,0 +1,94 @@
+---
+# Playbook to export LVM thin-pool fullness from the Proxmox hosts.
+#
+# The guests live on local LVM-thin, and the PVE API reports only the DATA
+# fullness of those pools -- which pve_disk_usage_bytes and the ProxmoxStorage*
+# alerts already watch. Nothing reports METADATA fullness, and that is the one
+# that does not forgive: when the metadata LV fills, the pool goes read-only and
+# deleting data does not recover it, because freeing a block is itself a
+# metadata write. The fix at that point is lvconvert --repair, offline.
+#
+# node_exporter's textfile collector is already enabled and healthy on all three
+# hosts -- it is serving apt.prom and nvme.prom out of
+# /var/lib/prometheus/node-exporter today -- so this adds a script and a timer
+# and nothing else. No node_exporter reconfiguration, no restart.
+#
+# Run manually:
+#   kubectl create job -n ansible \
+#     --from=cronjob/ansible-configure-lvm-thin-metrics \
+#     ansible-configure-lvm-thin-metrics-manual
+
+- name: Export LVM thin-pool fullness to the textfile collector
+  hosts: proxmox
+  become: true
+  gather_facts: false
+
+  tasks:
+    - name: Ensure the textfile collector directory exists
+      ansible.builtin.file:
+        path: /var/lib/prometheus/node-exporter
+        state: directory
+        mode: "0755"
+
+    - name: Install the collector script
+      ansible.builtin.copy:
+        src: /ansible/scripts/lvm-thin-metrics.sh
+        dest: /usr/local/bin/lvm-thin-metrics.sh
+        mode: "0755"
+
+    - name: Install the systemd service
+      ansible.builtin.copy:
+        dest: /etc/systemd/system/lvm-thin-metrics.service
+        mode: "0644"
+        content: |
+          [Unit]
+          Description=Export LVM thin-pool fullness for node_exporter
+
+          [Service]
+          Type=oneshot
+          ExecStart=/usr/local/bin/lvm-thin-metrics.sh
+      register: lvm_thin_service
+
+    - name: Install the systemd timer
+      ansible.builtin.copy:
+        dest: /etc/systemd/system/lvm-thin-metrics.timer
+        mode: "0644"
+        content: |
+          [Unit]
+          Description=Refresh LVM thin-pool metrics
+
+          [Timer]
+          # Metadata fills over days, not seconds. Five minutes is frequent
+          # enough to be well inside the 15m staleness alert and infrequent
+          # enough that the lvs call is not worth thinking about.
+          OnBootSec=2min
+          OnUnitActiveSec=5min
+
+          [Install]
+          WantedBy=timers.target
+      register: lvm_thin_timer
+
+    - name: Reload systemd
+      ansible.builtin.systemd_service:
+        daemon_reload: true
+      when: lvm_thin_service.changed or lvm_thin_timer.changed
+
+    - name: Enable and start the timer
+      ansible.builtin.systemd_service:
+        name: lvm-thin-metrics.timer
+        enabled: true
+        state: started
+
+    - name: Run it once now so the metrics do not wait for the first tick
+      ansible.builtin.systemd_service:
+        name: lvm-thin-metrics.service
+        state: started
+
+    - name: Read back what was written
+      ansible.builtin.command: cat /var/lib/prometheus/node-exporter/lvm_thin.prom
+      register: lvm_thin_output
+      changed_when: false
+
+    - name: Show the exported metrics
+      ansible.builtin.debug:
+        var: lvm_thin_output.stdout_lines

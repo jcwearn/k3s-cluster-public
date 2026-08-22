@@ -365,6 +365,20 @@ spec:
         kubeSchedulerAlerting: false
         kubeSchedulerRecording: false
         windows: false
+      # Both PVC fill rules read kubelet_volume_stats_available_bytes, which on
+      # NFS is the statfs of the mount -- the exporting dataset, not the PVC.
+      # Every PVC in the cluster is on nfs.csi.k8s.io, so all 25 of them report
+      # the same figure to the byte, and it is the pool's free space rather than
+      # the refquota that actually bounds them: 8.7 TiB reported against the
+      # 1 TiB refquota on pool/k8s-nfs, overstating headroom 8.5x.
+      #
+      # The rule therefore cannot single out a filling PVC, and when it does
+      # fire it fires for all 25 at once. TrueNASDatasetNearRefquota watches the
+      # bound that is real. KubePersistentVolumeErrors stays enabled -- a
+      # provisioning failure is still a provisioning failure.
+      disabled:
+        KubePersistentVolumeFillingUp: true
+        KubePersistentVolumeInodesFillingUp: true
     additionalPrometheusRulesMap:
       dns-health:
         groups:
@@ -491,8 +505,13 @@ spec:
               #
               # It is kept because a full /var/log on the NAS is still worth
               # knowing about. The dataset rules below are what cover the pool.
+              #
+              # The mountpoint exclusion drops the tmpfs entries the collector
+              # mixes in -- _dev, _dev_shm, _run, _run_lock, _run_user,
+              # _run_netdata, _tmp. Those are memory, not the boot pool, and a
+              # full one of them would otherwise page as boot-pool pressure.
               - alert: TrueNASBootPoolHighDiskUtilization
-                expr: (disk_bytes_used{job="truenas"} / (disk_bytes_used{job="truenas"} + disk_bytes_avail{job="truenas"}) * 100) > 85
+                expr: (disk_bytes_used{job="truenas", mountpoint!~"_dev.*|_run.*|_tmp"} / (disk_bytes_used{job="truenas", mountpoint!~"_dev.*|_run.*|_tmp"} + disk_bytes_avail{job="truenas", mountpoint!~"_dev.*|_run.*|_tmp"}) * 100) > 85
                 for: 10m
                 labels:
                   severity: warning
@@ -530,22 +549,149 @@ spec:
 
               # Pool free space. The root dataset's `available` is the pool's,
               # and needs no POOL_READ role to read.
+              # Pool fullness as a fraction, not an absolute byte count. The
+              # previous thresholds were 500 GiB and 200 GiB free, which on an
+              # 8.1 TiB pool is 94% and 97.6% full -- past the point where ZFS
+              # is still writing well and far past the point where there is time
+              # to do anything about it.
+              #
+              # 80% is where ZFS allocation switches from first-fit to best-fit
+              # and write throughput starts degrading, so it is worth knowing
+              # about for its own sake, independent of the capacity question.
+              #
+              # Capacity is derived rather than read: the API exposes no pool
+              # size without a POOL_READ grant, but on the root dataset
+              # `used` (recursive) plus `available` is the usable size.
               - alert: TrueNASPoolLowFreeSpace
-                expr: truenas_dataset_available_bytes{dataset="pool"} < 500 * 1024 * 1024 * 1024
+                expr: >-
+                  truenas_dataset_total_used_bytes{dataset="pool"}
+                  / (truenas_dataset_total_used_bytes{dataset="pool"} + truenas_dataset_available_bytes{dataset="pool"})
+                  > 0.80
                 for: 30m
                 labels:
                   severity: warning
                 annotations:
-                  summary: "TrueNAS pool free space below 500 GiB"
-                  description: "Free space on the pool is under 500 GiB. Snapshots hold space after a delete until they expire, so check usedbysnapshots before assuming a live workload is responsible.\n  VALUE = {{ $value }} bytes"
+                  summary: "TrueNAS pool is {{ $value | humanizePercentage }} full"
+                  description: >-
+                    The pool is over 80% full, where ZFS write performance begins to
+                    degrade. Snapshots hold space after a delete until they expire, so
+                    check truenas_dataset_snapshots_bytes before assuming a live workload
+                    is responsible.
               - alert: TrueNASPoolCriticallyLowFreeSpace
-                expr: truenas_dataset_available_bytes{dataset="pool"} < 200 * 1024 * 1024 * 1024
+                expr: >-
+                  truenas_dataset_total_used_bytes{dataset="pool"}
+                  / (truenas_dataset_total_used_bytes{dataset="pool"} + truenas_dataset_available_bytes{dataset="pool"})
+                  > 0.90
                 for: 10m
                 labels:
                   severity: critical
                 annotations:
-                  summary: "TrueNAS pool free space below 200 GiB"
-                  description: "Free space on the pool is under 200 GiB.\n  VALUE = {{ $value }} bytes"
+                  summary: "TrueNAS pool is {{ $value | humanizePercentage }} full"
+                  description: "The pool is over 90% full."
+
+              # Trend rules. Everything above this point is a static line: it
+              # tells you that you have arrived, not that you are on the way.
+              # These are the early warning, and they follow the shape upstream
+              # uses for NodeFilesystemSpaceFillingUp -- a utilisation guard AND
+              # a linear projection -- because a projection on its own is noise.
+              # A pool that wobbles by a gigabyte around a flat mean will happily
+              # extrapolate to zero; the guard is what stops that from paging.
+              #
+              # The input window is 7d rather than the 24h upstream uses, because
+              # these measure storage that fills over weeks, not a filesystem that
+              # fills over hours. Note that Prometheus history here only begins
+              # 2026-08-21 -- predict_linear uses whatever the window holds, so
+              # these are correct but conservative until roughly late September.
+              - alert: TrueNASPoolFillingUp
+                expr: >-
+                  (
+                    truenas_dataset_total_used_bytes{dataset="pool"}
+                    / (truenas_dataset_total_used_bytes{dataset="pool"} + truenas_dataset_available_bytes{dataset="pool"})
+                    > 0.50
+                  )
+                  and
+                  predict_linear(truenas_dataset_available_bytes{dataset="pool"}[7d], 30 * 24 * 3600) < 0
+                for: 6h
+                labels:
+                  severity: warning
+                annotations:
+                  summary: "TrueNAS pool is on course to fill within 30 days"
+                  description: >-
+                    The pool is over half full ({{ $value | humanizePercentage }}) and its
+                    seven-day trend projects it running out inside 30 days. This is the
+                    alert that is supposed to arrive while there is still time to choose
+                    between deleting, expiring snapshots and buying disks.
+
+              # Projecting `used` against refquota rather than projecting the
+              # headroom directly: refquota is effectively constant, so the two
+              # are equivalent, and this way avoids a subquery.
+              - alert: TrueNASDatasetRefquotaFillingUp
+                expr: >-
+                  (truenas_dataset_used_bytes / (truenas_dataset_refquota_bytes > 0) > 0.50)
+                  and
+                  predict_linear(truenas_dataset_used_bytes[7d], 14 * 24 * 3600) > (truenas_dataset_refquota_bytes > 0)
+                for: 6h
+                labels:
+                  severity: warning
+                annotations:
+                  summary: "TrueNAS dataset {{ $labels.dataset }} is on course to hit its refquota within 14 days"
+                  description: >-
+                    {{ $labels.dataset }} is over half its refquota
+                    ({{ $value | humanizePercentage }}) and its seven-day trend projects it
+                    reaching the limit inside 14 days. Every PVC on this dataset gets
+                    ENOSPC when it does.
+
+              # Pool health, not pool space. zfs_pool arrives from netdata as one
+              # series per pool per state, with a 1 on whichever state is current.
+              # Nothing has ever alerted on it: a vdev could fault in the array
+              # holding every PVC in the cluster and the only symptom would be a
+              # colour on a dashboard nobody has open.
+              #
+              # max by (pool) collapses the state dimension so the alert names the
+              # pool rather than repeating per state.
+              - alert: TrueNASPoolDegraded
+                expr: max by (pool) (zfs_pool{job="truenas", state=~"degraded|faulted|unavail|removed"}) == 1
+                for: 5m
+                labels:
+                  severity: critical
+                annotations:
+                  summary: "TrueNAS pool {{ $labels.pool }} is not ONLINE"
+                  description: >-
+                    ZFS reports pool {{ $labels.pool }} in a degraded, faulted, unavailable
+                    or removed state. Run `zpool status {{ $labels.pool }}` on the NAS.
+
+              # Snapshots are the one way the pool fills that no other rule sees.
+              # TrueNASDatasetNearRefquota divides usedbydataset by refquota, and
+              # that is correct -- refquota bounds referenced data and excludes
+              # snapshots -- but it means snapshot growth is invisible to it by
+              # construction. Snapshots still consume pool space.
+              #
+              # pool/k8s-nfs already holds more in snapshots (83.2 GB) than live
+              # data (79.2 GB), a ratio of 1.05, so the threshold is set above
+              # today's steady state rather than at it.
+              #
+              # Ratio alone is not enough. pool/k8s-nfs-monitoring sits at 3.72
+              # against 1.32 GB of live data, because a Prometheus TSDB rewrites
+              # its blocks constantly and every snapshot diverges from the last
+              # almost immediately -- structurally normal there, and it would
+              # have made this rule fire on the day it merged. The 50 GiB floor
+              # is the second half of the question: snapshots have to dominate
+              # live data AND be large enough to be worth reclaiming.
+              #
+              # The `> 1 GiB` denominator guard is the same shape as the `> 0` on
+              # refquota below: on a dataset holding a few hundred KiB the ratio
+              # is arithmetically true and operationally meaningless.
+              - alert: TrueNASSnapshotsExceedLiveData
+                expr: ((truenas_dataset_snapshots_bytes > 53687091200) / (truenas_dataset_used_bytes > 1073741824)) > 1.5
+                for: 6h
+                labels:
+                  severity: warning
+                annotations:
+                  summary: "TrueNAS dataset {{ $labels.dataset }} holds more snapshot than live data"
+                  description: >-
+                    Snapshots on {{ $labels.dataset }} are {{ $value | humanize }}x its live
+                    data. refquota does not bound snapshots, so this consumes pool space that
+                    no dataset-level alert can see. Review the snapshot retention task.
               # Guards, not alerts about the NAS.
               #
               # Every rule above depends on a metric family that can stop
@@ -703,8 +849,14 @@ spec:
         groups:
           - name: proxmox-health
             rules:
+              # Every pve-exporter target reports the whole cluster, so each of
+              # the three scrapes carries all three nodes and all six storages.
+              # Without `max by (id)` a single node going down raises the same
+              # alert three times, distinguished only by which host answered.
+              # The `id` label already names the subject; `instance` only names
+              # the messenger, so dropping it loses nothing.
               - alert: ProxmoxNodeDown
-                expr: pve_up{id=~"node/.*"} == 0
+                expr: max by (id) (pve_up{id=~"node/.*"}) == 0
                 for: 1m
                 labels:
                   severity: critical
@@ -712,15 +864,15 @@ spec:
                   summary: "Proxmox node {{ $labels.id }} is down"
                   description: "Proxmox node {{ $labels.id }} has been unreachable for more than 1 minute."
               - alert: ProxmoxVMDown
-                expr: pve_up{id=~"qemu/(100|201|301)"} == 0
+                expr: max by (id) (pve_up{id=~"qemu/(100|201|301)"}) == 0
                 for: 5m
                 labels:
                   severity: warning
                 annotations:
-                  summary: "Proxmox VM {{ $labels.name }} is down"
-                  description: "VM {{ $labels.name }} on {{ $labels.instance }} has been down for more than 5 minutes."
+                  summary: "Proxmox VM {{ $labels.id }} is down"
+                  description: "VM {{ $labels.id }} has been down for more than 5 minutes."
               - alert: ProxmoxHighCPU
-                expr: pve_cpu_usage_ratio{id=~"node/.*"} > 0.9
+                expr: max by (id) (pve_cpu_usage_ratio{id=~"node/.*"}) > 0.9
                 for: 10m
                 labels:
                   severity: warning
@@ -728,15 +880,19 @@ spec:
                   summary: "Proxmox node {{ $labels.id }} high CPU ({{ $value | humanizePercentage }})"
                   description: "CPU usage on {{ $labels.id }} has exceeded 90% for 10 minutes."
               - alert: ProxmoxHighMemory
-                expr: (pve_memory_usage_bytes{id=~"node/.*"} / pve_memory_size_bytes{id=~"node/.*"}) > 0.90
+                expr: max by (id) (pve_memory_usage_bytes{id=~"node/.*"} / pve_memory_size_bytes{id=~"node/.*"}) > 0.90
                 for: 10m
                 labels:
                   severity: warning
                 annotations:
                   summary: "Proxmox node {{ $labels.id }} high memory ({{ $value | humanizePercentage }})"
                   description: "Memory usage on {{ $labels.id }} has exceeded 90% for 10 minutes."
+              # id is filtered because pve_disk_usage_bytes also covers node/* --
+              # the host root filesystem, already watched by ProxmoxHostDisk* --
+              # and qemu/*, where usage reads 0 without the guest agent and the
+              # ratio is meaningless.
               - alert: ProxmoxStorageAlmostFull
-                expr: (pve_disk_usage_bytes / pve_disk_size_bytes) > 0.85
+                expr: max by (id) (pve_disk_usage_bytes{id=~"storage/.*"} / pve_disk_size_bytes{id=~"storage/.*"}) > 0.85
                 for: 10m
                 labels:
                   severity: warning
@@ -744,13 +900,36 @@ spec:
                   summary: "Proxmox storage {{ $labels.id }} almost full ({{ $value | humanizePercentage }})"
                   description: "Storage {{ $labels.id }} is above 85% used."
               - alert: ProxmoxStorageFull
-                expr: (pve_disk_usage_bytes / pve_disk_size_bytes) > 0.95
+                expr: max by (id) (pve_disk_usage_bytes{id=~"storage/.*"} / pve_disk_size_bytes{id=~"storage/.*"}) > 0.95
                 for: 5m
                 labels:
                   severity: critical
                 annotations:
                   summary: "Proxmox storage {{ $labels.id }} critically full ({{ $value | humanizePercentage }})"
                   description: "Storage {{ $labels.id }} is above 95% used."
+              # The early-warning half of the storage rules. Same shape as the
+              # TrueNAS trend alerts: a utilisation guard AND a projection, so a
+              # storage that idles at a flat 12% cannot extrapolate its way into
+              # an alert. Projecting usage up to size rather than headroom down
+              # to zero keeps this free of a subquery.
+              #
+              # This covers the LVM-thin pools, which is where the guests grew to
+              # 63% before anyone noticed in August 2026.
+              - alert: ProxmoxStorageFillingUp
+                expr: >-
+                  max by (id) (
+                    (pve_disk_usage_bytes{id=~"storage/.*"} / pve_disk_size_bytes{id=~"storage/.*"} > 0.50)
+                    and
+                    predict_linear(pve_disk_usage_bytes{id=~"storage/.*"}[7d], 30 * 24 * 3600) > pve_disk_size_bytes{id=~"storage/.*"}
+                  )
+                for: 6h
+                labels:
+                  severity: warning
+                annotations:
+                  summary: "Proxmox storage {{ $labels.id }} is on course to fill within 30 days"
+                  description: >-
+                    {{ $labels.id }} is over half full ({{ $value | humanizePercentage }})
+                    and its seven-day trend projects it full inside 30 days.
               - alert: ProxmoxHostHighCPU
                 expr: (1 - avg without(cpu) (rate(node_cpu_seconds_total{job="proxmox-nodes", mode="idle"}[5m]))) > 0.9
                 for: 10m
@@ -775,6 +954,130 @@ spec:
                 annotations:
                   summary: "Proxmox host {{ $labels.instance }} disk critically full ({{ $labels.mountpoint }})"
                   description: "Filesystem {{ $labels.mountpoint }} on {{ $labels.instance }} is above 95% used.\n  VALUE = {{ $value | humanizePercentage }}"
+
+              # The hosts already export a full NVMe SMART set -- wear, spare,
+              # media errors, the controller's own critical-warning bitfield --
+              # and nothing has ever read any of it. The drives are at 9-10%
+              # wear after roughly 474 days, which is fine, and is exactly why
+              # this is worth watching: the number only becomes interesting long
+              # after anyone has stopped thinking about it.
+              #
+              # Space alerts do not substitute for these. A drive wearing out
+              # gives no warning through a filesystem; it reports healthy right
+              # up to the point the controller goes read-only.
+              - alert: ProxmoxNvmeWearHigh
+                expr: nvme_percentage_used_ratio{job="proxmox-nodes"} > 0.80
+                for: 1h
+                labels:
+                  severity: warning
+                annotations:
+                  summary: "Proxmox host {{ $labels.instance }} NVMe {{ $labels.device }} at {{ $value | humanizePercentage }} rated life"
+                  description: "The drive has consumed over 80% of its rated write endurance. Plan a replacement."
+              - alert: ProxmoxNvmeWearCritical
+                expr: nvme_percentage_used_ratio{job="proxmox-nodes"} > 0.90
+                for: 1h
+                labels:
+                  severity: critical
+                annotations:
+                  summary: "Proxmox host {{ $labels.instance }} NVMe {{ $labels.device }} at {{ $value | humanizePercentage }} rated life"
+                  description: "The drive has consumed over 90% of its rated write endurance. Replace it."
+              # Compared against the drive's own reported threshold rather than a
+              # number written here, so the rule stays correct across hardware.
+              - alert: ProxmoxNvmeSpareLow
+                expr: nvme_available_spare_ratio{job="proxmox-nodes"} <= nvme_available_spare_threshold_ratio{job="proxmox-nodes"}
+                for: 15m
+                labels:
+                  severity: critical
+                annotations:
+                  summary: "Proxmox host {{ $labels.instance }} NVMe {{ $labels.device }} spare blocks exhausted"
+                  description: >-
+                    Available spare capacity has fallen to the threshold the drive itself
+                    reports. The controller is out of blocks to remap failures onto.
+              - alert: ProxmoxNvmeCriticalWarning
+                expr: nvme_critical_warning{job="proxmox-nodes"} > 0
+                for: 5m
+                labels:
+                  severity: critical
+                annotations:
+                  summary: "Proxmox host {{ $labels.instance }} NVMe {{ $labels.device }} raised a critical warning"
+                  description: >-
+                    The controller's critical-warning bitfield is non-zero (value
+                    {{ $value }}): some combination of spare below threshold, temperature
+                    beyond limits, degraded reliability, read-only media, or failed volatile
+                    memory backup. Run `nvme smart-log /dev/{{ $labels.device }}`.
+              - alert: ProxmoxNvmeMediaErrors
+                expr: increase(nvme_media_errors_total{job="proxmox-nodes"}[1h]) > 0
+                for: 5m
+                labels:
+                  severity: warning
+                annotations:
+                  summary: "Proxmox host {{ $labels.instance }} NVMe {{ $labels.device }} logged media errors"
+                  description: >-
+                    {{ $value | humanize }} unrecovered data-integrity errors in the last
+                    hour. The counter has been flat at 0; any movement is new.
+
+              # Thin-pool metadata, from the textfile collector. The PVE API
+              # reports DATA fullness only, which ProxmoxStorage* already
+              # watches. Metadata is the one that does not forgive: when it
+              # fills the pool goes read-only, and deleting data does not bring
+              # it back because freeing a block is itself a metadata write. The
+              # recovery is lvconvert --repair against a spare LV, offline.
+              #
+              # It is also the one nothing else would notice, because metadata
+              # grows with the number of distinct blocks rather than their
+              # volume -- it can approach full while data sits at 13%.
+              - alert: ProxmoxThinPoolMetadataAlmostFull
+                expr: lvm_thin_metadata_percent{job="proxmox-nodes"} > 80
+                for: 15m
+                labels:
+                  severity: warning
+                annotations:
+                  summary: "Proxmox thin pool {{ $labels.vg }}/{{ $labels.lv }} metadata {{ $value }}% full"
+                  description: >-
+                    Thin-pool metadata on {{ $labels.instance }} is above 80%. Extend it with
+                    `lvextend --poolmetadatasize` while the pool is still writable.
+              - alert: ProxmoxThinPoolMetadataFull
+                expr: lvm_thin_metadata_percent{job="proxmox-nodes"} > 90
+                for: 5m
+                labels:
+                  severity: critical
+                annotations:
+                  summary: "Proxmox thin pool {{ $labels.vg }}/{{ $labels.lv }} metadata {{ $value }}% full"
+                  description: >-
+                    Thin-pool metadata on {{ $labels.instance }} is above 90%. At 100% the pool
+                    goes read-only and every guest on it stops writing.
+
+              # A stopped timer does not look like anything. node_exporter keeps
+              # serving whatever the file last contained, so lvm_thin_metadata_percent
+              # stays resolvable and stays low -- the same failure mode the
+              # TrueNAS staleness guards exist for. The timer runs every 5m;
+              # 20 minutes of no rewrite means it is not running.
+              - alert: ProxmoxThinPoolMetricsStale
+                expr: time() - node_textfile_mtime_seconds{job="proxmox-nodes", file=~".*lvm_thin.prom"} > 1200
+                for: 10m
+                labels:
+                  severity: warning
+                annotations:
+                  summary: "Proxmox host {{ $labels.instance }} thin-pool metrics are stale"
+                  description: >-
+                    lvm_thin.prom has not been rewritten in over 20 minutes, so the metadata
+                    alerts are reading frozen values. Check lvm-thin-metrics.timer.
+              # 6h rather than the 10m the other staleness guards use. These
+              # rules land through Flux, but the collector behind them is
+              # installed by an Ansible job, so there is a window after a merge
+              # where the metric legitimately does not exist yet. Six hours is
+              # long enough to cover triggering that job by hand and short
+              # enough to still catch the collector disappearing.
+              - alert: ProxmoxThinPoolMetricsMissing
+                expr: absent(lvm_thin_metadata_percent{job="proxmox-nodes"})
+                for: 6h
+                labels:
+                  severity: warning
+                annotations:
+                  summary: "Proxmox thin-pool metadata metrics are absent"
+                  description: >-
+                    No host is reporting lvm_thin_metadata_percent. The collector script or its
+                    timer is gone; run the ansible-configure-lvm-thin-metrics job.
       release-lifecycle:
         groups:
           - name: release-lifecycle

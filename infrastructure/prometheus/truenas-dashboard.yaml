@@ -792,12 +792,419 @@ data:
           "type": "stat"
         },
         {
-          "collapsed": true,
+          "collapsed": false,
           "gridPos": {
             "h": 1,
             "w": 24,
             "x": 0,
             "y": 18
+          },
+          "id": 200,
+          "panels": [],
+          "title": "Capacity",
+          "type": "row"
+        },
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "description": "Pool fullness. Capacity is derived rather than read: the API exposes no pool size without a POOL_READ grant, but on the root dataset the recursive used plus available is the usable size. 80% is where TrueNASPoolLowFreeSpace fires, and where ZFS allocation switches to best-fit and writes slow down.",
+          "fieldConfig": {
+            "defaults": {
+              "color": {
+                "mode": "thresholds"
+              },
+              "mappings": [],
+              "max": 1,
+              "min": 0,
+              "thresholds": {
+                "mode": "absolute",
+                "steps": [
+                  {
+                    "color": "green",
+                    "value": null
+                  },
+                  {
+                    "color": "yellow",
+                    "value": 0.5
+                  },
+                  {
+                    "color": "orange",
+                    "value": 0.8
+                  },
+                  {
+                    "color": "red",
+                    "value": 0.9
+                  }
+                ]
+              },
+              "unit": "percentunit"
+            },
+            "overrides": []
+          },
+          "gridPos": {
+            "h": 9,
+            "w": 6,
+            "x": 0,
+            "y": 19
+          },
+          "id": 201,
+          "options": {
+            "minVizHeight": 75,
+            "minVizWidth": 75,
+            "orientation": "auto",
+            "reduceOptions": {
+              "calcs": [
+                "lastNotNull"
+              ],
+              "fields": "",
+              "values": false
+            },
+            "showThresholdLabels": false,
+            "showThresholdMarkers": true,
+            "sizing": "auto"
+          },
+          "pluginVersion": "11.3.0",
+          "targets": [
+            {
+              "datasource": {
+                "type": "prometheus",
+                "uid": "prometheus"
+              },
+              "editorMode": "code",
+              "expr": "truenas_dataset_total_used_bytes{instance=~\"$instance\", dataset=\"pool\"}\n/ (truenas_dataset_total_used_bytes{instance=~\"$instance\", dataset=\"pool\"}\n   + truenas_dataset_available_bytes{instance=~\"$instance\", dataset=\"pool\"})",
+              "instant": false,
+              "legendFormat": "pool",
+              "range": true,
+              "refId": "A"
+            }
+          ],
+          "title": "Pool fullness",
+          "type": "gauge"
+        },
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "description": "Absolute pool space over time. The slope here is what TrueNASPoolFillingUp projects forward.",
+          "fieldConfig": {
+            "defaults": {
+              "color": {
+                "mode": "palette-classic"
+              },
+              "custom": {
+                "axisBorderShow": false,
+                "axisCenteredZero": false,
+                "axisColorMode": "text",
+                "axisLabel": "",
+                "axisPlacement": "auto",
+                "barAlignment": 0,
+                "barWidthFactor": 0.6,
+                "drawStyle": "line",
+                "fillOpacity": 10,
+                "gradientMode": "none",
+                "hideFrom": {
+                  "legend": false,
+                  "tooltip": false,
+                  "viz": false
+                },
+                "insertNulls": false,
+                "lineInterpolation": "linear",
+                "lineWidth": 1,
+                "pointSize": 5,
+                "scaleDistribution": {
+                  "type": "linear"
+                },
+                "showPoints": "never",
+                "spanNulls": false,
+                "stacking": {
+                  "group": "A",
+                  "mode": "none"
+                },
+                "thresholdsStyle": {
+                  "mode": "off"
+                }
+              },
+              "mappings": [],
+              "thresholds": {
+                "mode": "absolute",
+                "steps": [
+                  {
+                    "color": "green",
+                    "value": null
+                  },
+                  {
+                    "color": "red",
+                    "value": 80
+                  }
+                ]
+              },
+              "unit": "bytes"
+            },
+            "overrides": []
+          },
+          "gridPos": {
+            "h": 9,
+            "w": 6,
+            "x": 6,
+            "y": 19
+          },
+          "id": 202,
+          "options": {
+            "legend": {
+              "calcs": [],
+              "displayMode": "list",
+              "placement": "bottom",
+              "showLegend": true
+            },
+            "tooltip": {
+              "mode": "multi",
+              "sort": "desc"
+            }
+          },
+          "pluginVersion": "11.3.0",
+          "targets": [
+            {
+              "datasource": {
+                "type": "prometheus",
+                "uid": "prometheus"
+              },
+              "editorMode": "code",
+              "expr": "truenas_dataset_total_used_bytes{instance=~\"$instance\", dataset=\"pool\"}",
+              "instant": false,
+              "legendFormat": "used",
+              "range": true,
+              "refId": "A"
+            },
+            {
+              "datasource": {
+                "type": "prometheus",
+                "uid": "prometheus"
+              },
+              "editorMode": "code",
+              "expr": "truenas_dataset_available_bytes{instance=~\"$instance\", dataset=\"pool\"}",
+              "instant": false,
+              "legendFormat": "free",
+              "range": true,
+              "refId": "B"
+            }
+          ],
+          "title": "Pool used and free",
+          "type": "timeseries"
+        },
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "description": "Referenced data as a fraction of each dataset's refquota. Only datasets that have one appear: ZFS encodes no-refquota as 0, and the > 0 filter is what keeps that from dividing by zero. This is the bound that actually stops a PVC writing, not the per-volume figure kubelet reports over NFS.",
+          "fieldConfig": {
+            "defaults": {
+              "color": {
+                "mode": "palette-classic"
+              },
+              "custom": {
+                "axisBorderShow": false,
+                "axisCenteredZero": false,
+                "axisColorMode": "text",
+                "axisLabel": "",
+                "axisPlacement": "auto",
+                "barAlignment": 0,
+                "barWidthFactor": 0.6,
+                "drawStyle": "line",
+                "fillOpacity": 10,
+                "gradientMode": "none",
+                "hideFrom": {
+                  "legend": false,
+                  "tooltip": false,
+                  "viz": false
+                },
+                "insertNulls": false,
+                "lineInterpolation": "linear",
+                "lineWidth": 1,
+                "pointSize": 5,
+                "scaleDistribution": {
+                  "type": "linear"
+                },
+                "showPoints": "never",
+                "spanNulls": false,
+                "stacking": {
+                  "group": "A",
+                  "mode": "none"
+                },
+                "thresholdsStyle": {
+                  "mode": "off"
+                }
+              },
+              "mappings": [],
+              "thresholds": {
+                "mode": "absolute",
+                "steps": [
+                  {
+                    "color": "green",
+                    "value": null
+                  },
+                  {
+                    "color": "orange",
+                    "value": 0.8
+                  },
+                  {
+                    "color": "red",
+                    "value": 0.95
+                  }
+                ]
+              },
+              "unit": "percentunit",
+              "max": 1,
+              "min": 0
+            },
+            "overrides": []
+          },
+          "gridPos": {
+            "h": 9,
+            "w": 6,
+            "x": 12,
+            "y": 19
+          },
+          "id": 203,
+          "options": {
+            "legend": {
+              "calcs": [],
+              "displayMode": "list",
+              "placement": "bottom",
+              "showLegend": true
+            },
+            "tooltip": {
+              "mode": "multi",
+              "sort": "desc"
+            }
+          },
+          "pluginVersion": "11.3.0",
+          "targets": [
+            {
+              "datasource": {
+                "type": "prometheus",
+                "uid": "prometheus"
+              },
+              "editorMode": "code",
+              "expr": "truenas_dataset_used_bytes{instance=~\"$instance\"}\n/ (truenas_dataset_refquota_bytes{instance=~\"$instance\"} > 0)",
+              "instant": false,
+              "legendFormat": "{{dataset}}",
+              "range": true,
+              "refId": "A"
+            }
+          ],
+          "title": "Dataset usage against refquota",
+          "type": "timeseries"
+        },
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "description": "Space held by snapshots, which refquota does not bound and the refquota panel therefore cannot show. pool/k8s-nfs already holds more here than in live data. Snapshots keep consuming pool space after a delete until they expire.",
+          "fieldConfig": {
+            "defaults": {
+              "color": {
+                "mode": "palette-classic"
+              },
+              "custom": {
+                "axisBorderShow": false,
+                "axisCenteredZero": false,
+                "axisColorMode": "text",
+                "axisLabel": "",
+                "axisPlacement": "auto",
+                "barAlignment": 0,
+                "barWidthFactor": 0.6,
+                "drawStyle": "line",
+                "fillOpacity": 10,
+                "gradientMode": "none",
+                "hideFrom": {
+                  "legend": false,
+                  "tooltip": false,
+                  "viz": false
+                },
+                "insertNulls": false,
+                "lineInterpolation": "linear",
+                "lineWidth": 1,
+                "pointSize": 5,
+                "scaleDistribution": {
+                  "type": "linear"
+                },
+                "showPoints": "never",
+                "spanNulls": false,
+                "stacking": {
+                  "group": "A",
+                  "mode": "none"
+                },
+                "thresholdsStyle": {
+                  "mode": "off"
+                }
+              },
+              "mappings": [],
+              "thresholds": {
+                "mode": "absolute",
+                "steps": [
+                  {
+                    "color": "green",
+                    "value": null
+                  },
+                  {
+                    "color": "red",
+                    "value": 80
+                  }
+                ]
+              },
+              "unit": "bytes"
+            },
+            "overrides": []
+          },
+          "gridPos": {
+            "h": 9,
+            "w": 6,
+            "x": 18,
+            "y": 19
+          },
+          "id": 204,
+          "options": {
+            "legend": {
+              "calcs": [],
+              "displayMode": "list",
+              "placement": "bottom",
+              "showLegend": true
+            },
+            "tooltip": {
+              "mode": "multi",
+              "sort": "desc"
+            }
+          },
+          "pluginVersion": "11.3.0",
+          "targets": [
+            {
+              "datasource": {
+                "type": "prometheus",
+                "uid": "prometheus"
+              },
+              "editorMode": "code",
+              "expr": "truenas_dataset_snapshots_bytes{instance=~\"$instance\"}",
+              "instant": false,
+              "legendFormat": "{{dataset}}",
+              "range": true,
+              "refId": "A"
+            }
+          ],
+          "title": "Snapshot space by dataset",
+          "type": "timeseries"
+        },
+        {
+          "collapsed": true,
+          "gridPos": {
+            "h": 1,
+            "w": 24,
+            "x": 0,
+            "y": 28
           },
           "id": 79,
           "panels": [
@@ -1394,7 +1801,7 @@ data:
             "h": 1,
             "w": 24,
             "x": 0,
-            "y": 19
+            "y": 29
           },
           "id": 6,
           "panels": [
@@ -1872,7 +2279,7 @@ data:
             "h": 1,
             "w": 24,
             "x": 0,
-            "y": 20
+            "y": 30
           },
           "id": 56,
           "panels": [
@@ -2653,7 +3060,7 @@ data:
             "h": 1,
             "w": 24,
             "x": 0,
-            "y": 21
+            "y": 31
           },
           "id": 168,
           "panels": [
@@ -3068,7 +3475,7 @@ data:
             "h": 1,
             "w": 24,
             "x": 0,
-            "y": 38
+            "y": 48
           },
           "id": 100,
           "panels": [
@@ -3273,7 +3680,7 @@ data:
             "h": 1,
             "w": 24,
             "x": 0,
-            "y": 39
+            "y": 49
           },
           "id": 114,
           "panels": [
@@ -3642,7 +4049,7 @@ data:
             "h": 1,
             "w": 24,
             "x": 0,
-            "y": 40
+            "y": 50
           },
           "id": 131,
           "panels": [
@@ -4321,7 +4728,7 @@ data:
             "h": 1,
             "w": 24,
             "x": 0,
-            "y": 41
+            "y": 51
           },
           "id": 149,
           "panels": [
@@ -5103,7 +5510,7 @@ data:
             "h": 1,
             "w": 24,
             "x": 0,
-            "y": 42
+            "y": 52
           },
           "id": 8,
           "panels": [

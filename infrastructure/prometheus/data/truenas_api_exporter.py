@@ -204,7 +204,7 @@ class WebSocket:
 #
 # refquota and quota are 0 when unset, which is ZFS's own encoding for "none"
 # and is why the alerts guard on `> 0` rather than on absence.
-_DATASET_PROPS = ("usedbydataset", "usedbysnapshots", "available", "refquota", "quota")
+_DATASET_PROPS = ("usedbydataset", "usedbysnapshots", "used", "available", "refquota", "quota")
 
 
 def _dataset_bytes(row: dict, prop: str) -> int | None:
@@ -332,6 +332,14 @@ def render() -> str:
          "Space referenced by the dataset itself, excluding snapshots. This is what refquota bounds."),
         ("truenas_dataset_snapshots_bytes", "usedbysnapshots",
          "Space held by this dataset's snapshots. Released only as they expire."),
+        # `used` is the recursive figure -- this dataset, its snapshots and its
+        # children -- and is deliberately NOT what the refquota rules divide by.
+        # It exists so pool capacity is derivable: on the root dataset,
+        # total_used + available is the usable size of the pool, which lets the
+        # pool alerts be a percentage instead of an absolute byte count. Nothing
+        # in the API exposes capacity directly without a POOL_READ grant.
+        ("truenas_dataset_total_used_bytes", "used",
+         "Space used by the dataset, its snapshots and its children. On the root dataset, this plus available is the pool's usable capacity."),
         ("truenas_dataset_available_bytes", "available",
          "Space still writable, after refquota and pool free space."),
         ("truenas_dataset_refquota_bytes", "refquota",
