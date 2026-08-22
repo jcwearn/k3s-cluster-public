@@ -442,6 +442,100 @@ spec:
                 annotations:
                   summary: "TrueNAS disk temperature critical ({{ $labels.serial }})"
                   description: "Disk {{ $labels.serial }} on {{ $labels.instance }} is at {{ $value }}°C (threshold: 70°C)."
+              # SMART for the six pool drives. These close #811, which proposed
+              # a fourth call in truenas-api-exporter alongside
+              # disk.temperatures and pool.dataset.query. That is not possible:
+              # TrueNAS 25.10 answers 769 JSON-RPC methods and not one returns
+              # SMART data -- no smart.* namespace, no disk.smart_attributes,
+              # no smart.test.results, disk.query and disk.details carry
+              # identity and geometry only, and none of the 40 reporting charts
+              # is NVMe. It is not a missing role, so no grant in
+              # jcwearn/truenas-infra would have helped.
+              #
+              # What feeds these instead is scripts/on-box/nvme-metrics.sh in
+              # that repo: root cron, every five minutes, `smartctl -j -a` per
+              # drive, pushed as graphite lines. Names and units are identical
+              # to what the hypervisors already export, so the five rules below
+              # are the Proxmox ones with the job matcher swapped. The
+              # thresholds are deliberately not re-derived -- two different
+              # numbers for the same failure mode would be a trap for whoever
+              # next tunes one of them.
+              #
+              # The serial is in every summary because all six drives are the
+              # same model and `device` is a kernel enumeration order that can
+              # move across a reboot. The serial is what is printed on the
+              # drive and what goes in the order.
+              - alert: TrueNASNvmeWearHigh
+                expr: nvme_percentage_used_ratio{job="truenas"} > 0.80
+                for: 1h
+                labels:
+                  severity: warning
+                annotations:
+                  summary: "TrueNAS NVMe {{ $labels.device }} ({{ $labels.serial }}) at {{ $value | humanizePercentage }} rated life"
+                  description: >-
+                    The drive has consumed over 80% of its rated write endurance. Plan a
+                    replacement. All six were bought together and carry the same writes,
+                    so expect the others to be close behind rather than reading this as
+                    one drive going early.
+              - alert: TrueNASNvmeWearCritical
+                expr: nvme_percentage_used_ratio{job="truenas"} > 0.90
+                for: 1h
+                labels:
+                  severity: critical
+                annotations:
+                  summary: "TrueNAS NVMe {{ $labels.device }} ({{ $labels.serial }}) at {{ $value | humanizePercentage }} rated life"
+                  description: >-
+                    The drive has consumed over 90% of its rated write endurance. Replace
+                    it. RAIDZ1 survives one drive; it does not survive a second one
+                    failing during the resilver, and a resilver is the heaviest read the
+                    other five will ever take.
+              # Compared against the threshold the drive itself reports rather
+              # than a number written here, so the rule stays correct across
+              # hardware. Both sides carry an identical label set, so this
+              # matches one-to-one without an on().
+              - alert: TrueNASNvmeSpareLow
+                expr: nvme_available_spare_ratio{job="truenas"} <= nvme_available_spare_threshold_ratio{job="truenas"}
+                for: 15m
+                labels:
+                  severity: critical
+                annotations:
+                  summary: "TrueNAS NVMe {{ $labels.device }} ({{ $labels.serial }}) spare blocks exhausted"
+                  description: >-
+                    Available spare capacity has fallen to the threshold the drive itself
+                    reports. The controller is out of blocks to remap failures onto.
+              - alert: TrueNASNvmeCriticalWarning
+                expr: nvme_critical_warning{job="truenas"} > 0
+                for: 5m
+                labels:
+                  severity: critical
+                annotations:
+                  summary: "TrueNAS NVMe {{ $labels.device }} ({{ $labels.serial }}) raised a critical warning"
+                  description: >-
+                    The controller's critical-warning bitfield is non-zero (value
+                    {{ $value }}): some combination of spare below threshold, temperature
+                    beyond limits, degraded reliability, read-only media, or failed
+                    volatile memory backup. Run `smartctl -a /dev/{{ $labels.device }}`
+                    from the TrueNAS Shell.
+              # The serial label is what makes increase() safe here. A replaced
+              # drive reports media_errors = 0; without the serial that is a
+              # counter reset inside one series and increase() extrapolates a
+              # spurious spike on the morning after a replacement. With it, a
+              # new drive is a new series.
+              #
+              # graphite-exporter has no counter type and serves this as a
+              # gauge, which changes nothing: PromQL detects resets by value,
+              # not by declared type.
+              - alert: TrueNASNvmeMediaErrors
+                expr: increase(nvme_media_errors_total{job="truenas"}[1h]) > 0
+                for: 5m
+                labels:
+                  severity: warning
+                annotations:
+                  summary: "TrueNAS NVMe {{ $labels.device }} ({{ $labels.serial }}) logged media errors"
+                  description: >-
+                    {{ $value | humanize }} unrecovered data-integrity errors in the last
+                    hour on a pool drive. The counter has been flat at 0; any movement is
+                    new. Check `zpool status pool` for matching read or checksum errors.
               - alert: TrueNASHighCpuUsage
                 expr: (100 - cpu_total{job="truenas", kind="idle"}) > 90
                 for: 5m
@@ -799,6 +893,31 @@ spec:
               # absent() guard on disk_temperature is what catches it. The two
               # together cover both failures; neither covers both alone.
               - alert: TrueNASMetricSeriesMissing
+                expr: absent(nvme_percentage_used_ratio{job="truenas"})
+                for: 6h
+                labels:
+                  severity: warning
+                  series: nvme_percentage_used_ratio
+                annotations:
+                  summary: "TrueNAS has stopped reporting nvme_percentage_used_ratio"
+                  description: >-
+                    Source: the nvme-metrics.sh cron job on the NAS, via graphite. Wear,
+                    spare and media-error alerting on all six pool drives goes blind.
+                    Unlike the netdata families here this is NOT fixed by reapplying
+                    netdata.conf: check the cron task under Data Protection and that
+                    /mnt/pool/admin-scripts/nvme-metrics.sh still exists and is
+                    executable.
+              # 6h rather than the 10m its siblings use, for the reason
+              # ProxmoxThinPoolMetricsMissing uses it: these rules land through
+              # Flux, but the collector behind them is a file installed by hand
+              # on the NAS, so there is a legitimate window after a merge where
+              # the metric does not exist yet. Long enough to cover installing
+              # it, short enough to still catch it disappearing.
+              #
+              # TrueNASNvmeCollectorStale is the faster signal once it is live
+              # and this is the backstop, which is why the slow `for:` here
+              # costs nothing.
+              - alert: TrueNASMetricSeriesMissing
                 expr: absent(truenas_dataset_used_bytes)
                 for: 10m
                 labels:
@@ -845,6 +964,62 @@ spec:
                     are frozen at whatever they were when polling last worked. Check the
                     pod log; the likely causes are the API key being revoked, its account
                     losing the REPORTING_READ role, or the gateway route being down.
+
+              # The NVMe collector needs a different shape of guard from
+              # everything above it, because it pushes rather than being
+              # scraped or polled. Nothing serves a stale value on its behalf:
+              # graphite-exporter simply expires the sample after 15m and the
+              # series goes absent. So there is no *ExporterFailing equivalent
+              # to write -- staleness and absence are the same event.
+              #
+              # These two cover what absence cannot.
+
+              # Partial failure. The cron job runs, the push lands, and
+              # smartctl returns nothing for one drive. Five of six report,
+              # every threshold reads comfortable, and one drive is simply not
+              # being watched -- the same silence the guard block above exists
+              # for, one level further in.
+              #
+              # 15m is three consecutive runs, so one transient does not page.
+              - alert: TrueNASNvmeCollectorDegraded
+                expr: truenas_nvme_collector_drives_failed{job="truenas"} > 0
+                for: 15m
+                labels:
+                  severity: warning
+                annotations:
+                  summary: "TrueNAS NVMe collector could not read {{ $value }} drive(s)"
+                  description: >-
+                    smartctl returned no health log for at least one drive across three
+                    consecutive runs, so that drive's wear and media-error series have
+                    stopped updating while the rest look healthy. Compare
+                    truenas_nvme_collector_drives_total against the six pool drives, then
+                    run `smartctl -j -a /dev/nvmeXn1` from the Shell to find which.
+
+              # Earlier than absence, and the numbers are constrained from both
+              # ends rather than chosen. The job runs every 5m, so anything
+              # under 600s false-fires on jitter; graphite-exporter drops the
+              # series after 900s, so a threshold plus `for:` totalling more
+              # than 900s can never be satisfied -- the series is gone before
+              # the condition matures. 660s + 2m fires at about 13 minutes,
+              # inside the window. Past 15m the absent() guard is what remains,
+              # which is why both exist.
+              #
+              # Same shape as ProxmoxThinPoolMetricsStale, different reason:
+              # there node_exporter serves a stale file indefinitely, here the
+              # sample expires. Do not align these numbers with that rule's
+              # 1200s -- it would make this one unsatisfiable.
+              - alert: TrueNASNvmeCollectorStale
+                expr: time() - truenas_nvme_collector_last_run_timestamp_seconds{job="truenas"} > 660
+                for: 2m
+                labels:
+                  severity: warning
+                annotations:
+                  summary: "TrueNAS NVMe collector has not run in over 11 minutes"
+                  description: >-
+                    Two consecutive runs of the nvme-metrics.sh cron job have not landed.
+                    The SMART series still resolve and still look healthy for a few more
+                    minutes, then they expire. Check the cron task is enabled and that
+                    the script is still on the pool.
       proxmox-health:
         groups:
           - name: proxmox-health

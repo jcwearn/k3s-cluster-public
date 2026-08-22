@@ -259,6 +259,17 @@ Then, in the UI and the cluster:
   skipped**, because nothing fails loudly — the Grafana dashboard just goes flat.
 - **The healthchecks.io cron task still exists** under Data Protection. It is not managed by
   `truenas-infra`, so nothing would restore it.
+- **The NVMe SMART collector still runs.** Two halves, restored by different things or by nothing.
+  The cron task is in the configuration database and `truenas-infra` declares it, so the drift job
+  would report it missing. `/mnt/pool/admin-scripts/nvme-metrics.sh` is a file on the pool and
+  nothing restores it — an upgrade does not touch it, but a rollback to an older boot environment
+  or a configuration restore onto a fresh pool leaves the task firing every five minutes at a file
+  that is not there. `TrueNASNvmeCollectorStale` catches that in about thirteen minutes; the check
+  here takes ten seconds:
+
+  ```bash
+  ls -l /mnt/pool/admin-scripts/nvme-metrics.sh   # expect -rwx------ root root
+  ```
 - **NFS and SMB are serving.** Bring the cluster back — the reverse of step 4, databases first so
   nothing starts against a database that is not there yet:
 

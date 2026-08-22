@@ -5,12 +5,17 @@ Prometheus-based monitoring for TrueNAS SCALE (25.04+) using the Graphite export
 ## Architecture
 
 ```
-TrueNAS (Netdata) --[Graphite/TCP:2003]--> graphite-exporter --[HTTP:9108]--> Prometheus --> Grafana
-                                                                                  |
+TrueNAS (Netdata)   --[Graphite/TCP:2003]--> graphite-exporter --[HTTP:9108]--> Prometheus --> Grafana
+TrueNAS (root cron) --[Graphite/TCP:2003]-->        "                               |
                                                                             Alertmanager --> ntfy
 ```
 
 - **graphite-exporter**: Runs in the `prometheus` namespace, exposed as a LoadBalancer Service on `${LAN_PREFIX}.32`
+- **NVMe SMART collector**: `nvme-metrics.sh`, a root cron job on the NAS that runs `smartctl` every
+  five minutes and speaks Graphite line protocol at that Service directly. It arrives over graphite
+  without coming from netdata, which is a third case — see
+  [What the graphite pipeline does not carry](#what-the-graphite-pipeline-does-not-carry). Lives in
+  [`jcwearn/truenas-infra`](https://github.com/jcwearn/truenas-infra).
 - **API exporter**: `truenas-api-exporter` — the one component that *dials* TrueNAS instead of
   waiting to be pushed, for the two things netdata will not send. Named for disk temperature, which
   was the only one when it was written; it now carries dataset space too.
@@ -125,6 +130,66 @@ SMTP and verify the alert service is enabled.
     - Application Update Available
     - Pool Status (degraded ZFS pools)
 
+### Step 4: Install the NVMe SMART Collector
+
+The numbers behind `TrueNASNvmeWearHigh` and its four siblings do not come from the API, because
+the API does not have them. Checked against 25.10.6 with `core.get_methods`: **769 JSON-RPC methods
+and not one returns SMART data.** There is no `smart.*` namespace, `disk.smart_attributes` does not
+exist, `smart.test.results` does not exist, `disk.query` and `disk.details` return identity and
+geometry only, and neither `reporting.graphs` nor `reporting.netdata_graphs` lists an NVMe chart.
+
+That is worth reading twice before reaching for a permission grant. It is not a role problem — no
+grant in [`jcwearn/truenas-infra`](https://github.com/jcwearn/truenas-infra) opens a method that
+does not exist. The data lives in the health log on the drive, `smartctl` is what reads it, and
+`smartctl` needs root.
+
+So a root cron job pushes it. The schedule and the dataset are declared in `truenas-infra`; the
+script is not, and cannot be — a provider resource expresses a command line, not a file. Install it
+by hand, checksummed, the same way `netdata.conf` is applied above.
+
+From a checkout on the LAN:
+
+```bash
+sha256sum scripts/on-box/nvme-metrics.sh
+scp scripts/on-box/nvme-metrics.sh truenas_admin@${LAN_PREFIX}.200:/tmp/nvme-metrics.sh
+```
+
+Then in the TrueNAS **Shell** as root (`sudo` from an SSH session has no TTY here, and root SSH is
+disabled — the web Shell is the path):
+
+```bash
+# Verify BEFORE anything is installed
+echo "$SUM  /tmp/nvme-metrics.sh" | sha256sum -c -
+
+install -o root -g root -m 0700 /tmp/nvme-metrics.sh /mnt/pool/admin-scripts/nvme-metrics.sh
+chown root:root /mnt/pool/admin-scripts
+chmod 0700      /mnt/pool/admin-scripts
+rm -f /tmp/nvme-metrics.sh
+
+# Prove it reads the drives before letting cron have it
+/mnt/pool/admin-scripts/nvme-metrics.sh --dry-run
+```
+
+The dry run prints Graphite lines and sends nothing. Expect nine per drive plus three heartbeat
+lines, and a trailing `6 drives, 0 failed`. A line looks like:
+
+```
+truenas.truenas.nvme_smart.nvme0n1.25094E778896.percentage_used_ratio 0.09 1787412000
+```
+
+> **Note**
+> **`/mnt/pool/admin-scripts` is deliberately neither NFS-exported nor SMB-shared.** The file in it
+> is executed as root every five minutes; a share would make it writable by anything that can write
+> to the share. It is on the pool rather than in `/root` because files outside `/mnt` are not
+> reliably carried across a TrueNAS update, and this is the one piece here whose disappearance is
+> silent. Nothing else belongs in that dataset without the same justification.
+
+> **Note**
+> **The configuration backup restores the cron task, not the script.** Restoring a configuration
+> onto a fresh pool leaves a job firing every five minutes at a file that is not there.
+> `TrueNASNvmeCollectorStale` catches that in about 13 minutes, which is the safety net rather than
+> the plan.
+
 ## What the graphite pipeline does not carry
 
 Two families come from the API exporter (`data/truenas_api_exporter.py`) rather than netdata,
@@ -166,6 +231,47 @@ The exporter needs `DATASET_READ` on the `prom-exporter` account, granted in
 [`jcwearn/truenas-infra`](https://github.com/jcwearn/truenas-infra). Without it the exporter keeps
 serving temperatures and `truenas_dataset_scrape_success` goes to 0 — it degrades rather than dies.
 
+### A third case: `nvme_*`
+
+These arrive *over* graphite but not *from* netdata. They come from `nvme-metrics.sh`, the root cron
+job installed in Step 4, which speaks Graphite line protocol at the exporter directly. It belongs in
+this section because the problem is the same — the pipeline that ought to carry it does not — but
+the answer had to be different, because unlike the two families above there was no API call to fall
+back on.
+
+| Metric | Meaning |
+|---|---|
+| `nvme_percentage_used_ratio` | Rated write endurance consumed, 0–1. `smartctl` reports 0–100; divided by the collector so the units match the Proxmox hosts |
+| `nvme_available_spare_ratio` | Remaining capacity to remap failures onto, 0–1 |
+| `nvme_available_spare_threshold_ratio` | The floor the drive itself declares for the above. The alert compares the two rather than a number written here |
+| `nvme_critical_warning` | The controller's own bitfield. Non-zero is always worth reading |
+| `nvme_media_errors_total` | Unrecovered data-integrity errors. Flat at 0 |
+| `nvme_num_err_log_entries_total`, `nvme_unsafe_shutdowns_total` | Context. No alert reads them |
+| `nvme_power_on_hours_total`, `nvme_data_units_written_total` | What turns a wear percentage into a wear *rate*. Emitted now so a projection rule can be written later against real history rather than against an assumption |
+| `truenas_nvme_collector_last_run_timestamp_seconds` | Heartbeat. A push path has no `up` — see below |
+| `truenas_nvme_collector_drives_total`, `..._drives_failed` | How many drives the last run saw, and how many it could not read |
+
+Labels are `{device="nvme0n1", serial="…"}`. Two things about them:
+
+* **`device`, not `disk`.** The name matches the Proxmox `nvme_*` series byte for byte, which is
+  what lets one expression read correctly against either set of hosts. `disk_temperature` spells the
+  same value `disk`, so a join between the two families goes through `serial`.
+* **`serial` is on every series, unlike the Proxmox ones.** All six drives are the same model and
+  `device` is a kernel enumeration order that can move across a reboot. It also makes `increase()`
+  safe across a drive replacement: a new drive reports `media_errors = 0`, and without the serial
+  that is a counter reset inside one series rather than a new one.
+
+Temperature is deliberately **not** re-exported here. `disk_temperature` already covers it from the
+API exporter, and two sources for one number is how a dashboard ends up disagreeing with itself.
+
+There is no `nvme_scrape_success` to go with the two `*_scrape_success` gauges above, and that is
+not an omission. Those exist because the API exporter keeps serving its last known values when a
+poll fails, so its series stay present and look healthy. A push path does not do that:
+graphite-exporter expires the sample after 15 minutes and the series simply goes absent. Staleness
+and absence are the same event, which is why the heartbeat exists — it is what sees the gap *before*
+the expiry, and what sees five of six drives reporting while every threshold still reads
+comfortable.
+
 ## Alert Rules
 
 The following Prometheus alert rules are defined in `helm.yaml`:
@@ -174,6 +280,11 @@ The following Prometheus alert rules are defined in `helm.yaml`:
 |-------|-----------|----------|----------|
 | TrueNASDiskTemperatureHigh | Disk temp > 65°C | 5m | warning |
 | TrueNASDiskTemperatureCritical | Disk temp > 70°C | 2m | critical |
+| TrueNASNvmeWearHigh | NVMe rated write endurance > 80% consumed | 1h | warning |
+| TrueNASNvmeWearCritical | NVMe rated write endurance > 90% consumed | 1h | critical |
+| TrueNASNvmeSpareLow | Available spare at or below the drive's own threshold | 15m | critical |
+| TrueNASNvmeCriticalWarning | Controller critical-warning bitfield non-zero | 5m | critical |
+| TrueNASNvmeMediaErrors | Any media error in the last hour | 5m | warning |
 | TrueNASHighCpuUsage | CPU usage > 90% | 5m | warning |
 | TrueNASHighMemoryUsage | Memory usage > 90% | 5m | warning |
 | TrueNASZfsArcHitRatioLow | ZFS ARC hit ratio < 50% | 15m | warning |
@@ -186,9 +297,11 @@ The following Prometheus alert rules are defined in `helm.yaml`:
 | TrueNASPoolLowFreeSpace | Pool > 80% full | 30m | warning |
 | TrueNASPoolCriticallyLowFreeSpace | Pool > 90% full | 10m | critical |
 | TrueNASPoolFillingUp | Pool over half full **and** projected to fill within 30 days | 6h | warning |
-| TrueNASMetricSeriesMissing | One of six metric families has stopped arriving | 10m | warning |
+| TrueNASMetricSeriesMissing | One of seven metric families has stopped arriving | 10m (6h for `nvme_*`) | warning |
 | TrueNASDatasetExporterFailing | `pool.dataset.query` failing, values frozen | 10m | warning |
 | TrueNASDiskTempExporterFailing | `disk.temperatures` failing, values frozen | 10m | warning |
+| TrueNASNvmeCollectorDegraded | `smartctl` failed for at least one drive | 15m | warning |
+| TrueNASNvmeCollectorStale | No collector run in over 11 minutes | 2m | warning |
 
 Alerts flow through the existing pipeline: Prometheus > Alertmanager > alertmanager-ntfy bridge > ntfy push notifications.
 
@@ -220,16 +333,33 @@ rather than hours. Prometheus history here only begins 2026-08-21, when the stac
 `emptyDir`; `predict_linear` uses whatever the window holds, so these are correct but
 conservative until the window fills.
 
-### Known gap: no wear or SMART data for the pool drives
+### Why the NVMe rules read a cron job and not the API
 
-The six NVMe drives report temperature and nothing else. There is no wear-levelling percentage, no
-available-spare ratio, no media-error count — the figures the Proxmox hosts have had all along and
-that `ProxmoxNvmeWearHigh` and friends now watch. Closing it means a new `disk.smart_attributes`
-call in the API exporter and most likely another permission grant in
-[`jcwearn/truenas-infra`](https://github.com/jcwearn/truenas-infra).
+Because the API cannot answer the question, and the shape of that dead end is the part worth
+keeping. Every candidate the obvious approach suggests was checked against 25.10.6 with
+`core.get_methods`, which reports the accepted roles per method — the same technique that settled
+`DATASET_READ`:
+
+| Candidate | Result |
+|---|---|
+| `disk.smart_attributes` | Does not exist on this release |
+| `smart.test.results` | Does not exist; there is no `smart.*` namespace at all |
+| `disk.query` with a wider `select` | Identity and geometry only — name, serial, lunid, size, model, type, zfs_guid, imported_zpool |
+| `disk.details` | The same, plus partitions |
+| The reporting subsystem | `reporting.graphs` and `reporting.netdata_graphs` both list 40 charts. None is NVMe or SMART |
+
+769 methods, no SMART among them. So the second question this usually raises — which role would it
+need — does not arise, and adding one to `truenas_privilege.prometheus_readers` would do nothing.
+The only disk-health surface the API has is the alert engine (`SMARTFailedSelfTest`,
+`SMARTSpareBlockCount` and friends under `alert.list_categories`), which is TrueNAS's own booleans
+rather than numbers, and unconfirmed to evaluate NVMe drives at all.
+
+The numbers live in the health log on the drive. `smartctl` reads it, `smartctl` needs root, and
+root on this box runs things from cron — hence Step 4 above.
 
 A drive wearing out gives no warning through a filesystem. It reports healthy right up to the
-point the controller goes read-only.
+point the controller goes read-only. That was the reason to close this; it is now the reason the
+five threshold rules are worth their upkeep.
 
 ## Verification
 
@@ -239,6 +369,11 @@ After deploying and configuring both sides:
 2. **Prometheus targets**: Check `https://prometheus.${DOMAIN}/targets` -- the `truenas` job should show as UP
 3. **Alert rules**: Check `https://prometheus.${DOMAIN}/rules` -- the `truenas-health` group should be listed
 4. **Grafana dashboard**: Check `https://grafana.${DOMAIN}` -- "TrueNAS Scale / Overview" dashboard should appear
+5. **NVMe SMART**: `nvme_percentage_used_ratio{job="truenas"}` should return six series, each
+   labelled `device` and `serial`. `{__name__=~"truenas_truenas_nvme.*"}` must return **nothing** —
+   graphite-exporter escapes an unmapped path rather than dropping it, so anything there means the
+   mapping rules did not match. `time() - truenas_nvme_collector_last_run_timestamp_seconds` should
+   be under 300.
 
 ## References
 

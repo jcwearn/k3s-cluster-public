@@ -140,6 +140,63 @@ data:
         serial: "$${2}"
 
     ################################################
+    # NVMe SMART, from the on-box collector
+    ################################################
+
+    # Not netdata. These arrive from scripts/on-box/nvme-metrics.sh in
+    # jcwearn/truenas-infra: a root cron job that runs smartctl every five
+    # minutes and speaks graphite line protocol at this exporter directly.
+    #
+    # There is no exporter-side route to these numbers and no permission grant
+    # that would create one. TrueNAS 25.10 answers 769 JSON-RPC methods and not
+    # one returns SMART data -- no smart.* namespace, no disk.smart_attributes,
+    # disk.query and disk.details carry identity and geometry only, and none of
+    # the 40 reporting charts is NVMe. See k3s-cluster#811.
+    #
+    # Path shape: truenas.<namespace>.nvme_smart.<device>.<serial>.<field>.
+    # <device> is the namespace block device (nvme0n1) rather than the
+    # controller (nvme0), because that is the value the Proxmox nvme_* series
+    # already carry and the value disk_temperature's `disk` label already
+    # carries here -- one name satisfying both conventions.
+    #
+    # One rule for every field rather than one rule per field. The leaf segment
+    # becomes the metric name, so the script decides the contract and adding a
+    # field there needs no change here. The cost is that a typo in the script
+    # produces a new metric name instead of an error; the check for that is
+    # that {__name__=~"truenas_truenas_nvme.*"} stays empty, since an unmapped
+    # path is escaped rather than dropped.
+    #
+    # [^.]+ on both identity segments rather than the (.*) used elsewhere in
+    # this file. There are three variable segments here and a greedy capture
+    # would swallow the separators; the collector also scrubs its serials for
+    # the same reason.
+    - match: 'truenas\.([^.]+)\.nvme_smart\.([^.]+)\.([^.]+)\.(.+)'
+      match_type: "regex"
+      name: "nvme_$${4}"
+      labels:
+        job: "truenas"
+        instance: "$${1}"
+        device: "$${2}"
+        serial: "$${3}"
+
+    # The collector's own heartbeat, deliberately outside the nvme_* namespace
+    # it shares with the Proxmox hosts: nothing over there has a metric like
+    # this, and a shared name would be a lie in a dashboard.
+    #
+    # A push path has no `up`. graphite-exporter stays perfectly scrapeable
+    # while this box sends nothing at all, which is the failure the
+    # TrueNASMetricSeriesMissing rules already exist for. These three are what
+    # let an alert see it before the 15m sample expiry does, and what let one
+    # see five of six drives reporting -- which absence cannot, because the
+    # series is still there and still looks healthy.
+    - match: 'truenas\.([^.]+)\.nvme_collector\.(.+)'
+      match_type: "regex"
+      name: "truenas_nvme_collector_$${2}"
+      labels:
+        job: "truenas"
+        instance: "$${1}"
+
+    ################################################
     # disk operation mappings
     ################################################
 
@@ -960,6 +1017,14 @@ metadata:
   namespace: prometheus
   labels:
     app: graphite-exporter
+  annotations:
+    # graphite_exporter reads its mapping file once, at start. The ConfigMap
+    # above is a plain manifest rather than configMapGenerator output, so it
+    # carries no name hash and editing it rolls nothing -- the pod keeps
+    # serving the mapping it started with, and a new rule silently does not
+    # apply until something else happens to restart it. Every previous mapping
+    # change here took effect by luck.
+    reloader.stakater.com/auto: "true"
 spec:
   replicas: 1
   selector:
