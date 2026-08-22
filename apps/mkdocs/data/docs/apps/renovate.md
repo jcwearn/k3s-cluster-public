@@ -88,81 +88,97 @@ Note that `config:best-practices` already enables weekly lock file maintenance (
 
 ## Cache and job lifecycle
 
-The cache is an NFS-backed PVC (`renovate-cache-pvc`, 5Gi on `truenas-nfs-rwx`) mounted at
-`/cache` and pointed at by `RENOVATE_CACHE_DIR`. It is what keeps a run at roughly three minutes
-across 17 repos instead of cold-starting every datasource lookup.
+Renovate keeps a package cache at `RENOVATE_CACHE_DIR`, pointed at `/tmp/renovate/cache` — the
+pod's `work-volume` `emptyDir`. **It does not persist between runs, deliberately.** The cache
+still does its job within a run; it simply starts empty each tick.
 
-!!! warning "Do not add a `chown` init container to guard it"
-    One existed from April to August 2026 and ran `chown -R 1000:1000 /cache` on every tick. It
-    reached **34 minutes** against three minutes of actual work — one serial NFS `SETATTR`
-    round-trip per file, over a cache that was growing without bound at the time. Runs outlasted the 30-minute
-    schedule, so `concurrencyPolicy: Forbid` chained them back-to-back and a Renovate pod was
-    running against the NAS permanently.
+### Why it is not on a PVC any more
 
-    It never did anything. The init container inherits the pod's `runAsUser: 1000`, and a non-root
-    uid cannot change a file's owner — the trailing `|| true` swallowed exactly that. What makes
-    `/cache` writable is the provisioner creating the subdirectory `0777`, and Renovate is its
-    only writer. That behaviour survived the move to `csi-driver-nfs`, which sets it explicitly as
-    `mountPermissions: "0777"` rather than by default. `fsGroup` is not the mechanism either: this
-    volume still uses an in-tree NFS mount, which kubelet reports as unmanaged, so it never applies
-    it -- and the driver is configured with `enableFSGroupPolicy: false` so that stays true for new
-    volumes too.
+It was, for 141 days, on a 5Gi RWX volume on `truenas-nfs-rwx`. It reached **34G**, about a third
+of the entire shared `k8s-nfs` dataset. The measurements that ended it:
 
+| | |
+|---|---|
+| Content blobs on disk | **917,627** |
+| Live index entries the sweep could see | **749** |
+| Live data those entries represent | ~29 MB, in 33 GB of storage |
+
+Renovate's file cache is [cacache](https://github.com/npm/cacache), which is content-addressed
+and append-only. Re-caching a key writes a *new* blob under a new integrity hash and appends a
+new index entry; the previous blob is orphaned that instant. The shutdown sweep
+(`FileCache.destroy()`) iterates the **index**, which returns one entry per key — so it does free
+content, but only for the 749 keys it can see. Nothing reaches the rest. Only `cacache.verify()`
+collects unreferenced content, and Renovate never calls it.
+
+That leak is upstream and not fixable from here. What made it expensive was the PVC:
+
+* **Nothing could measure it.** `kubelet_volume_stats_used_bytes` reports `statfs` of the NFS
+  mount, so every NFS PVC in the cluster reports the same figure; and this volume was mounted
+  about three minutes in every thirty on an in-tree `spec.nfs` PV, which emits no volume stats
+  at all. 917k orphaned files accumulated for four months with nothing able to see it.
+* **Nothing could clean it.** `cacache.verify()` and `rm -rf` both mean ~917k round-trips over
+  NFS — the same shape as the `chown` below, which took 34 minutes over this same tree.
+  Reclaiming it needed root on the TrueNAS web Shell, where the unlinks are local and take
+  seconds.
+* **Snapshots deferred the reclaim.** Wiping 34G moved 27.5 GiB from `usedbydataset` into
+  `usedbysnapshots`; the pool only got it back as the hourly and daily tiers aged out.
+
+### What persistence was actually buying
+
+Measured with two identical dry runs over all 17 repos, one with the warm PVC cache and one with
+no persistent cache at all:
+
+| | warm | cold |
+|---|---|---|
+| Run time, 16 repos | 160.0s | 334.9s |
+| HTTP requests | 667 | 1364 |
+| `api.github.com` requests | 252 | 588 |
+| Cache I/O | 116.3s (123ms/get, NFS) | 30.3s (25ms/get, local) |
+
+So persistence was worth about **175s on an in-window tick** — and only there. Renovate's
+`schedule` gate (`* 0-7 * * 0,5,6`) means most ticks skip branch and PR evaluation, which is
+where most of the GitHub traffic goes. Measured outside the window the difference was **45s**
+(2m05s against 2m49s).
+
+!!! note "Rate limiting was checked, and is not the reason to persist"
+    Doubling to 588 requests per in-window run is 1,176/hour at two ticks an hour — about **24%**
+    of a 5,000/hour GitHub App budget, and that is the worst case. Secondary limits are about
+    concurrency and burst rather than volume, and `hostRules` already caps
+    `concurrentRequestLimit: 1` and `maxRequestsPerSecond: 8`; the cold run averaged 2.4 req/s.
+    Neither diagnostic logged a 403, a 429 or an abuse warning. **The throttle is the
+    rate-limit protection, not the cache.**
+
+Against a 25-minute `activeDeadlineSeconds` on a 30-minute schedule, 45–175s is affordable. A
+permanently growing NFS volume that nothing can measure, nothing can clean without root, and
+whose leak is upstream's to fix, was not.
+
+!!! warning "Do not add a `chown` init container"
+    One existed from April to August 2026 and ran `chown -R 1000:1000 /cache` on every tick over
+    the PVC. It reached **34 minutes** against three minutes of actual work — one serial NFS
+    `SETATTR` round-trip per file, across what turned out to be 917,627 files. Runs outlasted the
+    30-minute schedule, so `concurrencyPolicy: Forbid` chained them back-to-back and a Renovate
+    pod was hitting the NAS permanently.
+
+    It never did anything: the init container inherits the pod's `runAsUser: 1000`, and a
+    non-root uid cannot change a file's owner — the trailing `|| true` swallowed exactly that.
     The deadline was raised twice (1500 → 2400 → 2700) chasing the growth before the cause was
     found. Treat a rising `activeDeadlineSeconds` as a symptom to investigate, not a dial.
 
-### What is in `/cache`, and what sweeps it
+### Where a run writes
 
-Two different things used to live under `RENOVATE_CACHE_DIR`, with two different lifecycles, and
-only one of them was ever cleaned up.
+Everything except the config and the token goes to `work-volume`, an `emptyDir` with
+`sizeLimit: 4Gi`: cloned repos, the Renovate cache, and every package manager's cache.
 
-| Path | Written by | Swept by |
-|---|---|---|
-| `renovate/renovate-cache-v1/` | Renovate's own datasource cache (cacache) | Renovate, **every run**. `FileCache.destroy()` streams every entry at shutdown and removes anything without a future expiry. |
-| `others/npm`, `others/yarn`, `others/berry`, `others/pnpm`, `others/go`, … | the package managers, via `ensureCacheDir(name)` | **nothing** |
+`customEnvVariables` in the bot config points the tool caches there explicitly — `GOPATH`,
+`NPM_CONFIG_CACHE`, `YARN_CACHE_FOLDER`, `YARN_GLOBAL_FOLDER` and pnpm's store and cache dirs.
+That is **not** redundant now that `RENOVATE_CACHE_DIR` is itself ephemeral. Without it `GOCACHE`
+and `GOMODCACHE` default into the container's writable layer, which no `sizeLimit` bounds. And
+`GOBIN` is load-bearing regardless: the container args put `/tmp/renovate/go-bin` on `PATH`.
 
-`others/` was the growth. Renovate hands each package manager a cache directory under
-`others/` — `GOPATH` from the gomod manager, `NPM_CONFIG_CACHE`, `YARN_CACHE_FOLDER`,
-`YARN_GLOBAL_FOLDER`, pnpm's store and cache dirs — and never expires any of it. npm's
-`_cacache` of tarballs and its `_logs` accumulate for the life of the volume.
-
-Those are all passed as `extraEnv`, and `getChildEnv()` merges
-`{...extraEnv, ...parentEnv, ...globalConfigEnv, ...userConfiguredEnv, ...forcedEnv}` — so
-`customEnvVariables` (which is `globalConfigEnv`) **wins over** the directory the manager
-computed. Every one of them is now redirected to `/tmp/renovate/`, the pod's `work-volume`
-`emptyDir`, extending what `GOCACHE`/`GOMODCACHE`/`GOBIN` already did. The only thing left on
-the PVC that grows is the cacache tree, which Renovate expires by TTL on its own.
-
-`ensureCacheDir()` calls `ensureDir` before it returns the path, and the managers call it whether
-or not the value is then overridden — so empty `others/npm`, `others/yarn` and friends still
-appear on the share. Empty skeleton directories reappearing is the expected result; files inside
-them are not.
-
-The one exception is `others/terraform`. Its path is used directly in JavaScript rather than
-passed as an environment variable, so no config can move it — but it does not need moving:
-provider archives are downloaded under a random name and removed in a `finally`. Any
-`others/terraform/extract` left on the share is residue from an older Renovate.
-
-!!! note "The `emptyDir` now has a `sizeLimit`"
-    Moving those caches to node-local scratch means they are bounded by the node's disk unless
-    something says otherwise, so `work-volume` carries `sizeLimit: 4Gi`. Exceeding it evicts the
-    pod, which surfaces as a failed run rather than as a node under disk pressure.
-
-### The 5Gi request enforces nothing
-
-It never has, and not because of a provisioner choice. `nfs-subdir-external-provisioner` and
-`nfs.csi.k8s.io` both create a *subdirectory* on a dataset shared with every other `rwx` volume;
-neither has any way to hold one directory to a size. The request is documentation.
-
-Nor is the volume observable. `kubelet_volume_stats_used_bytes` reports `statfs` of the NFS
-mount, which is the whole dataset — every NFS PVC in this cluster reports the identical number —
-and for this PVC there is no series at all, since it is mounted about three minutes in every
-thirty and its PV is an in-tree `spec.nfs` volume, which emits no volume stats. The chart's
-`KubePersistentVolumeFillingUp` is therefore green for these volumes by construction.
-
-The only real ceiling is the `refquota` on the `k8s-nfs` dataset, shared with everything else on
-`truenas-nfs-rwx`, and it is managed in
-[`jcwearn/truenas-infra`](https://github.com/jcwearn/truenas-infra).
+Those overrides work because `getChildEnv()` merges
+`{...extraEnv, ...parentEnv, ...globalConfigEnv, ...userConfiguredEnv, ...forcedEnv}` —
+`customEnvVariables` is `globalConfigEnv`, so it outranks the directory each manager computed for
+itself.
 
 ### Job settings
 
@@ -192,7 +208,7 @@ instance by [the TrueNAS upgrade runbook](../misc/truenas-upgrade.md) and never 
 
 | Phase | Alerts? | Why |
 |---|---|---|
-| `Pending` | **yes**, after 10m | Was excluded while the `chown` kept pods in `PodInitializing` for half an hour. Now a run is ~3 minutes, so `Pending` means something real: unschedulable, image pull stuck, or a PVC that will not bind because the NAS is down. |
+| `Pending` | **yes**, after 10m | Was excluded while the `chown` kept pods in `PodInitializing` for half an hour. Now a run is ~3 minutes, so `Pending` means something real: unschedulable, or an image pull that is stuck. It no longer catches a PVC failing to bind, because there is no longer a PVC — the NAS being down does not stop a Renovate run at all now. |
 | `Unknown` | yes, after 10m | The node is gone. |
 | `Failed` | **no** | With `backoffLimit: 0` a failed run is normal and self-correcting, but the pod holds `Failed` for the full 24h TTL — so a gauge rule latches for a day off one transient event. `RenovateStale` is what catches failures that are not transient. |
 

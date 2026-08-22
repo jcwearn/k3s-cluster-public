@@ -148,10 +148,14 @@ Leave `cloudnative-pg` running. The operator has to be up to act on the hibernat
 StatefulSet — the operator reverts a scaled StatefulSet the same way Flux reverts a scaled
 Deployment.
 
-```bash
-# CronJob
-kubectl -n renovate patch cronjob renovate-bot -p '{"spec":{"suspend":true}}'
+!!! note "Renovate is no longer on this list"
+    It used to be suspended here, because a job that hung on its NFS cache blocked every
+    subsequent tick until its deadline. It has had no PVC and no NFS mount since the cache was
+    made ephemeral, so a run during the outage neither touches the NAS nor is affected by it.
+    Leaving it running is now strictly safer than suspending it — an un-resumed CronJob is a real
+    failure mode, and `RenovateStale` takes six hours to tell you about it.
 
+```bash
 # Plain Deployments and StatefulSets
 kubectl -n ebooks scale deploy/calibre-web deploy/shelfmark --replicas=0
 kubectl -n immich scale deploy/immich-server deploy/immich-machine-learning deploy/immich-valkey --replicas=0
@@ -295,16 +299,12 @@ Then, in the UI and the cluster:
   Then confirm PVCs are `Bound`, pods are `Running`, and let a Time Machine backup complete. If an
   AdGuard pod wedged on a blocked query-log write, `kubectl -n adguardhome rollout restart sts`
   clears it.
-- **Renovate is un-suspended and its next run completes.** This is the symmetric half of the step 4
-  suspend, and the check that proves the export came back usable for a client that mounts it fresh
-  on every run rather than holding a mount across the reboot:
+- **A fresh mount succeeds.** Every workload scaled back up above remounts the export from
+  nothing, so the deployments reaching Ready is itself the proof that it came back usable.
 
-    ```bash
-    kubectl -n renovate patch cronjob renovate-bot -p '{"spec":{"suspend":false}}'
-
-    # Within ~30 min: one job, Complete, and a DURATION of roughly 3 minutes
-    kubectl -n renovate get jobs
-    ```
+    Renovate used to serve as this check, on the strength of mounting fresh on every run rather
+    than holding a mount across the reboot. It no longer mounts the export at all, so it proves
+    nothing about the NAS now — do not read a green Renovate run as evidence here.
 - **Prometheus' `truenas` job is UP** at `https://prometheus.${DOMAIN}/targets`, and the
   "TrueNAS Scale / Overview" dashboard has data again.
 - **Expect a new REST API deprecation alert.** That is `discover.sh` and `check-credentials.sh`

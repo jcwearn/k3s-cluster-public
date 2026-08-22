@@ -62,8 +62,6 @@ spec:
                   mountPath: /config/renovate.json
                   subPath: renovate.json
                   readOnly: true
-                - name: renovate-cache
-                  mountPath: /cache
               resources:
                 requests:
                   memory: 1.25Gi
@@ -77,16 +75,25 @@ spec:
                 - name: RENOVATE_CONFIG_FILE
                   value: /config/renovate.json
                 - name: RENOVATE_CACHE_DIR
-                  value: /cache
+                  value: /tmp/renovate/cache
           restartPolicy: Never
           volumes:
             - name: work-volume
-              # Renovate's own cache lives on the PVC; every package manager's
-              # cache is pointed here by customEnvVariables, so this is now
-              # node-local scratch that grows during a run and dies with the
-              # pod. sizeLimit is what keeps that from being the node's
-              # problem -- without it an emptyDir is bounded only by the
-              # node's disk.
+              # Everything that is not the config or the token: cloned repos,
+              # Renovate's own cache (RENOVATE_CACHE_DIR above) and every
+              # package manager's cache (pointed here by customEnvVariables).
+              # All of it dies with the pod, which is the point -- see the
+              # Renovate page in mkdocs for why the cache stopped being
+              # persistent.
+              #
+              # customEnvVariables is not redundant just because the cache dir
+              # is already ephemeral. Without it GOCACHE and GOMODCACHE land in
+              # the container's writable layer, which no sizeLimit bounds and
+              # no eviction reclaims until the node is under pressure. GOBIN is
+              # load-bearing besides: the container args put it on PATH.
+              #
+              # sizeLimit is what keeps a runaway run from being the node's
+              # problem -- an emptyDir is otherwise bounded only by node disk.
               emptyDir:
                 sizeLimit: 4Gi
             - name: shared-volume
@@ -101,6 +108,3 @@ spec:
               configMap:
                 name: renovate-config
                 defaultMode: 0444
-            - name: renovate-cache
-              persistentVolumeClaim:
-                claimName: renovate-cache-pvc

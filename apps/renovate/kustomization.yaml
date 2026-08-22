@@ -3,7 +3,6 @@ kind: Kustomization
 resources:
   - cronjob.yaml
   - namespace.yaml
-  - pvc.yaml
   - secrets.sops.yaml
 configMapGenerator:
   - name: renovate-config
