@@ -1,0 +1,28 @@
+# Reachable three ways: at job-track.${DOMAIN} through the gateway, on the
+# tailnet as `job-track`, and on the LAN at ${LAN_PREFIX}.36.
+#
+# The first of those is a public DNS record but not a public service. Every
+# hostname here is a CNAME to k3s-gateway.${TAILNET}, set once by the
+# external-dns target annotation on the Gateway, so resolving the name is
+# public and reaching it requires being on the tailnet. That annotation is what
+# holds the property -- pointed at a routable address it would expose every app
+# behind this gateway at once, and this one has no login of its own to fall
+# back on.
+apiVersion: v1
+kind: Service
+metadata:
+  name: job-track
+  namespace: job-track
+  annotations:
+    tailscale.com/expose: "true"
+    tailscale.com/hostname: "job-track"
+    kube-vip.io/loadbalancerIPs: "${LAN_PREFIX}.36"
+spec:
+  type: LoadBalancer
+  selector:
+    app: job-track
+  ports:
+    - port: 8080
+      targetPort: 8080
+      protocol: TCP
+      name: http

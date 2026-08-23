@@ -13,6 +13,7 @@ of the stack.
 | **Homepage** | Service dashboard & link hub. | [Read more](homepage.md) |
 | **Immich** | Self-hosted photo and video backup solution with AI features. | [Read more](immich.md) |
 | **It-Tools** | IT Tools is a collection of tools for IT professionals | [Read more](it-tools.md) |
+| **job-track** | Job search tracker: pipeline, leads, and what is due next. | [Read more](job-track.md) |
 | **UniFi Controller** | Manages network gear; exposed securely through the cluster. | [Read more](unifi.md) |
 | **Headlamp** | Extensible K8s web UI (replaces archived kubernetes-dashboard). | [Read more](headlamp.md) |
 | **Mazanoke** | Self-hosted image optimizer / converter | [Read more](mazanoke.md) |

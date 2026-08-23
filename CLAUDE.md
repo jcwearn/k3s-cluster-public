@@ -42,6 +42,7 @@ apps/                    # User-facing applications
   ├── immich/            # Photo management
   ├── it-tools/          # Developer utilities
   ├── jellyfin/          # Media server
+  ├── job-track/         # Job search tracker
   ├── mazanoke/          # Image compression
   ├── mkdocs/            # Documentation site
   ├── n8n/               # Workflow automation

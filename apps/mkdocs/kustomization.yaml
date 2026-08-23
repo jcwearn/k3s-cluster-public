@@ -23,6 +23,7 @@ configMapGenerator:
       - data/docs/apps/immich.md
       - data/docs/apps/it-tools.md
       - data/docs/apps/headlamp.md
+      - data/docs/apps/job-track.md
       - data/docs/apps/mazanoke.md
       - data/docs/apps/mkdocs.md
       - data/docs/apps/n8n.md

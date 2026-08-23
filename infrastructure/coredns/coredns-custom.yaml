@@ -19,6 +19,7 @@ data:
     rewrite name image.${DOMAIN} envoy-proxy.envoy-gateway-system.svc.cluster.local
     rewrite name immich.${DOMAIN} envoy-proxy.envoy-gateway-system.svc.cluster.local
     rewrite name jellyfin.${DOMAIN} envoy-proxy.envoy-gateway-system.svc.cluster.local
+    rewrite name job-track.${DOMAIN} envoy-proxy.envoy-gateway-system.svc.cluster.local
     rewrite name n8n.${DOMAIN} envoy-proxy.envoy-gateway-system.svc.cluster.local
     rewrite name ntfy.${DOMAIN} envoy-proxy.envoy-gateway-system.svc.cluster.local
     rewrite name paperless.${DOMAIN} envoy-proxy.envoy-gateway-system.svc.cluster.local

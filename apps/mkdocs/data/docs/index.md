@@ -59,6 +59,7 @@ of the cluster.
 │   ├── immich/             # Photo management
 │   ├── it-tools/           # Developer utilities
 │   ├── jellyfin/           # Media server
+│   ├── job-track/          # Job search tracker
 │   ├── mazanoke/           # Image compression
 │   ├── mkdocs/             # Documentation site (this site)
 │   ├── n8n/                # Workflow automation
@@ -135,6 +136,7 @@ FluxCD watches `clusters/prod/` and recursively applies everything under `apps/`
 | **Immich** | Helm | Self-hosted photo management |
 | **IT Tools** | Deployment | Developer utilities |
 | **Jellyfin** | Deployment + PVC | Media server |
+| **job-track** | Deployment + CNPG | Job search tracker |
 | **Mazanoke** | Deployment | Image compression |
 | **MkDocs** | Deployment | Documentation site (this site) |
 | **n8n** | Deployment + PVC | Workflow automation |

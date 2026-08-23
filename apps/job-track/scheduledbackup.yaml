@@ -1,0 +1,25 @@
+# Nightly base backup. WAL is archived continuously by the plugin between these,
+# which is what makes point-in-time recovery possible rather than only
+# restore-to-last-night.
+apiVersion: postgresql.cnpg.io/v1
+kind: ScheduledBackup
+metadata:
+  name: job-track-database-daily
+  namespace: job-track
+spec:
+  # Six fields, not five: CloudNativePG uses the Go cron format, which leads
+  # with seconds. Written as a Kubernetes CronJob schedule this would run at
+  # a quite different time.
+  schedule: "0 30 2 * * *"
+  # Deliberately not immediate: true. Flux applies this and the Cluster's
+  # plugins: block in the same reconcile, but the plugin only reaches the
+  # instance pod once CNPG has rolled it -- about three minutes later. An
+  # immediate backup is requested against the pod that is still running, which
+  # has no plugin, and fails with "requested plugin is not available". Take the
+  # first backup by hand instead; see docs/plans/postgres-backups/plan.md.
+  backupOwnerReference: self
+  cluster:
+    name: job-track-database
+  method: plugin
+  pluginConfiguration:
+    name: barman-cloud.cloudnative-pg.io
