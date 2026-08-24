@@ -8,6 +8,7 @@ on the homelab.
 |-------|----------------|------|
 | **Adding Docs** | Step-by-step from new docs to mkdocs | [Read more](adding-docs.md) |
 | **Bootstrapping a 3-Node k3s Cluster** | Step-by-step from fresh Ubuntu 24.04 installs to a fully GitOps-driven, HA k3s control-plane with Flux. | [Read more](bootstrapping-k3s.md) |
+| **Diagnosing a Blocked Domain** | Finding which name a DNS blocklist is eating when an app half-loads or only works with Tailscale off, and allowlisting it narrowly. | [Read more](diagnosing-blocked-domains.md) |
 | **Updating kube-vip** | Quick guide for pulling the latest kube-vip manifest, recreating the symlink, and notes on better long-term management patterns. | [Read more](kube-vip-update.md) |
 | **Reinitializing Tailscale Machine** | Quick guide on how to refresh/reinitialize a tailscale machine that has gotten in a bad state. | [Read more](refreshing-tailscale-machines.md) |
 | **Flux GitHub App Authentication** | How Flux authenticates to GitHub via a GitHub App, and how to rotate the private key | [Read more](rotating-flux-github-pat.md) |
