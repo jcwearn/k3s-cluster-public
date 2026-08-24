@@ -46,6 +46,41 @@ The controller must install Gateway API CRDs before GatewayClass/Gateway resourc
 
 ---
 
+## LoadBalancer VIP
+
+The proxy Service is `LoadBalancer` on the kube-vip address `${LAN_PREFIX}.5`, and it sets
+`externalTrafficPolicy: Cluster` rather than Envoy Gateway's default of `Local`.
+
+That is deliberate, and the default is actively unsafe here. kube-vip elects a single node to
+hold every service VIP and has no knowledge of where the Envoy pods are scheduled. The proxy
+runs two replicas on three nodes, so one node always has no Envoy pod. Under `Local`, a node
+holding the VIP with no local endpoint drops the traffic rather than forwarding it, and
+`${LAN_PREFIX}.5` silently blackholes until the VIP happens to move again.
+
+The failure is invisible from the tailnet, which is what makes it so confusing. Tailnet traffic
+arrives through the `k3s-gateway` proxy pod and reaches Envoy by ClusterIP, never touching the
+VIP — so every internal site keeps working over Tailscale while the LAN cannot open any of them.
+The symptom presents as broken LAN DNS even though DNS is answering correctly.
+
+If you are chasing this, the direct check is the Service's health-check node port, which reports
+the local endpoint count per node:
+
+```bash
+HCNP=$(kubectl get svc envoy-proxy -n envoy-gateway-system -o jsonpath='{.spec.healthCheckNodePort}')
+for n in 11 12 13; do curl -s "http://${LAN_PREFIX}.$$n:$$HCNP/healthz"; echo; done
+```
+
+A node reporting `"localEndpoints": 0` is one that will blackhole the VIP under `Local`. Note the
+field only exists while the policy *is* `Local` — under `Cluster` there is no health-check node
+port, because every node can forward.
+
+The cost of `Cluster` is the real client address: Envoy sees the node IP instead. Nothing in this
+cluster consumes it — there is no `clientIPDetection` and no address-based `SecurityPolicy` — and
+tailnet traffic is already SNATed by the proxy pod. The AdGuard Services make the same trade for
+the same reason.
+
+---
+
 ## TLS
 
 The wildcard certificate (`*.${DOMAIN}`) is configured once on the Gateway's `https` listener. Apps do **not** need any TLS configuration in their HTTPRoutes — they simply attach to the `https` listener by specifying `sectionName: https` in `parentRefs`.

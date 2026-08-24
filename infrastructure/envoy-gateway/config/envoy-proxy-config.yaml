@@ -12,6 +12,22 @@ spec:
       envoyService:
         name: envoy-proxy
         type: LoadBalancer
+        # Cluster, not the chart default of Local.
+        #
+        # kube-vip elects a single node to hold every service VIP, and it has no idea where
+        # the Envoy pods are. With Local, a node holding the VIP but running no Envoy pod
+        # drops the traffic instead of forwarding it, and the LoadBalancer IP silently
+        # blackholes until the VIP happens to move again.
+        #
+        # Only LAN clients notice: tailnet traffic arrives through the k3s-gateway proxy pod
+        # and reaches Envoy by ClusterIP, never touching the VIP. So the failure looks like
+        # "DNS is broken on the LAN" and is not a DNS fault at all.
+        #
+        # Cost is the real client IP, which becomes the node IP. Nothing here consumes it --
+        # no clientIPDetection, no address-based SecurityPolicy -- and tailnet traffic is
+        # already SNATed by the proxy pod. Same tradeoff, same reasoning, as the AdGuard
+        # Services.
+        externalTrafficPolicy: Cluster
         annotations:
           kube-vip.io/loadbalancerIPs: "${LAN_PREFIX}.5"
           tailscale.com/expose: "true"
