@@ -45,7 +45,7 @@ spec:
                   cpu: 200m
                   memory: 256Mi
           containers:
-            - image: renovate/renovate:44.49.0-full@sha256:09e543ecf611d25b491647d5b33e2e97d7a22a39e87981088f1728daf3ab5408
+            - image: renovate/renovate:44.49.1-full@sha256:aaa640092f4b83c6440f015db6232673d3ebfa7edaeb8ec7dd282fc541a961fa
               name: renovate-bot
               command: ["/bin/sh", "-c"]
               args:
