@@ -29,7 +29,7 @@ spec:
         # later cannot have two processes race each other through the same
         # migration. Same image, same embedded SQL, different flag.
         - name: migrate
-          image: ghcr.io/jcwearn/job-track:v0.1.2@sha256:b367501d872f36d7d08fdf8a777cd893170844f40963cb9fe27a18cdceafe395
+          image: ghcr.io/jcwearn/job-track:v0.3.0@sha256:f3f2ac09cf939e982c184c91e29fc62f5f5dd3340e07f14257eff84f570b2eeb
           imagePullPolicy: IfNotPresent
           args: ["-migrate"]
           env:
@@ -64,7 +64,7 @@ spec:
               memory: 128Mi
       containers:
         - name: job-track
-          image: ghcr.io/jcwearn/job-track:v0.1.2@sha256:b367501d872f36d7d08fdf8a777cd893170844f40963cb9fe27a18cdceafe395
+          image: ghcr.io/jcwearn/job-track:v0.3.0@sha256:f3f2ac09cf939e982c184c91e29fc62f5f5dd3340e07f14257eff84f570b2eeb
           imagePullPolicy: IfNotPresent
           ports:
             - name: http
