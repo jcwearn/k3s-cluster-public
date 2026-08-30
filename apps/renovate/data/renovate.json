@@ -84,6 +84,7 @@
         "GOMODCACHE": "/tmp/renovate/go-mod",
         "GOBIN": "/tmp/renovate/go-bin",
         "GOPATH": "/tmp/renovate/go",
+        "UV_CACHE_DIR": "/tmp/renovate/uv",
         "NPM_CONFIG_CACHE": "/tmp/renovate/npm",
         "YARN_CACHE_FOLDER": "/tmp/renovate/yarn",
         "YARN_GLOBAL_FOLDER": "/tmp/renovate/berry",

@@ -170,10 +170,27 @@ Everything except the config and the token goes to `work-volume`, an `emptyDir` 
 `sizeLimit: 4Gi`: cloned repos, the Renovate cache, and every package manager's cache.
 
 `customEnvVariables` in the bot config points the tool caches there explicitly — `GOPATH`,
-`NPM_CONFIG_CACHE`, `YARN_CACHE_FOLDER`, `YARN_GLOBAL_FOLDER` and pnpm's store and cache dirs.
-That is **not** redundant now that `RENOVATE_CACHE_DIR` is itself ephemeral. Without it `GOCACHE`
-and `GOMODCACHE` default into the container's writable layer, which no `sizeLimit` bounds. And
-`GOBIN` is load-bearing regardless: the container args put `/tmp/renovate/go-bin` on `PATH`.
+`UV_CACHE_DIR`, `NPM_CONFIG_CACHE`, `YARN_CACHE_FOLDER`, `YARN_GLOBAL_FOLDER` and pnpm's store
+and cache dirs. That is **not** redundant now that `RENOVATE_CACHE_DIR` is itself ephemeral.
+Without it `GOCACHE` and `GOMODCACHE` default into the container's writable layer, which no
+`sizeLimit` bounds. And `GOBIN` is load-bearing regardless: the container args put
+`/tmp/renovate/go-bin` on `PATH`.
+
+`UV_CACHE_DIR` is there for a harder reason than the others, and it is the one to remember when
+a new manager shows up. uv defaults to `$HOME/.cache/uv`, and `$HOME` is `/home/ubuntu` from the
+image — not a mounted volume, and not writable by the pod's `runAsUser: 1000`. So uv did not
+merely cache in the wrong place, it could not run at all:
+
+```
+error: Failed to initialize cache at `/home/ubuntu/.cache/uv`
+  Caused by: failed to create directory `/home/ubuntu/.cache/uv`: Permission denied (os error 13)
+```
+
+That surfaced as an "Artifact update problem" on `jcwearn/resume` — the only repo in the fleet
+with a `uv.lock`, so the uv path had never been exercised. Renovate bumped `pyproject.toml`,
+failed to regenerate the lockfile, and opened the PR anyway; CI then failed on `uv sync
+--locked` against the drift. **A manager whose cache is not redirected here does not degrade,
+it fails**, and it fails one repo at a time as each new ecosystem is added.
 
 Those overrides work because `getChildEnv()` merges
 `{...extraEnv, ...parentEnv, ...globalConfigEnv, ...userConfiguredEnv, ...forcedEnv}` —
