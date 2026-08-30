@@ -32,7 +32,7 @@ spec:
   # protect against an unsupported version jump; it applies whatever it
   # resolves. The next k3s minor would roll the control plane unattended,
   # having asked nobody. Keep this pinned and keep moving it by PR.
-  version: v1.36.3+k3s1
+  version: v1.36.4+k3s1
 
   # All three nodes are control-plane, so this one Plan covers the cluster. The
   # server/agent pair in the upstream documentation exists so workers can wait
