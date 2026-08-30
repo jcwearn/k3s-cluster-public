@@ -73,9 +73,10 @@
       "pinDigests": false
     },
     {
-      "description": "Merging a k3s bump rolls all three control-plane nodes unattended. The bot's global config automerges every non-major update for '*', so this must opt out explicitly or a patch release would restart the control plane with nobody watching.",
+      "description": "Merging a k3s bump rolls all three control-plane nodes unattended. The bot's global config automerges every non-major update for '*', so this must opt out explicitly or a patch release would restart the control plane with nobody watching. rancher/kubectl rides along so the drain kubectl and the Plan version land in one PR when both have a patch pending -- they are independent release streams, so grouping cannot guarantee they always move together, and it is the minor gate below that keeps the skew in policy.",
       "matchPackageNames": [
-        "k3s-io/k3s"
+        "k3s-io/k3s",
+        "rancher/kubectl"
       ],
       "groupName": "k3s",
       "groupSlug": "k3s",
@@ -97,6 +98,17 @@
       "matchPackageNames": [
         "k3s-io/k3s",
         "fluxcd/flux2"
+      ],
+      "matchUpdateTypes": [
+        "minor",
+        "major"
+      ],
+      "enabled": false
+    },
+    {
+      "description": "The drain kubectl must never run ahead of the k3s minor it drains for. k3s minors are gated above and move by runbook, so this one moves in that same PR -- if the bot could open a kubectl minor on its own it would break the skew policy in the one direction nothing else checks.",
+      "matchPackageNames": [
+        "rancher/kubectl"
       ],
       "matchUpdateTypes": [
         "minor",
@@ -131,6 +143,19 @@
       "datasourceTemplate": "github-releases",
       "depNameTemplate": "fluxcd/flux2",
       "extractVersionTemplate": "^v(?<version>.+)$"
+    },
+    {
+      "customType": "regex",
+      "description": "The kubectl that performs the node drain, pinned in a ConfigMap data field. The kubernetes manager only reads `image:` fields in pod specs, so this was invisible to it -- the two files that carry it both instruct a human to bump it alongside the Plan version, and the first bot-generated k3s PR could not have. The versioning regex is anchored to exclude the -amd64/-arm64 tags rancher/kubectl publishes beside each release.",
+      "managerFilePatterns": [
+        "/^infrastructure/system-upgrade-controller/patch-controller-env\\.yaml$/"
+      ],
+      "matchStrings": [
+        "SYSTEM_UPGRADE_JOB_KUBECTL_IMAGE: rancher/kubectl:(?<currentValue>v\\d+\\.\\d+\\.\\d+)\\n"
+      ],
+      "datasourceTemplate": "docker",
+      "depNameTemplate": "rancher/kubectl",
+      "versioningTemplate": "regex:^v(?<major>\\d+)\\.(?<minor>\\d+)\\.(?<patch>\\d+)$"
     }
   ]
 }

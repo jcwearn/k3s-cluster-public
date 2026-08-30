@@ -4,14 +4,16 @@
 # that is the kubectl which performs the drain -- not a detail any k3s or
 # system-upgrade-controller documentation mentions. kubectl is supported within
 # one minor of the apiserver; v1.30 against the v1.36 this cluster is heading
-# for would be six. It has to move with the Plan version, so treat the two as
-# one edit: whenever plan-k3s.yaml changes, this changes with it.
+# for would be six. It has to move with the Plan version in plan-k3s.yaml.
 #
 # The tag will not always match the k3s version exactly -- rancher/kubectl lags
 # k3s, and there was no v1.34.10 when the cluster moved to v1.34.10+k3s1. Any
-# tag within one minor of the apiserver satisfies the skew policy, so take the
-# highest published patch of the matching minor and check the tag exists before
-# pinning it. A tag that does not exist fails the drain, not the build.
+# tag within one minor of the apiserver satisfies the skew policy. Renovate now
+# tracks the patch here, via a customManager in renovate.json: the kubernetes
+# manager reads `image:` fields in pod specs and cannot see a ConfigMap data
+# field, which is why this drifted untracked through the first bot-generated
+# k3s PR. The minor is still yours -- move it in the hop PR, and check the tag
+# exists first. A tag that does not exist fails the drain, not the build.
 #
 # SYSTEM_UPGRADE_JOB_ACTIVE_DEADLINE_SECONDS ships at 900. A Job here has to
 # drain a node, pull the upgrade image, swap the binary and restart k3s, and

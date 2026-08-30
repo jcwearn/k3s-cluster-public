@@ -4,19 +4,22 @@
 #
 # `SYSTEM_UPGRADE_JOB_KUBECTL_IMAGE` in patch-controller-env.yaml is the kubectl
 # that performs the drain, and kubectl is supported within one minor of the
-# apiserver. **Bump it in the same commit as `version` below, every time.**
+# apiserver. Renovate tracks its patch releases and groups them with this file's;
+# **its minor is yours to move, in the same PR as a minor hop below.**
 #
-# Upstream permits no minor-version skipping, so each hop is its own PR:
+# Upstream permits no minor-version skipping, so each minor is its own PR. The
+# ladder below records the minors, not the patch -- the live patch level is
+# whatever `version:` says, and Renovate moves that on its own:
 #
-#   v1.32.4  -> v1.32.13 (done)  etcd 3.5.21 -> 3.5.26. Mandatory: there is no
-#                                safe path from etcd 3.5 to 3.6 without it, and
-#                                1.33 already carries 3.6.
-#            -> v1.33.13 (done)   etcd 3.6.14. One-way door -- no downgrade after
-#                                 this, only snapshot restore.
-#            -> v1.34.10 (done)   apiserver/etcd metric labels change. Also the
-#                                 floor for Flux 2.9, which landed after it.
-#            -> v1.35.7 (done)    cgroup v1 becomes an error, not a warning.
-#            -> v1.36.3 (here)    target, supported to 2027-06-28.
+#   v1.32.4  -> v1.32.13  etcd 3.5.21 -> 3.5.26. Mandatory: there is no safe
+#                         path from etcd 3.5 to 3.6 without it, and 1.33
+#                         already carries 3.6.
+#            -> v1.33.13  etcd 3.6.14. One-way door -- no downgrade after this,
+#                         only snapshot restore.
+#            -> v1.34.10  apiserver/etcd metric labels change. Also the floor
+#                         for Flux 2.9, which landed after it.
+#            -> v1.35.7   cgroup v1 becomes an error, not a warning.
+#            -> v1.36     current minor, supported to 2027-06-28.
 #
 # Full procedure, per-hop pre-checks and abort criteria:
 # docs/plans/k3s-eol-upgrade/plan.md
