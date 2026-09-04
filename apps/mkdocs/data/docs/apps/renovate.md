@@ -169,17 +169,17 @@ whose leak is upstream's to fix, was not.
 Everything except the config and the token goes to `work-volume`, an `emptyDir` with
 `sizeLimit: 4Gi`: cloned repos, the Renovate cache, and every package manager's cache.
 
-`customEnvVariables` in the bot config points the tool caches there explicitly — `GOPATH`,
-`UV_CACHE_DIR`, `NPM_CONFIG_CACHE`, `YARN_CACHE_FOLDER`, `YARN_GLOBAL_FOLDER` and pnpm's store
-and cache dirs. That is **not** redundant now that `RENOVATE_CACHE_DIR` is itself ephemeral.
+`customEnvVariables` in the bot config points the tool caches there explicitly — `GOPATH`, uv's
+`UV_CACHE_DIR`, `UV_PYTHON_INSTALL_DIR` and `UV_TOOL_DIR`/`UV_TOOL_BIN_DIR`, `NPM_CONFIG_CACHE`,
+`YARN_CACHE_FOLDER`, `YARN_GLOBAL_FOLDER` and pnpm's store and cache dirs. That is **not** redundant now that `RENOVATE_CACHE_DIR` is itself ephemeral.
 Without it `GOCACHE` and `GOMODCACHE` default into the container's writable layer, which no
 `sizeLimit` bounds. And `GOBIN` is load-bearing regardless: the container args put
 `/tmp/renovate/go-bin` on `PATH`.
 
-`UV_CACHE_DIR` is there for a harder reason than the others, and it is the one to remember when
-a new manager shows up. uv defaults to `$HOME/.cache/uv`, and `$HOME` is `/home/ubuntu` from the
-image — not a mounted volume, and not writable by the pod's `runAsUser: 1000`. So uv did not
-merely cache in the wrong place, it could not run at all:
+The uv variables are there for a harder reason than the others, and they are the ones to
+remember when a new manager shows up. uv derives its directories from `$HOME`, and `$HOME` is
+`/home/ubuntu` from the image — not a mounted volume, and not writable by the pod's
+`runAsUser: 1000`. So uv did not merely cache in the wrong place, it could not run at all:
 
 ```
 error: Failed to initialize cache at `/home/ubuntu/.cache/uv`
@@ -191,6 +191,25 @@ with a `uv.lock`, so the uv path had never been exercised. Renovate bumped `pypr
 failed to regenerate the lockfile, and opened the PR anyway; CI then failed on `uv sync
 --locked` against the drift. **A manager whose cache is not redirected here does not degrade,
 it fails**, and it fails one repo at a time as each new ecosystem is added.
+
+Redirecting `UV_CACHE_DIR` alone was not enough, which is the part worth carrying forward. One
+ruff release later the same repo broke the same way, on a different `$HOME` path:
+
+```
+error: Failed to discover managed Python installations
+  Caused by: failed to read directory `/home/ubuntu/.local/share/uv/python`: Permission denied
+```
+
+uv reads its managed-Python directory on every invocation, `uv lock` included, and derives it
+from `$XDG_DATA_HOME` — `/home/ubuntu/.local/share/uv/python` here. `UV_PYTHON_INSTALL_DIR`
+moves it, and `UV_TOOL_DIR`/`UV_TOOL_BIN_DIR` cover uv's two remaining `$HOME`-derived paths
+before they get their own turn. **Redirecting one of a manager's `$HOME` paths is not the same
+as redirecting all of them** — enumerate a manager's directories when it is added, rather than
+discovering them one red PR at a time.
+
+Not solved by overriding `HOME` wholesale, though that would catch every future case at once: it
+would also move git's and npm's config out from under Renovate, and one explicit variable per
+path is what the rest of this block does.
 
 Those overrides work because `getChildEnv()` merges
 `{...extraEnv, ...parentEnv, ...globalConfigEnv, ...userConfiguredEnv, ...forcedEnv}` —
