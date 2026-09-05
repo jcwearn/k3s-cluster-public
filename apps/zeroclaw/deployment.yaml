@@ -66,7 +66,7 @@ spec:
               mountPath: /zeroclaw-data
       containers:
         - name: zeroclaw
-          image: ghcr.io/zeroclaw-labs/zeroclaw:v0.8.4-debian@sha256:af1fa1f55cf0c78a00b3302f7cc77b8bdccce7e56045cfc50313f902ca81d33a
+          image: ghcr.io/zeroclaw-labs/zeroclaw:v0.8.5-debian@sha256:c5f21204f56ecc5f9df72d8d929bfca04c65b3ee8bca8cc7bbcb8cb261851236
           imagePullPolicy: IfNotPresent
           args: ["daemon"]
           ports:
