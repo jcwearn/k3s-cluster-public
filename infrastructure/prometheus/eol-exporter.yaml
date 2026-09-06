@@ -47,6 +47,13 @@ spec:
             # Six hours. The data changes a few times a year.
             - name: EOL_REFRESH_SECONDS
               value: "21600"
+            # Five minutes, and it applies only to products whose last fetch
+            # failed. Set well under EolCatalogMissing's `for: 1h` so a transient
+            # resolver or upstream blip never reaches the alert; the six-hour
+            # cycle above is a refresh interval, not a retry interval, and using
+            # it as both cost six hours of a firing alert on 2026-09-05.
+            - name: EOL_RETRY_SECONDS
+              value: "300"
             - name: PYTHONDONTWRITEBYTECODE
               value: "1"
           ports:

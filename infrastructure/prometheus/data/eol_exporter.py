@@ -20,6 +20,11 @@ API = "https://endoflife.date/api/v1/products/{product}/"
 
 PRODUCTS = [p.strip() for p in os.environ.get("EOL_PRODUCTS", "").split(",") if p.strip()]
 REFRESH_SECONDS = int(os.environ.get("EOL_REFRESH_SECONDS", "21600"))
+# How soon to come back to a product whose fetch failed, rather than leaving it
+# broken until the next full cycle. Deliberately shorter than EolCatalogMissing's
+# `for: 1h`, so a blip cannot reach the alert and the alert keeps meaning what its
+# annotation claims -- a wrong slug or no egress, not one bad minute.
+RETRY_SECONDS = int(os.environ.get("EOL_RETRY_SECONDS", "300"))
 LISTEN_PORT = int(os.environ.get("EOL_LISTEN_PORT", "9099"))
 HTTP_TIMEOUT = int(os.environ.get("EOL_HTTP_TIMEOUT_SECONDS", "30"))
 
@@ -54,8 +59,9 @@ def fetch(product):
         return json.load(response)["result"]["releases"]
 
 
-def refresh_once():
-    for product in PRODUCTS:
+def refresh_once(products=PRODUCTS):
+    failed = []
+    for product in products:
         try:
             releases = fetch(product)
         except Exception as exc:
@@ -63,16 +69,26 @@ def refresh_once():
                 entry = _snapshot.setdefault(product, {"releases": None, "ok": 0, "ts": 0.0})
                 entry["ok"] = 0
             log("fetch failed for {0}: {1}".format(product, exc))
+            failed.append(product)
             continue
         with _lock:
             _snapshot[product] = {"releases": releases, "ok": 1, "ts": time.time()}
         log("fetched {0}: {1} cycles".format(product, len(releases)))
+    return failed
 
 
-def refresh_loop():
+def refresh_loop(pending):
+    # Anything outstanding is retried on its own, on the short interval; only a
+    # clean pass goes back to sleeping out the full cycle. Without this, a fetch
+    # that failed at startup stayed failed for six hours -- which is what happened
+    # on 2026-09-05, when CoreDNS restarted in the same second as this pod and
+    # three of four products got `Try again` from the resolver.
+    #
+    # Only the failures are re-polled, so a single wrong slug does not drag the
+    # products that are fine into a five-minute poll alongside it.
     while True:
-        time.sleep(REFRESH_SECONDS)
-        refresh_once()
+        time.sleep(RETRY_SECONDS if pending else REFRESH_SECONDS)
+        pending = refresh_once(pending or PRODUCTS)
 
 
 def ready():
@@ -176,9 +192,11 @@ def main():
     if not PRODUCTS:
         log("EOL_PRODUCTS is empty, nothing to poll")
         sys.exit(1)
-    log("polling {0} every {1}s".format(",".join(PRODUCTS), REFRESH_SECONDS))
-    refresh_once()
-    threading.Thread(target=refresh_loop, daemon=True).start()
+    log("polling {0} every {1}s, retrying failures every {2}s".format(
+        ",".join(PRODUCTS), REFRESH_SECONDS, RETRY_SECONDS
+    ))
+    pending = refresh_once()
+    threading.Thread(target=refresh_loop, args=(pending,), daemon=True).start()
     ThreadingHTTPServer(("", LISTEN_PORT), Handler).serve_forever()
 
 

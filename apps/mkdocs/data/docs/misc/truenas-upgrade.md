@@ -253,10 +253,15 @@ Then, in the UI and the cluster:
 
 - **The `tailscale` app is Running**, and `truenas.${DOMAIN}` resolves and loads. If it does not,
   you are still on the LAN and can fix it; that is the whole reason for the on-LAN rule.
-- **Reapply `/etc/netdata/netdata.conf`.** TrueNAS overwrites it on every update and metrics go
-  quiet until you do. The procedure is in
-  [TrueNAS Monitoring](../infrastructure/truenas-monitoring.md). **This is the step most likely to be
-  skipped**, because nothing fails loudly — the Grafana dashboard just goes flat.
+- **Check `/etc/netdata/netdata.conf` came back patched.** TrueNAS overwrites it on every *boot*,
+  not merely on every update — proven on 2026-09-05, when an unplanned power cut reset it with
+  `/etc/version` unchanged. `truenas-infra` now declares a POSTINIT script that reinstalls it, so
+  the expected outcome here is that it is already correct; `grep -c "= yes" /etc/netdata/netdata.conf`
+  should read 20, not 8. If it reads 8 the script did not run, and the manual procedure is in
+  [TrueNAS Monitoring](../infrastructure/truenas-monitoring.md). **This is still the step most likely
+  to be skipped**, because nothing fails loudly — but it is no longer the only thing standing between
+  an upgrade and a flat dashboard: `TrueNASMetricSeriesMissing` fires about thirteen minutes after
+  the metrics stop.
 - **The healthchecks.io cron task still exists** under Data Protection. It is not managed by
   `truenas-infra`, so nothing would restore it.
 - **The NVMe SMART collector still runs.** Two halves, restored by different things or by nothing.

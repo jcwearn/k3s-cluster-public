@@ -48,6 +48,29 @@ Tracking another product is a one-line edit to `EOL_PRODUCTS` in
 `infrastructure/prometheus/eol-exporter.yaml` -- plus an arm in the recording rule if its running
 version is not already scraped.
 
+## Polling and retry
+
+Two intervals, and they are not the same thing:
+
+| Setting | Default | Applies to |
+|---|---|---|
+| `EOL_REFRESH_SECONDS` | `21600` (6h) | The full cycle. The catalogue changes a few times a year |
+| `EOL_RETRY_SECONDS` | `300` (5m) | Only the products whose last fetch failed |
+
+The second exists because the first was doing both jobs, and a refresh interval makes a terrible
+retry interval. On 2026-09-05 an unplanned power event restarted CoreDNS in the same second as this
+pod; three of the four startup fetches got `[Errno -3] Try again` from the resolver and the fourth
+got through. Nothing retried the three for six hours, so `EolCatalogMissing` fired an hour later and
+cleared only when the next full cycle came round. The `truenas-api-exporter` took the identical DNS
+hit in the same second and was fine sixty seconds later -- the only difference between them was the
+retry interval.
+
+Failed products are now re-polled on their own, on the short interval, until they succeed; a clean
+pass goes back to the six-hour cycle. Only the failures are retried, so one wrong slug does not drag
+the healthy products into a five-minute poll alongside it. Five minutes is chosen against
+`EolCatalogMissing`'s `for: 1h`: a transient blip can no longer reach the alert, which leaves the
+alert meaning what its annotation always claimed -- a wrong slug, or a pod with no egress.
+
 ## What is not tracked, and why
 
 **TrueNAS.** Deliberately absent, for three reasons -- the third is the one that matters.
@@ -119,6 +142,10 @@ Two behaviours worth knowing before reading a graph:
 | `ReleaseNotInEolCatalog` | A release in use has no catalogue entry | 6h | warning |
 | `EolCatalogStale` | No successful poll for a product in 48h | 1h | warning |
 | `EolCatalogMissing` | A product has never polled successfully | 1h | warning |
+
+`EolCatalogMissing`'s hour is deliberately twelve times the retry interval above. It should only
+ever mean a slug that does not exist upstream or a pod that cannot reach the API -- never a bad
+minute on the network.
 
 The last three are the ones that keep the check itself honest. A silent poller is no better than no
 poller: without them, a renamed slug or an unreachable API would make the first two alerts go quiet,

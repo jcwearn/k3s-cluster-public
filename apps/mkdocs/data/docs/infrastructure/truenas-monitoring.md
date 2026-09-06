@@ -52,20 +52,41 @@ All cluster-side resources live in `infrastructure/prometheus/`:
 
 ### Step 2: Restore Netdata Collectors
 
-TrueNAS ships with many Netdata collectors disabled for security hardening, and **every update resets
-`/etc/netdata/netdata.conf` back to that state.** Restoring them is a manual step after each upgrade
-— see [Upgrading TrueNAS](../misc/truenas-upgrade.md), where it is the step most likely to be
-skipped, because nothing fails loudly. The dashboard just goes flat.
+TrueNAS ships with many Netdata collectors disabled for security hardening, and **every boot resets
+`/etc/netdata/netdata.conf` back to that state.**
 
-It is not only the dashboard. The collectors this restores are what four of the `truenas-health`
-alert rules are built on:
+This page said "every update" until 2026-09-05, and that was wrong in the direction that matters.
+The box rebooted at 22:34Z on an unplanned power event and came back with the stock file: byte
+identical to the `netdata.conf.25.10.6.stock` backup taken during the August upgrade, `grep -c
+"= yes"` down from 20 to 8, mtime two minutes after the boot — and `/etc/version` still reading
+`25.10.6`. No update happened. It is the boot that does it, so the trigger is a power cut or a
+`reboot` just as much as it is System → Update.
 
-| Collector | What stops working without it |
-|---|---|
-| `/proc/spl/kstat/zfs/arcstats` | `truenas_arcstats` — the ARC hit rate alert |
-| `diskspace` | `disk_bytes_used` — the pool capacity alert |
-| `/proc/meminfo` | `physical_memory` — the memory pressure alert |
-| `/proc/diskstats`, physical disk metrics | disk I/O charts, and `disk_temperature` coverage |
+Which is why this is no longer only a manual step. `truenas-infra` declares a POSTINIT
+[Init/Shutdown Script](https://github.com/jcwearn/truenas-infra) that reinstalls a pinned copy from
+`/mnt/pool/admin-scripts/` and restarts netdata on every boot; see `netdata-conf.tf` over there.
+The block below is the recovery path — for a box where that script has not been installed yet, or
+where it did not take. It is still worth checking by hand after an upgrade
+([Upgrading TrueNAS](../misc/truenas-upgrade.md)), because nothing fails loudly: the dashboard
+just goes flat.
+
+It is not only the dashboard. The collectors this restores are what several of the `truenas-health`
+alert rules are built on. The right-hand column is measured, not inferred — the box ran on the
+stock file for thirteen hours on 2026-09-05, so what actually breaks is a matter of record rather
+than of reading the config:
+
+| Collector | Stock value | What actually stops |
+|---|---|---|
+| `/proc/stat` | `no` | `cpu_total` — the CPU usage alert |
+| `/proc/meminfo` | `no` | `physical_memory` — the memory pressure alert. Also `memory_available`, which no rule covers |
+| `diskspace` | `no` | `disk_bytes_used` — the pool capacity alert |
+| `/proc/spl/kstat/zfs/arcstats` | `no` | **nothing.** `truenas_arcstats` kept arriving — 25 series — so it reaches graphite by some route other than the proc plugin |
+| `/proc/diskstats` | `no` | **nothing.** `disk_io` and `disk_busy` kept arriving too |
+| disk temperature | — | **nothing.** It comes from `truenas-api-exporter`, which dials the API and is unaffected by this file |
+
+The three that do break are exactly the three `TrueNASMetricSeriesMissing` rules that fired, thirteen
+minutes after the reboot. The last three rows are the reason to keep this table measured: an
+`arcstats = no` in the stock file reads like a fourth outage and is not one.
 
 Apply the config from the Supporterino project, **pinned to a commit**:
 
@@ -74,7 +95,10 @@ Apply the config from the Supporterino project, **pinned to a commit**:
 SHA=b092856a7fb21196629b3c3cd2e57cbcad736e78
 SUM=37df02c6cdd8f0f8cf1548941889fc6760557842a63e0c357a518d112d1fb134
 
-# Keep the file the update installed, named for the release that installed it
+# Keep the stock file, named for the release it belongs to. Skip this if a
+# .stock backup for the running release already exists -- it is the reference
+# a "has this been reset?" check compares against, and overwriting it with an
+# already-patched file destroys that.
 sudo cp -a /etc/netdata/netdata.conf "/etc/netdata/netdata.conf.$(cat /etc/version).stock"
 
 # Fetch to a temp path and verify BEFORE anything is written to /etc
