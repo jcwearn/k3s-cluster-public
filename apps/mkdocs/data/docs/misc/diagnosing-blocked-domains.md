@@ -19,8 +19,13 @@ the cluster, where a lookup is recorded depends on how the device was connected:
 The first two rows are the ones that matter for "it works with Tailscale off": that
 sentence means *AdGuard allows it and NextDNS blocks it*, which is a real and expected
 gap. AdGuard runs `AdGuard DNS filter` + `HaGeZi Pro` + `HaGeZi TIF`; NextDNS runs
-`HaGeZi Multi PRO` plus its own Security and Privacy toggles, and the two are equivalent
-in intent but not domain-for-domain.
+`AdGuard DNS filter` + `HaGeZi Multi PRO` plus its own Security and Privacy toggles, and
+the two are equivalent in intent but not domain-for-domain.
+
+NextDNS ran a third list, `NextDNS Ads & Trackers Blocklist`, until it was removed as the
+cause of the anti-adblock walls documented below. If a future investigation finds a
+NextDNS-only block, check first whether a list has been added back that AdGuard does not
+run — that asymmetry is where this class of gap lives.
 
 ## Procedure
 
@@ -200,6 +205,70 @@ one test per day.
 **Why the cutover parity test did not catch it.** It could not have. The test compared
 *which domains* each resolver blocks, and on that question the two agreed. The failure was
 in *how* a block is answered, which no domain-by-domain comparison inspects.
+
+## Worked example: "An ad blocker is preventing this page from loading"
+
+**Symptom.** Recipe and news sites — `indianhealthyrecipes.com` among them — replaced their
+content with a wall reading *"An ad blocker is preventing this page from loading."* On the
+tailnet and on the guest network, but never on the LAN with Tailscale off. Guests hit it
+constantly, and unlike the LAN case they had no workaround: Guest/IoT/NoT/Protect all
+resolve through the same NextDNS profile.
+
+**Outcome first: the fix was removing the `NextDNS Ads & Trackers Blocklist`. The allowlist
+is still empty, and no ad blocking was lost.**
+
+**The measurement that located it.** Because the symptom was "works with Tailscale off",
+step 5's AdGuard column applies. Querying both resolvers side by side separated two
+categories that look identical from the browser:
+
+| Domain | AdGuard | NextDNS (before) |
+|---|---|---|
+| `pagead2.googlesyndication.com` | `0.0.0.0` | `0.0.0.0` |
+| `securepubads.g.doubleclick.net` | `0.0.0.0` | `0.0.0.0` |
+| `get.s-onetag.com` | `0.0.0.0` | `0.0.0.0` |
+| `html-load.com` | `104.18.21.31` | `0.0.0.0` |
+| `content-loader.com` | `104.26.2.19` | `0.0.0.0` |
+
+Both resolvers blocked the real ad servers identically. The entire divergence was two
+anti-adblock **detection and ad-recovery** domains, both operated by Admiral/BlockThrough.
+Blocking those is what raises the wall; it is not what blocks the ads. This is the
+distinction the symptom hides — the page says "ad blocker" and means "I could not reach my
+ad-blocker *detector*."
+
+**Attribution.** By elimination, the culprit had to be something NextDNS ran that AdGuard
+did not: the `NextDNS Ads & Trackers Blocklist`, `Block Disguised Third-Party Trackers`, or
+a Security toggle. The initial guess was the disguised-trackers toggle, on the reasoning
+that ad-recovery *is* first-party masquerading. That was wrong. The NextDNS log's `⋮`
+attribution named the blocklist, and removing it stopped the walls.
+
+**Removing a whole list cost nothing.** Re-running the comparison afterwards across a wider
+set — adding `doubleclick.net`, `google-analytics.com`, `scorecardresearch.com`,
+`adservice.google.com`, `analytics.tiktok.com` — the two resolvers agreed on every domain,
+with every real ad and tracking host still answering `0.0.0.0` on both. The removed list
+was contributing nothing the remaining two did not already cover, except the anti-adblock
+domains. A clean win rather than a trade.
+
+**Rejected: allowlisting the two domains.** It works, but ad-recovery services rotate
+hostnames specifically to outlast blocklists, so two entries become an open-ended list that
+nothing in Git tracks. Removing the source of the over-blocking is the durable fix.
+Allowlisting stays available for a one-off site whose wall survives this.
+
+**Rejected: loosening HaGeZi Multi PRO to Multi NORMAL.** The measurements showed the
+blocklists were calibrated correctly — the real ad servers were blocked, and should stay
+blocked. Detuning the whole profile to fix one narrow category would have surrendered
+genuine blocking for no reason.
+
+**Why the cutover parity test did not catch this either.** Same shape as the block-page
+finding, one level up. That test sampled domains and compared verdicts in aggregate, and on
+the sample the two resolvers agreed. It had no sample from this *category*, because nobody
+thinks to test "domains whose only job is to notice you are blocking things." Aggregate
+parity does not imply parity per category — and the categories that break sites are exactly
+the ones a hand-written sample omits.
+
+**One toggle, every device.** Because both the tailnet and every guest VLAN resolve through
+the same profile, the single removal fixed guests with no per-network work. That is the
+upside of the constraint described under *There is no per-device profile* below: profile-wide
+is the only scope there is, so a correct fix reaches everything at once.
 
 ## Current allowlist
 
