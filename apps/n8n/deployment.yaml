@@ -21,7 +21,7 @@ spec:
         fsGroup: 1000
       containers:
         - name: n8n
-          image: ghcr.io/n8n-io/n8n:2.38.3@sha256:4b76b9c5a69dc1c0f26bedd21b4e281ac2c84bd88d33857487b9e63dd0a42e87
+          image: ghcr.io/n8n-io/n8n:2.39.2@sha256:01c2892dbb4b20c418243ca1bef93a9bd614e09404c686566ed1055561836d50
           imagePullPolicy: IfNotPresent
           ports:
             - name: http
