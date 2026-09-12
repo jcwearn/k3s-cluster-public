@@ -261,6 +261,13 @@ install. That filter covers `cronjob.yaml` deliberately: the validator's version
 the CronJob image, so Renovate's own image bumps re-trigger the check and re-validate the
 config against the version they introduce, rather than merging a deprecation unnoticed.
 
+One consequence of reading the version from the image: Renovate pushes its Docker tag a few
+minutes before the matching npm package lands, and a bump opened inside that window fails here
+with `npm error notarget` until the bot rebases. The `renovate/renovate` rule in `renovate.json`
+sets `minimumReleaseAge: "1 hour"` on version bumps so the PR is not raised before `npx` can
+resolve the version -- scoped to the one package and to `major`/`minor`/`patch`, per the warning
+above about blanket ages.
+
 It validates the two files differently, which is the part worth knowing about:
 
 | File | Kind | Validated as |

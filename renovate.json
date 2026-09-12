@@ -115,6 +115,18 @@
         "major"
       ],
       "enabled": false
+    },
+    {
+      "description": "Renovate publishes its Docker image a few minutes before its npm package. validate-renovate.yaml checks the config against renovate@<image tag> on npm, so a bump opened inside that window fails CI with ETARGET until the bot rebases -- it did, twice, on 2026-09-12. Only version bumps move the tag the workflow reads, so digest and pin updates are left alone: they carry no usable timestamp and a blanket age would withhold them forever.",
+      "matchPackageNames": [
+        "renovate/renovate"
+      ],
+      "matchUpdateTypes": [
+        "major",
+        "minor",
+        "patch"
+      ],
+      "minimumReleaseAge": "1 hour"
     }
   ],
   "customManagers": [
