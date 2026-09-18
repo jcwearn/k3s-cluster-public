@@ -6,6 +6,8 @@ metadata:
   labels:
     app.kubernetes.io/name: calibre-web
   annotations:
+    # linuxserver images: s6 starts as root, fixes ownership, drops to PUID.
+    ignore-check.kube-linter.io/run-as-non-root: "linuxserver s6 images start as root and drop to PUID 1000"
     reloader.stakater.com/auto: "true"
 spec:
   revisionHistoryLimit: 3

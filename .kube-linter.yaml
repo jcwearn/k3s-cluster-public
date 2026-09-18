@@ -12,9 +12,6 @@
 # docs/plans/cluster-hardening/. Each phase adds its check here in the same PR
 # that fixes the workloads it would flag:
 #
-#   phase 6  run-as-non-root, privilege-escalation-container,
-#            drop-net-raw-capability, no-read-only-root-fs, default-service-account
-#
 # schema-validation is deliberately absent: kubeconform does the same job with
 # the CRD schemas kube-linter lacks, in the step before this one.
 checks:
@@ -54,6 +51,14 @@ checks:
     # stays in the Service while it is hung.
     - no-liveness-probe
     - no-readiness-probe
+    # The restricted Pod Security profile, as far as a linter can see it. The
+    # exceptions carry an annotation with the reason; today those are the
+    # linuxserver s6 images (root, then drop to PUID), paperless-ngx (the
+    # same), the ansible CronJobs (a root-owned 0400 key), gluetun and
+    # kube-vip (NET_ADMIN/NET_RAW are the job).
+    - run-as-non-root
+    - privilege-escalation-container
+    - drop-net-raw-capability
 
 customChecks:
   # The kubelet's safe sysctls, which the restricted Pod Security profile

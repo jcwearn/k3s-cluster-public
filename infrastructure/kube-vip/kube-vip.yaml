@@ -58,6 +58,8 @@ metadata:
     # control-plane lease is worse than any hang it might be in.
     ignore-check.kube-linter.io/no-liveness-probe: "restarting the VIP holder is worse than the hang it would fix"
     ignore-check.kube-linter.io/no-readiness-probe: "hostNetwork DaemonSet with no Service; readiness has nothing to gate"
+    ignore-check.kube-linter.io/run-as-non-root: "manages the node interface; NET_ADMIN/NET_RAW need root"
+    ignore-check.kube-linter.io/drop-net-raw-capability: "gratuitous ARP for the VIP is NET_RAW"
   name: kube-vip-ds
   namespace: kube-system
 spec:

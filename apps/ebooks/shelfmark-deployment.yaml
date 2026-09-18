@@ -6,6 +6,10 @@ metadata:
   labels:
     app.kubernetes.io/name: shelfmark
   annotations:
+    # shelfmark is a linuxserver-style s6 image; gluetun needs NET_ADMIN and
+    # NET_RAW to build the WireGuard tunnel the pod routes through.
+    ignore-check.kube-linter.io/run-as-non-root: "s6 image drops to PUID; gluetun needs root for the tunnel"
+    ignore-check.kube-linter.io/drop-net-raw-capability: "gluetun builds the WireGuard tunnel"
     reloader.stakater.com/auto: "true"
 spec:
   revisionHistoryLimit: 3

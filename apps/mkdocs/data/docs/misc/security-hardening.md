@@ -43,10 +43,10 @@ Facts, as of the date at the bottom of the page. Each row links to the phase tha
 
 | Item | State |
 | --- | --- |
-| `securityContext` | 5 of 40 raw workloads are fully hardened (`hivemind` is the template: `runAsNonRoot`, `seccompProfile: RuntimeDefault`, `allowPrivilegeEscalation: false`, `readOnlyRootFilesystem`, `capabilities.drop: [ALL]`). 4 set a UID or `fsGroup` and nothing else. The rest set nothing and run as whatever the image says, which is usually root → phase 6 |
-| ServiceAccounts | ~25 pods run on `default` with the token auto-mounted. Nobody sets `automountServiceAccountToken: false`. Dedicated SAs exist only where the API is actually used (homepage, ansible, withjoy-exporter, kube-vip, system-upgrade) → phase 6 |
+| `securityContext` | Every raw workload runs as non-root with `seccompProfile: RuntimeDefault`, `allowPrivilegeEscalation: false` and every capability dropped, except the ones in the next row. Low ports (AdGuard's 53, the nginx frontends' 80) come from the `net.ipv4.ip_unprivileged_port_start` sysctl, not a capability. `kube-linter` refuses a new workload without this |
+| ServiceAccounts | `automountServiceAccountToken: false` on every pod that does not talk to the API server. The ones that do (homepage, withjoy-exporter, the ansible CronJobs, kube-vip, system-upgrade) have their own accounts and Roles |
 | `cluster-admin` | One binding, to `headlamp-admin`, a ServiceAccount with no stored token: write sessions in Headlamp use a token minted for a few hours. Headlamp's own account holds `view` |
-| Root-requiring images | adguardhome (binds :53), linuxserver s6 images (calibre-web, shelfmark, paperless-ngx), the ansible CronJobs (`runAsUser: 0`), gluetun (`NET_ADMIN` + `/dev/net/tun`), kube-vip (`hostNetwork`), csi-driver-nfs, system-upgrade Jobs. These are the permanent exception list |
+| Still root, with a reason | The s6 images that start as root and drop to PUID themselves (calibre-web, shelfmark, paperless-ngx); the ansible CronJobs, which read a root-owned `0400` SSH key; gluetun (`NET_ADMIN`/`NET_RAW` for the tunnel); kube-vip (`hostNetwork`, ARP); csi-driver-nfs and the system-upgrade Jobs (privileged by nature). Each carries an `ignore-check.kube-linter.io/…` annotation saying so; that list is the exception list |
 | Health probes | Every raw workload has liveness and readiness (startup too where boot is slow), and `kube-linter` refuses a new one without them. Excepted with a reason: kube-vip (restarting the VIP holder is worse than a hang), the system-upgrade-controller (nothing to probe), and every CronJob |
 | Image pinning | Tag + digest everywhere CI can see, enforced by `scripts/check-image-digests.sh`. Two deliberate exceptions in `.ci/image-pin-allowlist`: the k3s upgrade image, whose tag the Plan derives at run time, and the vendored system-upgrade-controller manifest |
 
@@ -80,7 +80,7 @@ Ordered so that nothing which can take a pod down lands before the alerting that
 | 3 | ~~Git hooks: the same checks before a commit, plus a guard against committing a plaintext Secret or a literal address~~ done | none |
 | 4 | ~~Liveness and readiness probes on every workload~~ done | low |
 | 5 | ~~Flux → Alertmanager → ntfy on any failed reconcile; a [fast-revert runbook](fast-revert.md); a [canary-namespace pattern](canary-deployments.md) for risky upgrades~~ done | none |
-| 6 | `securityContext` on every raw workload, `automountServiceAccountToken: false` by default, image digests everywhere, Headlamp off `cluster-admin` | low–medium, per app |
+| 6 | ~~`securityContext` on every raw workload, `automountServiceAccountToken: false` by default, image digests everywhere, Headlamp off `cluster-admin`~~ done | low–medium, per app |
 | 7 | Pod Security Admission: `warn`/`audit` everywhere, then `enforce: baseline`, then `restricted` one namespace at a time | low |
 | 8 | NetworkPolicy, targeted: Postgres ingress, egress limits on the LLM workloads, ingress limits on the secret-bearing apps | medium, per namespace |
 | 9 | Node configuration via Ansible: etcd snapshots to R2, audit log, secrets encryption, `protect-kernel-defaults`, a cluster-wide PSA default | high — k3s restarts |

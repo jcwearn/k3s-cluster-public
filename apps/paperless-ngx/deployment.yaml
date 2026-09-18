@@ -4,6 +4,9 @@ metadata:
   name: paperless-ngx
   namespace: paperless-ngx
   annotations:
+    # paperless-ngx is an s6 image: it starts as root to fix ownership and
+    # drops to PUID/PGID 1000 itself. The redis sidecar runs as its own user.
+    ignore-check.kube-linter.io/run-as-non-root: "s6 image starts as root and drops to PUID 1000"
     reloader.stakater.com/auto: "true"
 spec:
   replicas: 1
@@ -102,6 +105,16 @@ spec:
             limits:
               memory: "256Mi"
               cpu: "250m"
+          # The image's own redis user. No volumes; its data dir is ephemeral,
+          # which is right for a task broker.
+          securityContext:
+            runAsNonRoot: true
+            runAsUser: 999
+            runAsGroup: 1000
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop:
+                - ALL
           livenessProbe:
             exec:
               command: ["redis-cli", "ping"]
