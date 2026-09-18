@@ -5,11 +5,8 @@
 # Plan's `version` field at run time, so the manifest cannot carry one.
 rancher/k3s-upgrade
 
-# Temporary: pinned in docs/plans/cluster-hardening phase 6. Remove each line
-# in the PR that pins it.
-busybox
-ghcr.io/corentinth/it-tools:2024.10.22-7ca5933
-louislam/uptime-kuma:2
-lscr.io/linuxserver/calibre-web:0.6.26-ls370
+# Permanent: lives in the vendored upstream controller.yaml, which the
+# kustomization keeps byte-for-byte so a re-vendor is an overwrite. A digest
+# patch over it would silently outlive the next re-vendor. Renovate tracks the
+# tag in the vendored file directly.
 rancher/system-upgrade-controller:v0.20.1
-squidfunk/mkdocs-material:9

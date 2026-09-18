@@ -22,9 +22,13 @@ spec:
       enableHelm: true
       # Bypasses: https://github.com/kubernetes-sigs/headlamp/issues/4883
       sessionTTL: null
+    # `view`, not cluster-admin: this is what the pod's ServiceAccount and the
+    # long-lived login token in secret.yaml can do. Writes use the separate
+    # headlamp-admin account in rbac-admin.yaml, whose tokens are minted
+    # per session and expire.
     clusterRoleBinding:
       create: true
-      clusterRoleName: cluster-admin
+      clusterRoleName: view
     service:
       type: LoadBalancer
       port: 80

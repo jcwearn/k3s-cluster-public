@@ -1,0 +1,32 @@
+# The write identity for Headlamp, deliberately separate from the pod's own.
+#
+# The chart binds Headlamp's ServiceAccount to `view`, and the long-lived
+# token in secret.yaml belongs to that account, so the everyday login can
+# read everything but change nothing and cannot read Secrets. This account
+# holds cluster-admin and has NO token Secret: a write session starts with
+#
+#   kubectl -n headlamp create token headlamp-admin --duration=8h | pbcopy
+#
+# pasted into Headlamp's token login, and the token expires on its own.
+# Nothing with cluster-admin is stored anywhere any more.
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: headlamp-admin
+  namespace: headlamp
+automountServiceAccountToken: false
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  # Not "headlamp-admin": that is the name the chart gives ITS binding (the
+  # one that now grants `view`), and two managers on one object would fight.
+  name: headlamp-admin-cluster-admin
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: cluster-admin
+subjects:
+  - kind: ServiceAccount
+    name: headlamp-admin
+    namespace: headlamp

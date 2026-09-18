@@ -182,7 +182,7 @@ spec:
               memory: 128Mi
       containers:
         - name: calibre-web
-          image: lscr.io/linuxserver/calibre-web:0.6.26-ls370
+          image: lscr.io/linuxserver/calibre-web:0.6.26-ls370@sha256:34ccca33719247efd51a1babd13d6f01e8ad02efe3cfc5f977c35432dec08b62
           imagePullPolicy: IfNotPresent
           ports:
             - name: http

@@ -45,10 +45,10 @@ Facts, as of the date at the bottom of the page. Each row links to the phase tha
 | --- | --- |
 | `securityContext` | 5 of 40 raw workloads are fully hardened (`hivemind` is the template: `runAsNonRoot`, `seccompProfile: RuntimeDefault`, `allowPrivilegeEscalation: false`, `readOnlyRootFilesystem`, `capabilities.drop: [ALL]`). 4 set a UID or `fsGroup` and nothing else. The rest set nothing and run as whatever the image says, which is usually root → phase 6 |
 | ServiceAccounts | ~25 pods run on `default` with the token auto-mounted. Nobody sets `automountServiceAccountToken: false`. Dedicated SAs exist only where the API is actually used (homepage, ansible, withjoy-exporter, kube-vip, system-upgrade) → phase 6 |
-| `cluster-admin` | One binding: Headlamp, reachable over Tailscale. The identity boundary is the tailnet → phase 6 |
+| `cluster-admin` | One binding, to `headlamp-admin`, a ServiceAccount with no stored token: write sessions in Headlamp use a token minted for a few hours. Headlamp's own account holds `view` |
 | Root-requiring images | adguardhome (binds :53), linuxserver s6 images (calibre-web, shelfmark, paperless-ngx), the ansible CronJobs (`runAsUser: 0`), gluetun (`NET_ADMIN` + `/dev/net/tun`), kube-vip (`hostNetwork`), csi-driver-nfs, system-upgrade Jobs. These are the permanent exception list |
 | Health probes | Every raw workload has liveness and readiness (startup too where boot is slow), and `kube-linter` refuses a new one without them. Excepted with a reason: kube-vip (restarting the VIP holder is worse than a hang), the system-upgrade-controller (nothing to probe), and every CronJob |
-| Image pinning | Tag + digest via Renovate almost everywhere. Unpinned: `busybox` (untagged, zeroclaw init), `uptime-kuma:2`, `mkdocs-material:9`, it-tools, calibre-web, the system-upgrade-controller images → phase 6 |
+| Image pinning | Tag + digest everywhere CI can see, enforced by `scripts/check-image-digests.sh`. Two deliberate exceptions in `.ci/image-pin-allowlist`: the k3s upgrade image, whose tag the Plan derives at run time, and the vendored system-upgrade-controller manifest |
 
 ### Network
 
