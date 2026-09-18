@@ -8,9 +8,6 @@ spec:
   # the shape and the spacing.
   schedule: "10 8 * * 6"
   timeZone: America/New_York
-  # Removed once each host has been through a supervised run. See
-  # docs/plans/hypervisor-upgrade-automation/progress.md.
-  suspend: true
   concurrencyPolicy: Forbid
   successfulJobsHistoryLimit: 3
   failedJobsHistoryLimit: 3

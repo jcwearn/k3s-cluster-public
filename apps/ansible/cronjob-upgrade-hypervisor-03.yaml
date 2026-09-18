@@ -11,16 +11,13 @@ spec:
   # expressible.
   #
   # Order is pve-03, pve-02, pve-01 -- the host carrying the database primaries
-  # goes last -- two and a half hours apart. A run takes about 45 minutes and
+  # goes last -- two and a half hours apart. A run takes about 15 minutes and
   # is killed at two hours, so the next never starts while one is live. The
   # playbook's gate is the actual lock; the spacing is just the order. The :10
   # keeps the gate clear of renovate's :00/:30 tick landing a Pending pod in
   # its window.
   schedule: "10 3 * * 6"
   timeZone: America/New_York
-  # Removed once each host has been through a supervised run. See
-  # docs/plans/hypervisor-upgrade-automation/progress.md.
-  suspend: true
   concurrencyPolicy: Forbid
   successfulJobsHistoryLimit: 3
   failedJobsHistoryLimit: 3

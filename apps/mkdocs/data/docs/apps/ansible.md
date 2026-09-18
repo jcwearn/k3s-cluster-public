@@ -32,7 +32,7 @@ Automated server management via Kubernetes CronJobs running Ansible playbooks.
 The three upgrade Jobs are one per hypervisor rather than one loop, because the runner is a pod
 inside the cluster it reboots — each is pinned by node affinity *off* the k3s node whose VM it will
 shut down. They run in the order pve-03 → pve-02 → pve-01 (the host carrying the database primaries
-last), two and a half hours apart; a run takes about 45 minutes and is killed at two. The
+last), two and a half hours apart; a run takes about 15 minutes and is killed at two. The
 playbook's gate refuses to start while a sibling Job is active or the cluster is anything less
 than whole, so the spacing is the order, not the lock.
 

@@ -583,7 +583,7 @@
               {% for p in phases if stamps[p[1]] is defined and stamps[p[2]] is defined %}
               {{ p[0] }}: {{ ((stamps[p[2]] | int) - (stamps[p[1]] | int)) // 60 }}m{{ ((stamps[p[2]] | int) - (stamps[p[1]] | int)) % 60 }}s
               {% endfor %}
-              Total: {{ ((end | int) - (stamps.start | int)) // 60 }}m
+              Total: {{ ((end | int) - (stamps.start | int)) // 60 }}m{{ ((end | int) - (stamps.start | int)) % 60 }}s
               Job: {{ job_name }}
 
         - name: Post the report to ntfy

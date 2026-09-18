@@ -67,15 +67,20 @@ duration of each phase. Failure adds the task name and the error, at `high` prio
 
 ## Time budget
 
-| Phase | Typical | Bounded by |
+Measured on the first full run (pve-02, 89 host + 9 guest packages, host kernel reboot):
+
+| Phase | Measured | Bounded by |
 |---|---|---|
-| gate | 1 min | 3 × 20 s retries on pod churn only |
-| apt, both sides | 3–6 min | SSH keepalive |
-| drain + verify | 3 min | `drain_timeout` 15 min, one retry |
-| qm shutdown → host reboot → services | 5 min | 6 min stopped-wait, 15 min reboot, 2 min checks |
-| VM boot → Ready → etcd → pods settle | 5 min | 10 + 2 + 10 min |
+| gate | 8 s | 3 × 20 s retries on pod churn only |
+| apt, both sides | 1m17s | SSH keepalive |
+| drain + verify | 1m08s | `drain_timeout` 15 min, one retry |
+| qm shutdown → host reboot → services → SSH | 1m26s | 6 min stopped-wait, 15 min reboot, 2 min checks |
+| Ready → etcd → uncordon → pods settle | 26 s | 10 + 2 + 10 min |
 | soak | 10 min | fixed |
-| **total** | **~45 min** | `activeDeadlineSeconds` 2 h; silence expires at 2 h |
+| **total** | **14 min** | `activeDeadlineSeconds` 2 h; silence expires at 2 h |
+
+A quiet week -- nothing to install, kernel already current -- exits after the apt step in about
+20 seconds without cordoning anything.
 
 A deadline kill skips the `always:` block, so the summary is lost and the silences are left to
 expire on their own — that is why they are created with an expiry rather than relying on the
