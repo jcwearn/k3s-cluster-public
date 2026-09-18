@@ -13,6 +13,6 @@ spec:
     app: mkdocs
   ports:
     - port: 6080
-      targetPort: 80
+      targetPort: http
       protocol: TCP
       name: mkdocs-http

@@ -27,9 +27,15 @@ spec:
       labels:
         app: zeroclaw
     spec:
+      automountServiceAccountToken: false
       securityContext:
+        runAsNonRoot: true
+        runAsUser: 65534
+        runAsGroup: 65534
         fsGroup: 65534
         fsGroupChangePolicy: OnRootMismatch
+        seccompProfile:
+          type: RuntimeDefault
       initContainers:
         - name: init-config
           image: busybox:1.38.0@sha256:dc2d74b28e4cf8984fa52af1f39bc7c3d9c73760b41a74d629f5d11b1ab28616
@@ -51,7 +57,6 @@ spec:
               sed -i "s|__SECRET_TELEGRAM_BOT_TOKEN__|$TELEGRAM_BOT_TOKEN|g" /zeroclaw-data/.zeroclaw/config.toml
               sed -i "s|__SECRET_TELEGRAM_ALLOWED_USER__|$TELEGRAM_ALLOWED_USER|g" /zeroclaw-data/.zeroclaw/config.toml
               chmod 600 /zeroclaw-data/.zeroclaw/config.toml
-              chown -R 65534:65534 /zeroclaw-data
           env:
             - name: TELEGRAM_BOT_TOKEN
               valueFrom:
@@ -70,6 +75,11 @@ spec:
             limits:
               cpu: 100m
               memory: 32Mi
+          securityContext:
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop:
+                - ALL
           volumeMounts:
             - name: config-volume
               mountPath: /config-source
@@ -102,6 +112,11 @@ spec:
             limits:
               cpu: 500m
               memory: 256Mi
+          securityContext:
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop:
+                - ALL
           # /health reports each runtime component's status as JSON.
           livenessProbe:
             httpGet:

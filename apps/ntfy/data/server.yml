@@ -1,4 +1,6 @@
 base-url: "https://ntfy.${DOMAIN}"
+# 8080 rather than the default 80 so the process needs no privilege to bind.
+listen-http: ":8080"
 upstream-base-url: "https://ntfy.sh"
 
 cache-file: "/var/cache/ntfy/cache.db"

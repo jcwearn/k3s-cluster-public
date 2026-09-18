@@ -15,4 +15,4 @@ spec:
     - name: http-ntfy-out
       protocol: TCP
       port: 4080
-      targetPort: 80
+      targetPort: http

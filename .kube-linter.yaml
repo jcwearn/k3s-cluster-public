@@ -44,10 +44,52 @@ checks:
     - docker-sock
     - sensitive-host-mounts
     - unsafe-proc-mount
-    - unsafe-sysctls
+    # Not the built-in unsafe-sysctls: its list is the bare prefix "net.",
+    # which flags the sysctls Kubernetes itself calls safe. The custom check
+    # below uses the same template with a list that mirrors the kubelet's.
+    - unsafe-sysctls-k8s
     # A Secret's value belongs in a volume or a secretKeyRef, not a literal.
     - env-var-secret
     # A hung pod without a liveness probe stays hung; one without readiness
     # stays in the Service while it is hung.
     - no-liveness-probe
     - no-readiness-probe
+
+customChecks:
+  # The kubelet's safe sysctls, which the restricted Pod Security profile
+  # also allows, are net.ipv4.ip_unprivileged_port_start (how the nginx
+  # frontends bind :80 as uid 101), ip_local_port_range, ip_local_reserved_ports,
+  # ping_group_range, tcp_syncookies, tcp_keepalive_*, tcp_fin_timeout and
+  # kernel.shm_rmid_forced. Everything else namespaced is unsafe. The template
+  # matches by prefix, so the list below names the unsafe families one level
+  # more specifically than "net." in order to leave those alone. tcp_* and
+  # kernel.shm* are listed whole -- stricter than the kubelet -- because nothing
+  # here uses the safe members and widening is a one-line edit when it does.
+  - name: unsafe-sysctls-k8s
+    template: unsafe-sysctls
+    description: "Flags sysctls outside the kubelet's safe set"
+    remediation: "Use only the safe sysctls (see .kube-linter.yaml) or drop the sysctl."
+    scope:
+      objectKinds:
+        - DeploymentLike
+    params:
+      unsafeSysCtls:
+        - kernel.msg
+        - kernel.sem
+        - kernel.shm
+        - fs.mqueue.
+        - net.core.
+        - net.ipv6.
+        - net.netfilter.
+        - net.bridge.
+        - net.ipv4.conf.
+        - net.ipv4.route.
+        - net.ipv4.neigh.
+        - net.ipv4.icmp_
+        - net.ipv4.igmp_
+        - net.ipv4.ip_forward
+        - net.ipv4.ip_default_ttl
+        - net.ipv4.ip_no_pmtu_disc
+        - net.ipv4.tcp_
+        - net.ipv4.udp_
+        - net.unix.

@@ -18,6 +18,13 @@ spec:
       labels:
         app: ntfy-pod
     spec:
+      automountServiceAccountToken: false
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 1000
+        runAsGroup: 1000
+        seccompProfile:
+          type: RuntimeDefault
       containers:
         - name: ntfy
           image: binwiederhier/ntfy:v2.28.0@sha256:6ef4b819f722fccdc036af611c4774cfdc2de821ab74fdd48bbf4c9d6f8973da
@@ -28,7 +35,7 @@ spec:
               value: America/New_York
           ports:
             - name: http
-              containerPort: 80
+              containerPort: 8080
           resources:
             limits:
               memory: 300Mi
@@ -36,6 +43,11 @@ spec:
             requests:
               cpu: 150m
               memory: 150Mi
+          securityContext:
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop:
+                - ALL
           livenessProbe:
             httpGet:
               path: /v1/health
