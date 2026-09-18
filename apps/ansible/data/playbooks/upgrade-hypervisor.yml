@@ -176,7 +176,7 @@
               ansible.builtin.command: pvecm status
               register: pvecm
               changed_when: false
-              failed_when: pvecm.rc != 0 or 'Quorate:' not in pvecm.stdout or not (pvecm.stdout | regex_search('Quorate:\\s+Yes'))
+              failed_when: pvecm.rc != 0 or pvecm.stdout is not regex('Quorate:\\s+Yes')
 
             - name: Read the guest's status and onboot flag
               ansible.builtin.shell: >-
@@ -378,13 +378,22 @@
                     post_reboot_delay: 60
                     test_command: systemctl is-active pve-cluster
 
+                # Recorded here rather than at the end of the block so a failure
+                # in the checks below still reports that the host did reboot.
+                - name: Record the reboot
+                  ansible.builtin.set_fact:
+                    reboot_performed: host
+
                 - name: Wait for the host to rejoin its cluster
                   ansible.builtin.command: pvecm status
                   register: pvecm_post
                   changed_when: false
                   retries: 12
                   delay: 10
-                  until: pvecm_post.rc == 0 and pvecm_post.stdout | regex_search('Quorate:\\s+Yes')
+                  # `is regex` not `regex_search`: core 2.19+ rejects a
+                  # conditional whose result is a string, and this one killed
+                  # the first full run on a host that had just come back healthy.
+                  until: pvecm_post.rc == 0 and pvecm_post.stdout is regex('Quorate:\\s+Yes')
 
                 - name: Confirm PVE services and local-lvm are up
                   ansible.builtin.shell: |
@@ -406,10 +415,6 @@
                   when: "'status: running' not in qm_after_boot.stdout"
                   changed_when: true
 
-                - name: Record the reboot
-                  ansible.builtin.set_fact:
-                    reboot_performed: host
-
             - name: Wait for {{ guest }} to come back over SSH
               ansible.builtin.wait_for_connection:
                 timeout: 600
@@ -428,7 +433,7 @@
                     post_reboot_delay: 30
                     test_command: systemctl is-active k3s
 
-                - name: Record the reboot
+                - name: Record the guest reboot
                   ansible.builtin.set_fact:
                     reboot_performed: guest
 
