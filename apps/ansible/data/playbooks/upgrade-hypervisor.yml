@@ -27,9 +27,13 @@
 #   -e force_reboot=host     exercise the full path regardless of packages
 #   -e force_reboot=guest    exercise the guest-only path
 
+# No `connection: local` here, and that is load-bearing. A play-level
+# connection keyword outranks the delegated host's own, so with it every
+# `delegate_to:` below would take proxmox-03's variables but run inside this
+# pod -- which is how the first dry run got rc 2 (ENOENT) for `pvecm` with
+# nothing on stderr. Implicit localhost is local by default anyway.
 - name: Upgrade a Proxmox host and its k3s guest
   hosts: localhost
-  connection: local
   gather_facts: false
 
   vars:
