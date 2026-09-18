@@ -47,7 +47,7 @@ Facts, as of the date at the bottom of the page. Each row links to the phase tha
 | ServiceAccounts | ~25 pods run on `default` with the token auto-mounted. Nobody sets `automountServiceAccountToken: false`. Dedicated SAs exist only where the API is actually used (homepage, ansible, withjoy-exporter, kube-vip, system-upgrade) → phase 6 |
 | `cluster-admin` | One binding: Headlamp, reachable over Tailscale. The identity boundary is the tailnet → phase 6 |
 | Root-requiring images | adguardhome (binds :53), linuxserver s6 images (calibre-web, shelfmark, paperless-ngx), the ansible CronJobs (`runAsUser: 0`), gluetun (`NET_ADMIN` + `/dev/net/tun`), kube-vip (`hostNetwork`), csi-driver-nfs, system-upgrade Jobs. These are the permanent exception list |
-| Health probes | 15 of 29 workloads have no probe at all; 18 lack liveness. A hung pod stays in the Service → phase 4 |
+| Health probes | Every raw workload has liveness and readiness (startup too where boot is slow), and `kube-linter` refuses a new one without them. Excepted with a reason: kube-vip (restarting the VIP holder is worse than a hang), the system-upgrade-controller (nothing to probe), and every CronJob |
 | Image pinning | Tag + digest via Renovate almost everywhere. Unpinned: `busybox` (untagged, zeroclaw init), `uptime-kuma:2`, `mkdocs-material:9`, it-tools, calibre-web, the system-upgrade-controller images → phase 6 |
 
 ### Network
@@ -66,7 +66,7 @@ Facts, as of the date at the bottom of the page. Each row links to the phase tha
 | Secrets in Git | SOPS + age, decrypted by Flux. The one age key is the root of trust; `scripts/check-sops-files.sh` catches the copied-not-encrypted mistake in CI. **This is the right size for the cluster** — External Secrets or Vault would add a running secret store whose job is to protect a single key that already lives in one place |
 | Public mirror | The repo is mirrored publicly with the domain, LAN prefixes and tailnet name substituted at reconcile time; gitleaks runs on the rendered tree before every push |
 | Dependency updates | Renovate CronJob with OSV vulnerability alerts, digest pinning, non-major automerge |
-| CI | `kustomize build` on every overlay, `flux envsubst --strict` on every substituted path, the SOPS structure check. **No schema validation, no linting, no image scanning, no local hooks** → phases 2 and 3 |
+| CI | Every overlay rendered as Flux applies it, then `kubeconform -strict` with the CRD schemas, `kube-linter` with the repo's rules, an image-digest check, yamllint, zizmor, and a rendered diff on every pull request. A weekly Trivy scan keeps a GitHub issue current. The same checks run as git hooks before a commit exists |
 | Flux alerting | **None.** A failed reconcile is visible in `flux get ks` and nowhere else → phase 5 |
 
 ## The roadmap
@@ -75,10 +75,10 @@ Ordered so that nothing which can take a pod down lands before the alerting that
 
 | Phase | What changes | Prod risk |
 | --- | --- | --- |
-| 1 | This page; the plan and progress tracker | none |
-| 2 | CI: schema validation (kubeconform), linting (kube-linter, yamllint), digest-pin check, rendered diff on every PR, weekly image scan | none |
-| 3 | Git hooks: the same checks before a commit, plus a guard against committing a plaintext Secret or a literal address | none |
-| 4 | Liveness and readiness probes on every workload | low |
+| 1 | ~~This page; the plan and progress tracker~~ done | none |
+| 2 | ~~CI: schema validation (kubeconform), linting (kube-linter, yamllint), digest-pin check, rendered diff on every PR, weekly image scan~~ done | none |
+| 3 | ~~Git hooks: the same checks before a commit, plus a guard against committing a plaintext Secret or a literal address~~ done | none |
+| 4 | ~~Liveness and readiness probes on every workload~~ done | low |
 | 5 | Flux → Alertmanager → ntfy on any failed reconcile; a fast-revert runbook; a canary-namespace pattern for risky upgrades | none |
 | 6 | `securityContext` on every raw workload, `automountServiceAccountToken: false` by default, image digests everywhere, Headlamp off `cluster-admin` | low–medium, per app |
 | 7 | Pod Security Admission: `warn`/`audit` everywhere, then `enforce: baseline`, then `restricted` one namespace at a time | low |

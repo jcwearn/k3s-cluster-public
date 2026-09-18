@@ -47,6 +47,27 @@ spec:
             requests:
               memory: "256Mi"
               cpu: "250m"
+          # / answers 302 to the dashboard, which counts as healthy. The startup
+          # probe is generous: v2 migrates its database on the first boot after
+          # an upgrade, and that is minutes on NFS.
+          startupProbe:
+            httpGet:
+              path: /
+              port: http
+            periodSeconds: 10
+            failureThreshold: 60
+          livenessProbe:
+            httpGet:
+              path: /
+              port: http
+            periodSeconds: 20
+            timeoutSeconds: 3
+          readinessProbe:
+            httpGet:
+              path: /
+              port: http
+            periodSeconds: 5
+            timeoutSeconds: 3
           volumeMounts:
             - name: data-volume
               mountPath: /app/data

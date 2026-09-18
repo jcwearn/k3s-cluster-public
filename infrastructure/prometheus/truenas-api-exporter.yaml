@@ -81,6 +81,12 @@ spec:
           # Gated on having read real temperatures, not on the port being open,
           # so a pod that has never reached TrueNAS is never scraped as though
           # its empty result were the truth.
+          livenessProbe:
+            httpGet:
+              path: /-/healthy
+              port: http
+            periodSeconds: 20
+            timeoutSeconds: 3
           readinessProbe:
             httpGet:
               path: /-/ready

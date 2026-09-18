@@ -1,0 +1,12 @@
+# The vendored Deployment declares no probes and exposes no port the kubelet
+# could ask. It is a reconciler with nothing to serve; kube-linter's probe
+# checks do not apply, and this is the only place to say so without editing
+# the vendored file.
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: system-upgrade-controller
+  namespace: system-upgrade
+  annotations:
+    ignore-check.kube-linter.io/no-liveness-probe: "vendored upstream reconciler with no port to probe"
+    ignore-check.kube-linter.io/no-readiness-probe: "vendored upstream reconciler with no Service to gate"

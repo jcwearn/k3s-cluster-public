@@ -3,6 +3,10 @@ kind: CronJob
 metadata:
   name: adguardhome-sync
   namespace: adguardhome
+  annotations:
+    # A Job runs to completion; a probe would only ever restart it mid-run.
+    ignore-check.kube-linter.io/no-liveness-probe: "run-to-completion Job"
+    ignore-check.kube-linter.io/no-readiness-probe: "run-to-completion Job"
 spec:
   schedule: "0 * * * *"
   concurrencyPolicy: Replace

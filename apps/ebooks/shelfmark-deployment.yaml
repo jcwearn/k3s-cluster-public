@@ -89,6 +89,20 @@ spec:
             limits:
               memory: "512Mi"
               cpu: "250m"
+          # gluetun's own check, the one its image's HEALTHCHECK runs; it fails
+          # while the tunnel is down. The pod shares its network namespace, so a
+          # failing readiness here pulls shelfmark out of the Service too, which is
+          # right: without the tunnel it cannot do its job.
+          livenessProbe:
+            exec:
+              command: ["/gluetun-entrypoint", "healthcheck"]
+            periodSeconds: 60
+            timeoutSeconds: 5
+          readinessProbe:
+            exec:
+              command: ["/gluetun-entrypoint", "healthcheck"]
+            periodSeconds: 10
+            timeoutSeconds: 5
       volumes:
         - name: config
           persistentVolumeClaim:

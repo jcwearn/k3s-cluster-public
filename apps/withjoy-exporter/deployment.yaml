@@ -57,3 +57,17 @@ spec:
             limits:
               memory: "128Mi"
               cpu: "200m"
+          # / renders a static page; the API calls are behind /api/status,
+          # so a probe here does not touch the Kubernetes API.
+          livenessProbe:
+            httpGet:
+              path: /
+              port: http
+            periodSeconds: 20
+            timeoutSeconds: 3
+          readinessProbe:
+            httpGet:
+              path: /
+              port: http
+            periodSeconds: 5
+            timeoutSeconds: 3

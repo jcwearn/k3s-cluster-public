@@ -3,6 +3,10 @@ kind: CronJob
 metadata:
   name: ansible-configure-lvm-thin-metrics
   namespace: ansible
+  annotations:
+    # A Job runs to completion; a probe would only ever restart it mid-run.
+    ignore-check.kube-linter.io/no-liveness-probe: "run-to-completion Job"
+    ignore-check.kube-linter.io/no-readiness-probe: "run-to-completion Job"
 spec:
   # Unlike the other configure-* jobs, this one is not suspended. Those write a
   # setting once; this one installs a collector, and re-asserting it weekly means

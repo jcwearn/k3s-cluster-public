@@ -384,6 +384,13 @@ class Handler(http.server.BaseHTTPRequestHandler):
             self.send_response(200 if ready else 503)
             self.end_headers()
             self.wfile.write(b"ok\n" if ready else b"no data yet\n")
+        elif self.path.startswith("/-/healthy"):
+            # Liveness: the server answers. Deliberately not tied to TrueNAS
+            # being reachable -- that is readiness, and restarting the pod
+            # would not bring the NAS back.
+            self.send_response(200)
+            self.end_headers()
+            self.wfile.write(b"ok\n")
         else:
             self.send_response(404)
             self.end_headers()

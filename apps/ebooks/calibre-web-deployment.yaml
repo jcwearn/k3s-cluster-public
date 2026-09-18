@@ -204,6 +204,27 @@ spec:
             limits:
               memory: "2Gi"
               cpu: "1000m"
+          # / answers 302 to /login, which counts as healthy. The startup probe is
+          # generous because DOCKER_MODS installs universal-calibre on every boot
+          # before the app starts.
+          startupProbe:
+            httpGet:
+              path: /
+              port: http
+            periodSeconds: 10
+            failureThreshold: 60
+          livenessProbe:
+            httpGet:
+              path: /
+              port: http
+            periodSeconds: 20
+            timeoutSeconds: 3
+          readinessProbe:
+            httpGet:
+              path: /
+              port: http
+            periodSeconds: 5
+            timeoutSeconds: 3
           volumeMounts:
             - name: config
               mountPath: /config
@@ -220,6 +241,7 @@ spec:
               touch "$IMPORT_LOG"
               echo "Auto-import sidecar started, watching /downloads..."
               while true; do
+                touch /tmp/heartbeat
                 find /downloads -type f \( -iname '*.epub' -o -iname '*.mobi' -o -iname '*.pdf' -o -iname '*.azw3' -o -iname '*.azw' -o -iname '*.cbz' -o -iname '*.cbr' -o -iname '*.fb2' -o -iname '*.djvu' -o -iname '*.lit' -o -iname '*.prc' -o -iname '*.doc' -o -iname '*.docx' -o -iname '*.rtf' -o -iname '*.txt' \) 2>/dev/null | while read -r file; do
                   if ! grep -qxF "$file" "$IMPORT_LOG"; then
                     echo "Importing: $file"
@@ -240,6 +262,19 @@ spec:
             limits:
               memory: "512Mi"
               cpu: "500m"
+          # The loop touches /tmp/heartbeat every pass (60 s plus the imports). A
+          # heartbeat older than five minutes means it is wedged, most likely inside
+          # calibredb on a bad file.
+          livenessProbe:
+            exec:
+              command: ["/bin/sh", "-c", "test -n \"$(find /tmp/heartbeat -mmin -5)\""]
+            periodSeconds: 60
+            timeoutSeconds: 5
+          readinessProbe:
+            exec:
+              command: ["/bin/sh", "-c", "test -n \"$(find /tmp/heartbeat -mmin -5)\""]
+            periodSeconds: 10
+            timeoutSeconds: 5
           volumeMounts:
             - name: downloads
               mountPath: /downloads

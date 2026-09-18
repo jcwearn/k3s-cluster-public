@@ -1080,6 +1080,18 @@ spec:
             limits:
               cpu: 200m
               memory: 256Mi
+          livenessProbe:
+            httpGet:
+              path: /metrics
+              port: metrics
+            periodSeconds: 20
+            timeoutSeconds: 3
+          readinessProbe:
+            httpGet:
+              path: /metrics
+              port: metrics
+            periodSeconds: 5
+            timeoutSeconds: 3
       volumes:
         - name: mapping-config
           configMap:

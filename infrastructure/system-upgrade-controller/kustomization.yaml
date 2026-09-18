@@ -19,3 +19,4 @@ resources:
 patches:
   - path: patch-controller-resources.yaml
   - path: patch-controller-env.yaml
+  - path: patch-controller-annotations.yaml

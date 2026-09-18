@@ -3,6 +3,10 @@ kind: CronJob
 metadata:
   name: ansible-configure-k3s-shutdown
   namespace: ansible
+  annotations:
+    # A Job runs to completion; a probe would only ever restart it mid-run.
+    ignore-check.kube-linter.io/no-liveness-probe: "run-to-completion Job"
+    ignore-check.kube-linter.io/no-readiness-probe: "run-to-completion Job"
 spec:
   schedule: "0 0 1 1 *"
   suspend: true

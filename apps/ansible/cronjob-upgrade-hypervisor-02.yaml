@@ -3,6 +3,10 @@ kind: CronJob
 metadata:
   name: ansible-upgrade-hypervisor-02
   namespace: ansible
+  annotations:
+    # A Job runs to completion; a probe would only ever restart it mid-run.
+    ignore-check.kube-linter.io/no-liveness-probe: "run-to-completion Job"
+    ignore-check.kube-linter.io/no-readiness-probe: "run-to-completion Job"
 spec:
   # Second of three; the header in cronjob-upgrade-hypervisor-03.yaml explains
   # the shape and the spacing.

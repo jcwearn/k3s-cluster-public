@@ -12,7 +12,6 @@
 # docs/plans/cluster-hardening/. Each phase adds its check here in the same PR
 # that fixes the workloads it would flag:
 #
-#   phase 4  no-liveness-probe, no-readiness-probe
 #   phase 6  run-as-non-root, privilege-escalation-container,
 #            drop-net-raw-capability, no-read-only-root-fs, default-service-account
 #
@@ -48,3 +47,7 @@ checks:
     - unsafe-sysctls
     # A Secret's value belongs in a volume or a secretKeyRef, not a literal.
     - env-var-secret
+    # A hung pod without a liveness probe stays hung; one without readiness
+    # stays in the Service while it is hung.
+    - no-liveness-probe
+    - no-readiness-probe

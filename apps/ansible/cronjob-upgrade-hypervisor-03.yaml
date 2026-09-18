@@ -3,6 +3,10 @@ kind: CronJob
 metadata:
   name: ansible-upgrade-hypervisor-03
   namespace: ansible
+  annotations:
+    # A Job runs to completion; a probe would only ever restart it mid-run.
+    ignore-check.kube-linter.io/no-liveness-probe: "run-to-completion Job"
+    ignore-check.kube-linter.io/no-readiness-probe: "run-to-completion Job"
 spec:
   # One CronJob per hypervisor rather than one loop over all three, because the
   # runner is a pod inside the cluster it is rebooting: whichever node it lands

@@ -3,6 +3,10 @@ kind: CronJob
 metadata:
   name: withjoy-exporter
   namespace: withjoy-exporter
+  annotations:
+    # A Job runs to completion; a probe would only ever restart it mid-run.
+    ignore-check.kube-linter.io/no-liveness-probe: "run-to-completion Job"
+    ignore-check.kube-linter.io/no-readiness-probe: "run-to-completion Job"
 spec:
   schedule: "0 6 * * *"
   timeZone: America/New_York

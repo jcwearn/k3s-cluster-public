@@ -53,6 +53,11 @@ metadata:
     # It holds the control-plane VIP and the LoadBalancer addresses on the
     # node's own interface; there is no version of this that is not hostNetwork.
     ignore-check.kube-linter.io/host-network: "ARP-based VIP holder must share the node's network namespace"
+    # No probe on purpose. It serves nothing a kubelet can ask; its health is
+    # whether the VIP answers ARP, and a liveness restart while it holds the
+    # control-plane lease is worse than any hang it might be in.
+    ignore-check.kube-linter.io/no-liveness-probe: "restarting the VIP holder is worse than the hang it would fix"
+    ignore-check.kube-linter.io/no-readiness-probe: "hostNetwork DaemonSet with no Service; readiness has nothing to gate"
   name: kube-vip-ds
   namespace: kube-system
 spec:
