@@ -21,6 +21,12 @@ spec:
   values:
     kind: CronJob
     schedule: "0 * * * *"
+    # The chart's container securityContext is already restricted-shaped
+    # (non-root 1000, no escalation, all capabilities dropped, read-only
+    # root). The seccomp profile is the one thing it leaves unset.
+    podSecurityContext:
+      seccompProfile:
+        type: RuntimeDefault
     resources:
       requests:
         cpu: 50m

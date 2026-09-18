@@ -29,6 +29,16 @@ spec:
     clusterRoleBinding:
       create: true
       clusterRoleName: view
+    # The chart already runs as uid 100, non-root. These are the rest of the
+    # restricted profile; Helm merges them into the chart's defaults.
+    podSecurityContext:
+      seccompProfile:
+        type: RuntimeDefault
+    securityContext:
+      allowPrivilegeEscalation: false
+      capabilities:
+        drop:
+          - ALL
     service:
       type: LoadBalancer
       port: 80
