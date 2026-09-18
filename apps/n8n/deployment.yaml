@@ -15,10 +15,14 @@ spec:
       labels:
         app: n8n
     spec:
+      automountServiceAccountToken: false
       securityContext:
+        runAsNonRoot: true
         runAsUser: 1000
         runAsGroup: 1000
         fsGroup: 1000
+        seccompProfile:
+          type: RuntimeDefault
       containers:
         - name: n8n
           image: ghcr.io/n8n-io/n8n:2.40.3@sha256:e397d0aab215cc1a3ed865bd0c2d7982dff9390fa298f3c188d084425cd6fb16
@@ -86,6 +90,11 @@ spec:
             limits:
               memory: "1Gi"
               cpu: "1000m"
+          securityContext:
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop:
+                - ALL
           volumeMounts:
             - name: data-volume
               mountPath: /home/node/.n8n

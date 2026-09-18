@@ -33,6 +33,13 @@ spec:
       labels:
         app: uptime-kuma
     spec:
+      automountServiceAccountToken: false
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 1000
+        runAsGroup: 1000
+        seccompProfile:
+          type: RuntimeDefault
       containers:
         - name: uptime-kuma
           image: louislam/uptime-kuma:2
@@ -47,6 +54,11 @@ spec:
             requests:
               memory: "256Mi"
               cpu: "250m"
+          securityContext:
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop:
+                - ALL
           # / answers 302 to the dashboard, which counts as healthy. The startup
           # probe is generous: v2 migrates its database on the first boot after
           # an upgrade, and that is minutes on NFS.

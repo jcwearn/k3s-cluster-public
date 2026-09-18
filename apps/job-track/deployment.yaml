@@ -20,10 +20,13 @@ spec:
       labels:
         app: job-track
     spec:
+      automountServiceAccountToken: false
       securityContext:
         runAsNonRoot: true
         runAsUser: 65532
         runAsGroup: 65532
+        seccompProfile:
+          type: RuntimeDefault
       initContainers:
         # Migrations run here rather than at startup so that raising replicas
         # later cannot have two processes race each other through the same

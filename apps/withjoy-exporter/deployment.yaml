@@ -16,6 +16,12 @@ spec:
         app: withjoy-exporter-web
     spec:
       serviceAccountName: withjoy-exporter-web
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 1000
+        runAsGroup: 1000
+        seccompProfile:
+          type: RuntimeDefault
       containers:
         - name: withjoy-exporter-web
           image: ghcr.io/jcwearn/withjoy-exporter:v0.4.22@sha256:a2b63f823cce664b60f1b40717dd73c07216768fa43b452e7a14f432014fa9d2
@@ -57,6 +63,11 @@ spec:
             limits:
               memory: "128Mi"
               cpu: "200m"
+          securityContext:
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop:
+                - ALL
           # / renders a static page; the API calls are behind /api/status,
           # so a probe here does not touch the Kubernetes API.
           livenessProbe:

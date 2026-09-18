@@ -21,6 +21,12 @@ spec:
         app.kubernetes.io/name: homepage
     spec:
       serviceAccountName: homepage
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 1000
+        runAsGroup: 1000
+        seccompProfile:
+          type: RuntimeDefault
       automountServiceAccountToken: true
       dnsPolicy: ClusterFirst
       enableServiceLinks: true
@@ -42,6 +48,11 @@ spec:
             limits:
               memory: "256Mi"
               cpu: "500m"
+          securityContext:
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop:
+                - ALL
           # HOMEPAGE_ALLOWED_HOSTS makes the app answer 400 to any other Host
           # header, and the kubelet sends the pod IP. Send the allowed one.
           livenessProbe:

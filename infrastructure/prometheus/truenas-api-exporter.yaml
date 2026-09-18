@@ -37,10 +37,13 @@ spec:
       labels:
         app: truenas-api-exporter
     spec:
+      automountServiceAccountToken: false
       securityContext:
         runAsNonRoot: true
         runAsUser: 65534
         runAsGroup: 65534
+        seccompProfile:
+          type: RuntimeDefault
       containers:
         - name: exporter
           image: python:3.14-alpine@sha256:016508ba505da24f7139765bc4bb669df4e88eb2f12eeadd571bf2f88d7533df
@@ -93,11 +96,6 @@ spec:
               port: http
             initialDelaySeconds: 10
             periodSeconds: 30
-          securityContext:
-            allowPrivilegeEscalation: false
-            readOnlyRootFilesystem: true
-            capabilities:
-              drop: ["ALL"]
           volumeMounts:
             - name: config
               mountPath: /app
@@ -109,6 +107,12 @@ spec:
             limits:
               cpu: 100m
               memory: 96Mi
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop:
+                - ALL
       volumes:
         - name: config
           configMap:

@@ -28,10 +28,13 @@ spec:
       labels:
         app: eol-exporter
     spec:
+      automountServiceAccountToken: false
       securityContext:
         runAsNonRoot: true
         runAsUser: 65534
         runAsGroup: 65534
+        seccompProfile:
+          type: RuntimeDefault
       containers:
         - name: eol-exporter
           image: python:3.14-alpine@sha256:016508ba505da24f7139765bc4bb669df4e88eb2f12eeadd571bf2f88d7533df
@@ -75,11 +78,6 @@ spec:
               port: http
             initialDelaySeconds: 5
             periodSeconds: 15
-          securityContext:
-            allowPrivilegeEscalation: false
-            readOnlyRootFilesystem: true
-            capabilities:
-              drop: ["ALL"]
           volumeMounts:
             - name: config
               mountPath: /app
@@ -91,6 +89,12 @@ spec:
             limits:
               cpu: 200m
               memory: 128Mi
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop:
+                - ALL
       volumes:
         - name: config
           configMap:
