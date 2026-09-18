@@ -67,7 +67,9 @@ configMapGenerator:
       - data/docs/misc/index.md
       - data/docs/misc/adding-docs.md
       - data/docs/misc/bootstrapping-k3s.md
+      - data/docs/misc/canary-deployments.md
       - data/docs/misc/diagnosing-blocked-domains.md
+      - data/docs/misc/fast-revert.md
       - data/docs/misc/hypervisor-upgrades.md
       - data/docs/misc/kube-vip-update.md
       - data/docs/misc/proxmox-kernel-maintenance.md

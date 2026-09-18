@@ -210,6 +210,28 @@ spec:
 
 ---
 
+## Failure alerting
+
+A `Provider` of type `alertmanager` posts Flux events straight into Alertmanager's API, and an
+`Alert` sends it every `error` event from any `Kustomization` or `GitRepository`.
+
+| Setting | Value |
+| --- | --- |
+| **Provider** | `alertmanager`, `http://kube-prometheus-stack-alertmanager.prometheus.svc.cluster.local:9093/api/v2/alerts` |
+| **Alert** | `reconciliation-failed`, severity `error`, sources `Kustomization/*` and `GitRepository/*` |
+| **Delivery** | Alertmanager's catch-all route → ntfy, like every other alert |
+
+Two sources are enough: every Kustomization here sets `wait: true`, so a HelmRelease that fails
+or a Deployment that never becomes Ready is reported as the parent Kustomization's error. Flux
+resends on each retry, so the alert keeps firing until the failure clears and resolves about five
+minutes later. What to do when it fires is in [Fast Revert](../misc/fast-revert.md).
+
+Why Alertmanager and not the `alertmanager-ntfy` bridge directly: the bridge expects
+Alertmanager's webhook payload, and Flux's events are not that shape. Going through Alertmanager
+also gives Flux failures the same grouping and repeat interval as everything else.
+
+---
+
 ## End-to-end reconciliation flow
 
 1. A developer pushes a commit to the `main` branch.

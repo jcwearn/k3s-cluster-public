@@ -1,0 +1,19 @@
+# Where Flux sends its events: straight into Alertmanager's API, as alerts.
+#
+# The native alertmanager type rather than a generic webhook at the
+# alertmanager-ntfy bridge, because the bridge expects Alertmanager's own
+# webhook payload and Flux's event shape is not that. Going through
+# Alertmanager also means Flux failures get the same grouping, repeat
+# interval and catch-all ntfy route as every other alert here, and show up
+# in the same place.
+#
+# In-cluster and unauthenticated, so no secret. The Service is the one the
+# kube-prometheus-stack chart creates in the prometheus namespace.
+apiVersion: notification.toolkit.fluxcd.io/v1beta3
+kind: Provider
+metadata:
+  name: alertmanager
+  namespace: flux-system
+spec:
+  type: alertmanager
+  address: http://kube-prometheus-stack-alertmanager.prometheus.svc.cluster.local:9093/api/v2/alerts

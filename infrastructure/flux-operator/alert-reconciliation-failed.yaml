@@ -1,0 +1,32 @@
+# A failed reconcile pages. Until this existed it was visible in
+# `flux get kustomizations` and nowhere else, and a broken merge could sit
+# unapplied for as long as nobody happened to look.
+#
+# Two sources cover everything. Every Kustomization here sets `wait: true`,
+# so a HelmRelease that fails to install or a Deployment that never becomes
+# Ready surfaces as the parent Kustomization's error -- there is no need to
+# enumerate HelmReleases across namespaces. The GitRepository covers the
+# case where Flux cannot fetch at all: an expired GitHub App key, a bad
+# rewrite of main.
+#
+# Error events only. Info events (every successful apply) would be a push
+# per reconcile per Kustomization, which is how a channel gets muted.
+#
+# Flux resends the event on every retry (retryInterval 1m), so the alert
+# stays firing while the failure lasts and resolves on its own about five
+# minutes after the last one.
+apiVersion: notification.toolkit.fluxcd.io/v1beta3
+kind: Alert
+metadata:
+  name: reconciliation-failed
+  namespace: flux-system
+spec:
+  providerRef:
+    name: alertmanager
+  eventSeverity: error
+  eventSources:
+    - kind: Kustomization
+      name: "*"
+    - kind: GitRepository
+      name: "*"
+  summary: "Flux reconciliation failed"

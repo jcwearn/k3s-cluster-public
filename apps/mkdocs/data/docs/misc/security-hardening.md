@@ -13,7 +13,7 @@ threats to four, in the order they are most likely to bite:
 
 | Risk | Why it is real here |
 | --- | --- |
-| **A bad merge** | There is no staging environment. A broken manifest, a chart upgrade with a migration, or a `$$$$` that collapses in substitution lands on the real thing within ten minutes. A failed reconcile pages nobody. |
+| **A bad merge** | There is no staging environment. A broken manifest, a chart upgrade with a migration, or a `$$$$` that collapses in substitution lands on the real thing within ten minutes. |
 | **Lateral movement from a compromised container** | Most pods run as root, mount a `default` ServiceAccount token they never use, and can reach every other pod on the cluster. An RCE in any one web app is a foothold on all of them. |
 | **Supply chain** | Renovate pins nearly every image by digest and automerges patches, which is the right posture — but a handful of images are still tag-only or untagged, and nothing scans what is running. |
 | **Data loss** | Postgres is backed up off-site to R2 and the restore is proven. etcd is not: k3s's default snapshots sit on the same local disk as the node. Lose the three VMs and the cluster's state goes with them. |
@@ -67,7 +67,7 @@ Facts, as of the date at the bottom of the page. Each row links to the phase tha
 | Public mirror | The repo is mirrored publicly with the domain, LAN prefixes and tailnet name substituted at reconcile time; gitleaks runs on the rendered tree before every push |
 | Dependency updates | Renovate CronJob with OSV vulnerability alerts, digest pinning, non-major automerge |
 | CI | Every overlay rendered as Flux applies it, then `kubeconform -strict` with the CRD schemas, `kube-linter` with the repo's rules, an image-digest check, yamllint, zizmor, and a rendered diff on every pull request. A weekly Trivy scan keeps a GitHub issue current. The same checks run as git hooks before a commit exists |
-| Flux alerting | **None.** A failed reconcile is visible in `flux get ks` and nowhere else → phase 5 |
+| Flux alerting | Every failed Kustomization or GitRepository reconcile is posted to Alertmanager and reaches ntfy through the catch-all route. The [fast-revert runbook](fast-revert.md) is what to do next |
 
 ## The roadmap
 
@@ -79,7 +79,7 @@ Ordered so that nothing which can take a pod down lands before the alerting that
 | 2 | ~~CI: schema validation (kubeconform), linting (kube-linter, yamllint), digest-pin check, rendered diff on every PR, weekly image scan~~ done | none |
 | 3 | ~~Git hooks: the same checks before a commit, plus a guard against committing a plaintext Secret or a literal address~~ done | none |
 | 4 | ~~Liveness and readiness probes on every workload~~ done | low |
-| 5 | Flux → Alertmanager → ntfy on any failed reconcile; a fast-revert runbook; a canary-namespace pattern for risky upgrades | none |
+| 5 | ~~Flux → Alertmanager → ntfy on any failed reconcile; a [fast-revert runbook](fast-revert.md); a [canary-namespace pattern](canary-deployments.md) for risky upgrades~~ done | none |
 | 6 | `securityContext` on every raw workload, `automountServiceAccountToken: false` by default, image digests everywhere, Headlamp off `cluster-admin` | low–medium, per app |
 | 7 | Pod Security Admission: `warn`/`audit` everywhere, then `enforce: baseline`, then `restricted` one namespace at a time | low |
 | 8 | NetworkPolicy, targeted: Postgres ingress, egress limits on the LLM workloads, ingress limits on the secret-bearing apps | medium, per namespace |
@@ -98,8 +98,8 @@ changes most likely to hurt.
 
 The trade made instead: make a bad merge **visible before it merges** (rendered diffs, schema and
 policy checks in CI), **loud when it lands** (Flux alerts), and **cheap to undo** (the revert
-runbook). For the rare change that genuinely needs a rehearsal, the canary-namespace pattern runs a
-second copy of one app beside the real one.
+runbook). For the rare change that genuinely needs a rehearsal, the
+[canary-namespace pattern](canary-deployments.md) runs a second copy of one app beside the real one.
 
 ## Deliberate non-goals
 

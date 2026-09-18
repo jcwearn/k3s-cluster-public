@@ -15,14 +15,13 @@ spec:
   # daemon.sock in its PVC, so a new pod cannot start while the old one runs.
   # With a readiness probe a RollingUpdate deadlocks -- the new pod never
   # becomes Ready, so the old one is never told to stop.
+  # Switching a live Deployment to Recreate is rejected by the API server
+  # ("rollingUpdate may not be specified when type is Recreate") because it
+  # defaulted rollingUpdate while the type was RollingUpdate and nobody owns
+  # that field. An explicit `rollingUpdate: null` does not clear it through
+  # Flux. The fix was to delete the Deployment once and let Flux recreate it.
   strategy:
     type: Recreate
-    # Explicit null, not omitted: the API server defaulted rollingUpdate on
-    # the Deployment while it was RollingUpdate, nobody owns that field, and
-    # server-side apply keeps an unowned field unless the applier clears it.
-    # Without this the apply is rejected as "rollingUpdate may not be
-    # specified when type is Recreate".
-    rollingUpdate: null
   selector:
     matchLabels:
       app: zeroclaw

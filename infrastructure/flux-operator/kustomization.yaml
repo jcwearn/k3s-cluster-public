@@ -5,5 +5,7 @@ resources:
   - helmrelease.yaml
   - fluxinstance.yaml
   - receiver.yaml
+  - provider-alertmanager.yaml
+  - alert-reconciliation-failed.yaml
   - webhook-ingress.yaml
   - secrets.sops.yaml
