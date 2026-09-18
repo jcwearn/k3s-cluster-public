@@ -12,7 +12,6 @@ The k3s nodes are **virtual machines**, one per Proxmox VE host (`k3s-01/02/03` 
 
 ```
 clusters/prod/           # Flux entrypoint - defines what gets deployed
-  ├── flux-system/       # FluxCD bootstrap components
   ├── infrastructure.yaml # Infrastructure Kustomization definitions
   └── apps.yaml          # Apps Kustomization (depends on all infrastructure)
 

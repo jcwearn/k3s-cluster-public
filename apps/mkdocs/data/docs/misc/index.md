@@ -15,7 +15,7 @@ on the homelab.
 | **Reclaiming Guest Disk Space** | Why the k3s guests filled with unused container images, and how to get the space back to the thin pool. | [Read more](reclaiming-guest-disk.md) |
 | **Hypervisor Upgrades** | How the weekly Proxmox + k3s-guest upgrades drain, reboot and return one host at a time, and what to do when a run stops with a node cordoned. | [Read more](hypervisor-upgrades.md) |
 | **Proxmox Kernel Maintenance** | Why `autoremove` never prunes kernels on the hypervisors, and how to do it safely by hand. | [Read more](proxmox-kernel-maintenance.md) |
-| **Security Hardening** | Security Hardening Guide and Checklist | [Read more](security-hardening.md) |
+| **Security Hardening** | Where the cluster stands on each security layer, the phased roadmap that closes the gaps, and what is deliberately left alone. | [Read more](security-hardening.md) |
 | **TrueNAS Docker Default Interface Fix** | Troubleshooting "Unable to determine default interface" Docker/Apps failure on TrueNAS | [Read more](truenas-docker-default-interface.md) |
 | **Upgrading TrueNAS** | Moving the NAS between major TrueNAS releases: why it is manual, the two ways it can lock you out, and the verify-and-rollback procedure. | [Read more](truenas-upgrade.md) |
 | **Updating flux** | Quick guide for updating to the latest version of flux | [Read more](updating-flux.md) |

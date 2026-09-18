@@ -1,177 +1,127 @@
-**Securing Kubernetes cluster**
+# Security Hardening
 
-Below is the approach I use when taking a **fresh, production-bound cluster** (Flux-managed K3s, TrueNAS NFS Storage, SOPS-encrypted secrets) from "it works" to "it's hardened".  Treat it as a layered program: each layer reduces blast-radius, adds guard-rails, or tightens least-privilege.
+Where this cluster actually stands on each security layer, what is being done about the gaps, and
+what is deliberately being left alone. This page is the honest inventory; the phased work that
+closes the gaps is tracked in `docs/plans/cluster-hardening/` in the repository.
 
----
+## Threat model
 
-## 1. Threat-model first 📋
+One admin, one cluster, and everything on it is production. Ingress is tailnet-only: every
+HTTPRoute's hostname is a CNAME to `k3s-gateway.${TAILNET}`, so nothing answers on the public
+internet except the Flux webhook receiver, which is funneled on purpose. That narrows the realistic
+threats to four, in the order they are most likely to bite:
 
-| Layer             | Typical Risks                               | Questions to ask yourself                                            |
-| ----------------- | ------------------------------------------- | -------------------------------------------------------------------- |
-| **Control-plane** | API-server abuse, credential leakage        | Who can reach the API at all? How are kubeconfigs rotated & scoped?  |
-| **Workloads**     | Lateral movement, container escape          | Do Pods run as root? Is hostPath blocked? Are node ports exposed?    |
-| **Network**       | East/west traffic snooping, noisy neighbors | Which Pods actually need to talk? Which *ports*?                     |
-| **Data**          | Secret leakage, PVC theft                   | Are volumes encrypted? Do backups leak?                              |
-| **Supply chain**  | Malicious images/manifests                  | Do I trust every `docker pull` in YAML? Are images signed & scanned? |
+| Risk | Why it is real here |
+| --- | --- |
+| **A bad merge** | There is no staging environment. A broken manifest, a chart upgrade with a migration, or a `$$$$` that collapses in substitution lands on the real thing within ten minutes. A failed reconcile pages nobody. |
+| **Lateral movement from a compromised container** | Most pods run as root, mount a `default` ServiceAccount token they never use, and can reach every other pod on the cluster. An RCE in any one web app is a foothold on all of them. |
+| **Supply chain** | Renovate pins nearly every image by digest and automerges patches, which is the right posture — but a handful of images are still tag-only or untagged, and nothing scans what is running. |
+| **Data loss** | Postgres is backed up off-site to R2 and the restore is proven. etcd is not: k3s's default snapshots sit on the same local disk as the node. Lose the three VMs and the cluster's state goes with them. |
 
-Keep that table in mind as we tighten each layer.
+Container escape and hypervisor compromise are lower on the list — the hosts are on a management
+LAN, not the internet, and the k3s guests are the only tenants.
 
----
+## Where each layer stands
 
-## 2. Cluster-wide baseline
+Facts, as of the date at the bottom of the page. Each row links to the phase that changes it.
 
-| Area                      | Harden it by ...                                                                                                                                                                        | Why it matters                                                 |
-| ------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------- |
-| **Patch & lock down K3s** | • Upgrade to latest K3s patch.<br>• Disable **anonymous-auth**, set `--authorization-mode=RBAC` only.<br>• Turn on audit-logs (K3s: `/var/lib/rancher/k3s/server/audit-policy.yaml`). | Remove low-hanging fruit & gain forensics.                     |
-| **Admission control**     | • **PodSecurityAdmission**: cluster-level `restricted` <br>• Deploy OPA/Gatekeeper or Kyverno with CIS policies (no hostPID, hostPath, runAsNonRoot, etc.)                            | Enforce build-time + runtime policy consistently via GitOps.   |
-| **Image provenance**      | • Scan images (Trivy, Grype) in CI.<br>• Sign & verify with **cosign** (`cosign verify`) via Gatekeeper policy.                                                                       | Stops "works on my laptop, pwns in prod" supply-chain attacks. |
-| **Secrets**               | • Keep SOPS-encrypted at rest in Git.<br>• Convert high-value items to **External Secrets** or **Vault Agent Injector**.                                                              | K8s secrets are base64 only; defence-in-depth needed.          |
+### Control plane and nodes
 
----
+| Item | State |
+| --- | --- |
+| k3s version | `v1.36.4+k3s1`, pinned in [system-upgrade-controller](../infrastructure/system-upgrade-controller.md); Renovate proposes patches, minors go by hand |
+| `anonymous-auth`, authorization mode | k3s defaults: anonymous auth off, `Node,RBAC`. **Nothing to do** — the old checklist item here was wrong for k3s |
+| Server configuration | No `/etc/rancher/k3s/config.yaml` on any node; every argument is in the systemd unit's `ExecStart` |
+| API audit log | **None** → phase 9 |
+| Secrets encryption at rest | **Off** — Secrets are plaintext in etcd → phase 9 |
+| `protect-kernel-defaults` | **Off** → phase 9 |
+| etcd snapshots | k3s default: local disk only, no off-site copy → phase 9 |
+| Pod Security Admission | **Not enforced.** Two namespaces carry `enforce: privileged` (csi-driver-nfs, system-upgrade) so that turning enforcement on later does not break them; the other 34 are unlabelled → phase 7 |
+| Admission configuration | None; a namespace created outside Git gets no policy at all → phase 9 |
 
-## 3. Namespace & RBAC design
+### Workloads
 
-1. **One app → one namespace** (plus a shared `infra` or `platform` namespace for things like envoy-gateway, cert-manager).
-2. **Flux**: point each `Kustomization` at the namespace path; include a `decryption` stanza *inside* that Kustomization so secrets aren't reapplied in plaintext.
-3. **ServiceAccount-per-workload**
+| Item | State |
+| --- | --- |
+| `securityContext` | 5 of 40 raw workloads are fully hardened (`hivemind` is the template: `runAsNonRoot`, `seccompProfile: RuntimeDefault`, `allowPrivilegeEscalation: false`, `readOnlyRootFilesystem`, `capabilities.drop: [ALL]`). 4 set a UID or `fsGroup` and nothing else. The rest set nothing and run as whatever the image says, which is usually root → phase 6 |
+| ServiceAccounts | ~25 pods run on `default` with the token auto-mounted. Nobody sets `automountServiceAccountToken: false`. Dedicated SAs exist only where the API is actually used (homepage, ansible, withjoy-exporter, kube-vip, system-upgrade) → phase 6 |
+| `cluster-admin` | One binding: Headlamp, reachable over Tailscale. The identity boundary is the tailnet → phase 6 |
+| Root-requiring images | adguardhome (binds :53), linuxserver s6 images (calibre-web, shelfmark, paperless-ngx), the ansible CronJobs (`runAsUser: 0`), gluetun (`NET_ADMIN` + `/dev/net/tun`), kube-vip (`hostNetwork`), csi-driver-nfs, system-upgrade Jobs. These are the permanent exception list |
+| Health probes | 15 of 29 workloads have no probe at all; 18 lack liveness. A hung pod stays in the Service → phase 4 |
+| Image pinning | Tag + digest via Renovate almost everywhere. Unpinned: `busybox` (untagged, zeroclaw init), `uptime-kuma:2`, `mkdocs-material:9`, it-tools, calibre-web, the system-upgrade-controller images → phase 6 |
 
-   * *Never* let Pods run as `default` SA.
-   * Bind a **Role**, not ClusterRole, unless cluster-scope APIs are truly needed (cert-manager, ingress controllers, operators).
+### Network
 
-```yaml
-# apps/foo/roles.yaml  (applied by Flux)
-apiVersion: rbac.authorization.k8s.io/v1
-kind: Role
-metadata:
-  name: foo-reader
-  namespace: foo
-rules:
-  - apiGroups: [""]
-    resources: ["configmaps", "secrets"]   # only its own namespace scope
-    verbs: ["get", "list", "watch"]
+| Item | State |
+| --- | --- |
+| CNI | Flannel, k3s default. **k3s's embedded network-policy controller is active**, so `NetworkPolicy` objects are enforced without a CNI change — another place the old checklist was wrong |
+| NetworkPolicy | **None**, apart from the Flux operator's own (`cluster.networkPolicy: true`). Every pod can reach every other pod and every Postgres instance → phase 8 |
+| Ingress | Envoy Gateway on one LoadBalancer IP, wildcard certificate from cert-manager, hostnames resolve to the Tailscale gateway. `insecureSkipVerify` only towards the external HTTPS backends (Proxmox, TrueNAS, UniFi), which present self-signed certificates |
+| Public exposure | The Flux webhook receiver, via Tailscale Funnel, authenticated by a shared secret. Nothing else |
 
----
-apiVersion: rbac.authorization.k8s.io/v1
-kind: RoleBinding
-metadata:
-  name: foo-read-bind
-  namespace: foo
-subjects:
-  - kind: ServiceAccount
-    name: foo     # referenced in Deployment.spec.template.spec.serviceAccountName
-roleRef:
-  kind: Role
-  name: foo-reader
-  apiGroup: rbac.authorization.k8s.io
-```
+### Secrets and supply chain
 
-> **Tip:** Use **kubescape** or `rakkess` to audit what each SA can actually do.
+| Item | State |
+| --- | --- |
+| Secrets in Git | SOPS + age, decrypted by Flux. The one age key is the root of trust; `scripts/check-sops-files.sh` catches the copied-not-encrypted mistake in CI. **This is the right size for the cluster** — External Secrets or Vault would add a running secret store whose job is to protect a single key that already lives in one place |
+| Public mirror | The repo is mirrored publicly with the domain, LAN prefixes and tailnet name substituted at reconcile time; gitleaks runs on the rendered tree before every push |
+| Dependency updates | Renovate CronJob with OSV vulnerability alerts, digest pinning, non-major automerge |
+| CI | `kustomize build` on every overlay, `flux envsubst --strict` on every substituted path, the SOPS structure check. **No schema validation, no linting, no image scanning, no local hooks** → phases 2 and 3 |
+| Flux alerting | **None.** A failed reconcile is visible in `flux get ks` and nowhere else → phase 5 |
 
----
+## The roadmap
 
-## 4. Pod security context & runtime constraints
+Ordered so that nothing which can take a pod down lands before the alerting that would report it.
 
-Add these to every `Deployment`/`StatefulSet` via a Kustomize patch that your Gatekeeper policy also enforces:
+| Phase | What changes | Prod risk |
+| --- | --- | --- |
+| 1 | This page; the plan and progress tracker | none |
+| 2 | CI: schema validation (kubeconform), linting (kube-linter, yamllint), digest-pin check, rendered diff on every PR, weekly image scan | none |
+| 3 | Git hooks: the same checks before a commit, plus a guard against committing a plaintext Secret or a literal address | none |
+| 4 | Liveness and readiness probes on every workload | low |
+| 5 | Flux → Alertmanager → ntfy on any failed reconcile; a fast-revert runbook; a canary-namespace pattern for risky upgrades | none |
+| 6 | `securityContext` on every raw workload, `automountServiceAccountToken: false` by default, image digests everywhere, Headlamp off `cluster-admin` | low–medium, per app |
+| 7 | Pod Security Admission: `warn`/`audit` everywhere, then `enforce: baseline`, then `restricted` one namespace at a time | low |
+| 8 | NetworkPolicy, targeted: Postgres ingress, egress limits on the LLM workloads, ingress limits on the secret-bearing apps | medium, per namespace |
+| 9 | Node configuration via Ansible: etcd snapshots to R2, audit log, secrets encryption, `protect-kernel-defaults`, a cluster-wide PSA default | high — k3s restarts |
+| 10 | Optional: `flux diff` against the live cluster from CI | none to the cluster |
 
-```yaml
-securityContext:
-  runAsNonRoot: true
-  runAsUser: 1000
-  allowPrivilegeEscalation: false
-  seccompProfile:
-    type: RuntimeDefault
-  capabilities:
-    drop: ["ALL"]
-```
+## Why there is no staging environment
 
-If a container *has* to bind 80/443, use an **initContainer + iptables** or **NET\_BIND\_SERVICE** capability in isolation rather than letting the main container run as root.
+The natural answer to "a bad merge breaks prod" is a second environment, and it was considered
+seriously. It does not fit this hardware. Each k3s guest is allocated its host's entire CPU and
+RAM, so a staging cluster means shrinking the production guests; ~25 Services pin LoadBalancer
+addresses on the one LAN, external-dns owns one zone under one `txtOwnerId`, and the Tailscale
+hostnames are singletons — every one of those is a collision to design around. A vcluster shares
+the nodes but cannot exercise kube-vip, the NFS driver, Tailscale or a k3s upgrade, which are the
+changes most likely to hurt.
 
----
+The trade made instead: make a bad merge **visible before it merges** (rendered diffs, schema and
+policy checks in CI), **loud when it lands** (Flux alerts), and **cheap to undo** (the revert
+runbook). For the rare change that genuinely needs a rehearsal, the canary-namespace pattern runs a
+second copy of one app beside the real one.
 
-## 5. Network isolation (default-deny first)
+## Deliberate non-goals
 
-1. Install a CNI that supports policies (Calico, Cilium, etc.).
-2. Apply a cluster default-deny *except* kube-system.
-3. For each namespace, permit only necessary egress/ingress:
+| Not doing | Because |
+| --- | --- |
+| Kyverno / Gatekeeper | Pod Security Admission covers the runtime policy that matters here, and kube-linter in CI covers the repo conventions (resources, probes, no `latest`) before they reach the cluster. A policy engine would be a third place to encode the same rules |
+| cosign image verification | Almost every image is pinned by digest through Renovate; the digest *is* the integrity check. Signature verification would add an admission webhook for images this cluster does not build |
+| Falco / Tetragon | Runtime syscall detection on a one-admin cluster with nobody to triage the stream. The audit log (phase 9) answers the forensic question this would |
+| kube-bench as a CronJob | Run it once by hand after phase 9 and record the result; a weekly report nobody reads is noise |
+| External Secrets / Vault | See above — SOPS is the right size |
+| Cloudflare Tunnel in front of everything | Already tailnet-only; there is nothing public to put a tunnel in front of |
 
-```yaml
-apiVersion: networking.k8s.io/v1
-kind: NetworkPolicy
-metadata:
-  name: allow-ingress-from-envoy-gateway
-  namespace: foo
-spec:
-  podSelector: {}                     # all Pods in foo
-  policyTypes: ["Ingress","Egress"]
-  ingress:
-  - from:
-      - namespaceSelector:
-          matchLabels:
-            kubernetes.io/metadata.name: envoy-gateway-system
-        podSelector:
-          matchLabels:
-            gateway.envoyproxy.io/owning-gateway-name: main-gateway
-    ports:
-      - port: 8080
-        protocol: TCP
-  egress:
-  - to:
-      - ipBlock:
-          cidr: 0.0.0.0/0             # if outbound Internet is truly needed
-    ports:
-      - port: 443
-        protocol: TCP
-```
+## Conventions that keep the posture from drifting
 
-This prevents east-west chats unless explicitly opened.
+- Every container declares `resources` with requests and limits. CI enforces it.
+- Every new raw workload copies the `hivemind` `securityContext` and probe block, then removes only
+  what the image genuinely cannot tolerate — with a comment saying why.
+- A pod that does not talk to the API server sets `automountServiceAccountToken: false`.
+- A permanent exception to a lint check or a PSA level carries an
+  `ignore-check.kube-linter.io/<check>` annotation with the reason. That annotation list is the
+  exception list; there is no second one.
+- New permissions are proven, not guessed: observe the failure, then permit the exact verb,
+  resource or port. Under GitOps that is one more PR and a paper trail.
 
----
-
-## 6. Storage & TrueNAS considerations
-
-| Hardening step         | How                                                                                                |
-| ---------------------- | -------------------------------------------------------------------------------------------------- |
-| **Backups**            | Store backups off-cluster with TLS (e.g., S3 HTTPS). Encrypt bucket-side.                          |
-| **Access**             | RBAC: only the TrueNas manager ServiceAccount gets `storage.k8s.io` verbs on `persistentvolumes`. |
-
----
-
-## 7. Ingress, certificates & external exposure
-
-* Use **cert-manager** with Let's Encrypt; require TLS everywhere (HSTS).
-* Annotate ingresses with security headers (Flux patch).
-* If acceptable, front everything with **Cloudflare Tunnel** or **Tailscale funnel** instead of public LB.
-
----
-
-## 8. Supply-chain guard-rails in GitOps
-
-| Stage            | Guard-rail                                                                       |
-| ---------------- | -------------------------------------------------------------------------------- |
-| **Pull-request** | Trivy scans, OPA policy test (`conftest test`), `kubeconform` schema validation. |
-| **Merge→main**   | Flux applies; Gatekeeper blocks non-compliant objects before they hit etcd.      |
-| **Runtime**      | Falco or Cilium Tetragon for syscall anomaly detection.                          |
-
----
-
-## 9. Observability & audit
-
-* **Audit-logs** ship to Loki/Grafana with retention ≥ 90 days.
-* Enable **TrueNAS NFS Monitoring** dashboards - watch for `FailedMount`, `Evicted` events (often signal privilege issues).
-* Run **kube-bench** & **kube-hunter** monthly under a CronJob and post to Slack/Gotify.
-
----
-
-## 10. Summary checklist ✅
-
-1. **\[ ]** Updated K3s & disabled anonymous-auth.
-2. **\[ ]** PodSecurityAdmission = *restricted* (rootless, seccomp, no hostPath).
-3. **\[ ]** OPA/Kyverno policies in Git; Gatekeeper blocking at admission.
-4. **\[ ]** Namespaces = one per app; default-deny NetworkPolicy.
-5. **\[ ]** ServiceAccount per workload + Role (namespace-scoped).
-6. **\[ ]** TrueNAS encryption + restricted RBAC.
-7. **\[ ]** Ingress TLS only; global WAF/CDN if possible.
-8. **\[ ]** CI scans & image signatures verified in-cluster.
-9. **\[ ]** Centralized audit-logs; automated CIS benchmark scans.
-
-Adopt the habit of **proving a new permission is necessary** (observed failure, then permit the exact verb/resource/port) rather than *guessing*.  With GitOps that's just another PR - and your future self will thank you for the paper trail.
+*Inventory taken 2026-09-18.*
