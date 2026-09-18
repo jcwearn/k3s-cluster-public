@@ -1,0 +1,141 @@
+name: Weekly Image Scan
+
+# Scans every container image the raw manifests reference for HIGH and
+# CRITICAL vulnerabilities with a fix available, and keeps the result in one
+# GitHub issue -- the same shape as Renovate's Dependency Dashboard.
+#
+# This fills the gap Renovate leaves. Its OSV alerts cover packages it manages
+# as packages; a container image is one opaque digest to it, so a CVE in a
+# library inside the image is invisible until upstream cuts a release and the
+# digest moves. That is usually fine, and this is how you find out when it is
+# not.
+#
+# Not a gate, on purpose. Most findings are in an upstream image this repo
+# cannot fix, and a red check that nobody can turn green teaches people to
+# ignore red checks. The issue is where to look; the log has the full table.
+#
+# Out of reach: images a HelmRelease produces. Those are not in the rendered
+# manifests, so they are not scanned here. The chart pins them, Renovate moves
+# the chart.
+#
+# The result goes to an issue rather than ntfy because ntfy is tailnet-only
+# and a GitHub runner cannot reach it.
+
+on:
+  schedule:
+    # Sunday 06:00 UTC, after Renovate's Saturday-night window has moved
+    # whatever it was going to move.
+    - cron: "0 6 * * 0"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  issues: write
+
+jobs:
+  scan:
+    name: Scan rendered images
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: false
+
+      - name: Install flux
+        uses: fluxcd/flux2/action@dd233c4fadef306a62b7893204f8e3817fecc2b2 # v2.9.5
+
+      - name: Install kustomize and yq
+        env:
+          # renovate: datasource=github-releases depName=kubernetes-sigs/kustomize extractVersion=^kustomize/v(?<version>.*)$
+          KUSTOMIZE_VERSION: "5.8.1"
+          # renovate: datasource=github-releases depName=mikefarah/yq extractVersion=^v(?<version>.*)$
+          YQ_VERSION: "4.53.3"
+        run: |
+          set -euo pipefail
+          curl -fsSL -o kustomize.tar.gz \
+            "https://github.com/kubernetes-sigs/kustomize/releases/download/kustomize%2Fv${KUSTOMIZE_VERSION}/kustomize_v${KUSTOMIZE_VERSION}_linux_amd64.tar.gz"
+          tar -xzf kustomize.tar.gz kustomize
+          sudo install -m 755 kustomize /usr/local/bin/kustomize
+          curl -fsSL -o yq \
+            "https://github.com/mikefarah/yq/releases/download/v${YQ_VERSION}/yq_linux_amd64"
+          sudo install -m 755 yq /usr/local/bin/yq
+
+      - name: Install trivy
+        uses: aquasecurity/setup-trivy@81e514348e19b6112ce2a7e3ecbafe19c1e1f567 # v0.3.1
+        with:
+          # renovate: datasource=github-releases depName=aquasecurity/trivy
+          version: "v0.74.0"
+
+      - name: Render every overlay
+        run: ./scripts/render-all.sh rendered
+
+      # One trivy run per image, the scan cache cleared between them: the
+      # images add up to several gigabytes of layers and the runner disk is
+      # not that big. The vulnerability DB is fetched once and kept.
+      - name: Scan
+        run: |
+          set -euo pipefail
+          yq -N '
+            .. | select(has("image") and (.image | tag == "!!str")) | .image,
+            .. | select(has("image") and (.image | tag == "!!map") and (.image | has("reference"))) | .image.reference
+          ' rendered/*.yaml | grep -v '^---$' | grep -v '^$' | sort -u > images.txt
+          echo "Scanning $(wc -l < images.txt) images."
+
+          trivy image --download-db-only --quiet
+
+          mkdir -p reports
+          : > summary.tsv
+          while read -r image; do
+            [ -n "$image" ] || continue
+            safe=$(printf '%s' "$image" | tr '/:@' '___')
+            if ! trivy image --skip-db-update --quiet \
+                 --severity HIGH,CRITICAL --ignore-unfixed \
+                 --format json --output "reports/$safe.json" "$image"; then
+              printf '%s\t%s\t%s\n' "$image" "scan failed" "" >> summary.tsv
+              continue
+            fi
+            crit=$(yq -p json '[.Results[]?.Vulnerabilities[]? | select(.Severity == "CRITICAL")] | length' "reports/$safe.json")
+            high=$(yq -p json '[.Results[]?.Vulnerabilities[]? | select(.Severity == "HIGH")] | length' "reports/$safe.json")
+            printf '%s\t%s\t%s\n' "$image" "$crit" "$high" >> summary.tsv
+            trivy clean --scan-cache --quiet
+          done < images.txt
+
+          {
+            echo "## Weekly image scan"
+            echo
+            echo "HIGH and CRITICAL only, and only where a fix exists upstream."
+            echo "Scanned $(date -u +%Y-%m-%d) with trivy $(trivy --version | head -1 | awk '{print $2}')."
+            echo
+            echo "| Image | Critical | High |"
+            echo "| --- | ---: | ---: |"
+            sort -t$'\t' -k2,2nr -k3,3nr summary.tsv | while IFS=$'\t' read -r image crit high; do
+              echo "| \`$image\` | $crit | $high |"
+            done
+            echo
+            echo "Full findings per image are in the workflow log."
+          } > report.md
+          cat report.md >> "$GITHUB_STEP_SUMMARY"
+
+          # The full tables, for the log only.
+          for f in reports/*.json; do
+            trivy convert --format table "$f" 2>/dev/null || true
+          done
+
+      # One long-lived issue, edited in place. Its number is not pinned
+      # anywhere; the title is the key, so closing it and letting the next
+      # run reopen a fresh one is a valid way to reset it.
+      - name: Update the report issue
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          TITLE: "Weekly image vulnerability scan"
+        run: |
+          set -euo pipefail
+          number=$(gh issue list --state open --search "\"$TITLE\" in:title" --json number,title \
+            --jq ".[] | select(.title == \"$TITLE\") | .number" | head -1)
+          if [ -n "$number" ]; then
+            gh issue edit "$number" --body-file report.md
+            echo "Updated #$number."
+          else
+            gh issue create --title "$TITLE" --body-file report.md
+          fi
