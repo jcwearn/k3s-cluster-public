@@ -45,6 +45,20 @@ spec:
         app: adguardhome
         app.kubernetes.io/name: adguardhome
     spec:
+      automountServiceAccountToken: false
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 1000
+        runAsGroup: 1000
+        seccompProfile:
+          type: RuntimeDefault
+        # AdGuard binds 53, 80, 443 and 853. Lowering the unprivileged-port
+        # floor lets uid 1000 do that; NET_BIND_SERVICE would not, because a
+        # non-root process gets no ambient capabilities. Safe sysctl, allowed
+        # under the restricted profile.
+        sysctls:
+          - name: net.ipv4.ip_unprivileged_port_start
+            value: "0"
       affinity:
         podAntiAffinity:
           # Hard, not preferred. These three instances are the LAN's only
@@ -74,9 +88,7 @@ spec:
           command: ["/bin/sh", "-c"]
           args:
             - |
-              envsubst < /config/AdGuardHome.yaml > /config-target/AdGuardHome.yaml &&
-              chown -R 1000:1000 /config-target &&
-              chmod -R 755 /config-target
+              envsubst < /config/AdGuardHome.yaml > /config-target/AdGuardHome.yaml
           env:
             - name: TLS_SERVER_NAME
               value: dns.${DOMAIN}
@@ -96,9 +108,43 @@ spec:
             limits:
               cpu: 200m
               memory: 64Mi
+          securityContext:
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop:
+                - ALL
+        # The image's binary carries cap_net_bind_service as a FILE capability
+        # (setcap, in upstream's Dockerfile). Under allowPrivilegeEscalation:
+        # false the kernel refuses to exec a +ep file-caps binary at all --
+        # "operation not permitted" before the process even starts. A plain cp
+        # does not carry xattrs, so the copy has no file capabilities, and the
+        # sysctl above lets it bind 53 without any. Same image as the main
+        # container, so Renovate moves both together.
+        - name: strip-caps
+          image: adguard/adguardhome:v0.107.79@sha256:aba9e3bf0613be3ba3755e1fc311b126e2c24bec25e18b6483894a88283074f0
+          imagePullPolicy: IfNotPresent
+          command: ["cp", "/opt/adguardhome/AdGuardHome", "/binary/AdGuardHome"]
+          volumeMounts:
+            - name: binary
+              mountPath: /binary
+          resources:
+            requests:
+              cpu: 10m
+              memory: 16Mi
+            limits:
+              cpu: 100m
+              memory: 64Mi
+          securityContext:
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop:
+                - ALL
       containers:
         - name: adguardhome
           image: adguard/adguardhome:v0.107.79@sha256:aba9e3bf0613be3ba3755e1fc311b126e2c24bec25e18b6483894a88283074f0
+          # The copied binary, with the image's own arguments.
+          command: ["/binary/AdGuardHome"]
+          args: ["--no-check-update", "-c", "/opt/adguardhome/conf/AdGuardHome.yaml", "-w", "/opt/adguardhome/work"]
           imagePullPolicy: IfNotPresent
           ports:
             - name: dns-udp
@@ -143,7 +189,15 @@ spec:
             requests:
               memory: "512Mi"
               cpu: "250m"
+          securityContext:
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop:
+                - ALL
           volumeMounts:
+            - name: binary
+              mountPath: /binary
+              readOnly: true
             - name: config-target
               mountPath: /opt/adguardhome/conf
             - name: work-volume
@@ -156,6 +210,8 @@ spec:
           configMap:
             name: adguardhome-config
         - name: config-target
+          emptyDir: {}
+        - name: binary
           emptyDir: {}
         - name: work-volume
           persistentVolumeClaim:
