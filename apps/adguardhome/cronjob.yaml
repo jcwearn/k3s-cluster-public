@@ -32,9 +32,7 @@ spec:
               command: ["/bin/sh", "-c"]
               args:
                 - |
-                  envsubst < /config/adguardhome-sync.yaml > /config-target/adguardhome-sync.yaml &&
-                  chown -R 1000:1000 /config-target &&
-                  chmod -R 755 /config-target
+                  envsubst < /config/adguardhome-sync.yaml > /config-target/adguardhome-sync.yaml
               envFrom:
                 - secretRef:
                     name: adguardhome-secrets
