@@ -14,6 +14,7 @@
         "jcwearn/resume",
         "jcwearn/truenas-infra",
         "jcwearn/udm-pro",
+        "jcwearn/unifi-infra",
         "jcwearn/withjoy-exporter",
         "jcwearn/workflows",
         "jcwearn/world-clock"
@@ -54,10 +55,11 @@
         {
             "matchRepositories": [
                 "jcwearn/cloudflare-infra",
-                "jcwearn/truenas-infra"
+                "jcwearn/truenas-infra",
+                "jcwearn/unifi-infra"
             ],
             "automerge": false,
-            "description": "Merging to main runs tofu apply against live infrastructure, and neither repo has branch protection. Read the plan comment, then merge by hand."
+            "description": "Merging to main runs tofu apply against live infrastructure, and none of these repos has branch protection. Read the plan comment, then merge by hand."
         }
     ],
     "vulnerabilityAlerts": {
