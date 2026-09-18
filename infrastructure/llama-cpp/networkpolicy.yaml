@@ -1,0 +1,27 @@
+# The inference servers answer only in-cluster callers: open-webui, and n8n
+# in case a workflow points at one. Nothing routes them through the gateway
+# and nothing scrapes them. Ingress only -- the servers fetch models from
+# Hugging Face on first use of a new model, and an egress rule would turn
+# that into a silent hang the next time the model list changes.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: llama-cpp
+  namespace: llama-cpp
+spec:
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/name: llama-cpp
+  policyTypes:
+    - Ingress
+  ingress:
+    - from:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: open-webui
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: n8n
+      ports:
+        - port: 8080
+          protocol: TCP

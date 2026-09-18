@@ -5,6 +5,7 @@ resources:
   - httproute.yaml
   - n8n-secrets.sops.yaml
   - namespace.yaml
+  - networkpolicy.yaml
   - objectstore.yaml
   - postgres-backup-secrets.sops.yaml
   - podmonitor.yaml

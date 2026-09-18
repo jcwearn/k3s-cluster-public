@@ -5,6 +5,7 @@ resources:
   - deployment.yaml
   - httproute.yaml
   - namespace.yaml
+  - networkpolicy.yaml
   - pvc.yaml
   - secrets.sops.yaml
   - service.yaml

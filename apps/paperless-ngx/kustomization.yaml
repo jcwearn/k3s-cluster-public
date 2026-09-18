@@ -4,6 +4,7 @@ resources:
   - deployment.yaml
   - httproute.yaml
   - namespace.yaml
+  - networkpolicy.yaml
   - paperless-ngx-secrets.sops.yaml
   - objectstore.yaml
   - postgres-backup-secrets.sops.yaml

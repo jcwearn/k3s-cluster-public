@@ -5,6 +5,7 @@ resources:
   - httproute.yaml
   - backend-traffic-policy.yaml
   - namespace.yaml
+  - networkpolicy.yaml
   - pvc.yaml
   - objectstore.yaml
   - postgres-backup-secrets.sops.yaml

@@ -1,0 +1,47 @@
+# Who may open a connection to the database pod. Three callers, nothing else:
+#
+#   5432  the app itself
+#   9187  Prometheus, for the PodMonitor
+#   8000  the CloudNativePG operator, for the instance manager's status API
+#
+# The kubelet's probes on 8000 arrive from the node's own cni0 address, which
+# k3s's embedded policy controller permits ahead of any policy -- proven on
+# job-track's database, the first of these. Ingress only; WAL archiving and
+# the instance manager's API-server calls are egress and untouched. A one-off
+# client (a restore Job, a psql from a debug pod) is refused fast rather than
+# hung; give it the app's labels or add it here.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: n8n-database
+  namespace: n8n
+  annotations:
+    ignore-check.kube-linter.io/dangling-networkpolicy: "selects pods the CNPG operator creates from the Cluster object"
+spec:
+  podSelector:
+    matchLabels:
+      cnpg.io/cluster: n8n-database
+  policyTypes:
+    - Ingress
+  ingress:
+    - from:
+        - podSelector:
+            matchLabels:
+              app: n8n
+      ports:
+        - port: 5432
+          protocol: TCP
+    - from:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: prometheus
+      ports:
+        - port: 9187
+          protocol: TCP
+    - from:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: cnpg-system
+      ports:
+        - port: 8000
+          protocol: TCP
