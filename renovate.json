@@ -73,6 +73,37 @@
       "pinDigests": false
     },
     {
+      "description": "OCI Helm charts: the flux manager resolves them through the docker datasource, so docker:pinDigests (from config:best-practices) asks for a chart digest -- and a HelmRelease's chart.spec.version has nowhere to put one. The write is verified as missing, Renovate logs 'Error updating branch: update failure', and abandons the WHOLE branch. Because every pin update shares the single renovate/pin-dependencies branch, this silently held every image digest pin in the repo hostage for as long as an OCI chart was in it. Found with a debug dry run on 2026-09-18.",
+      "matchManagers": [
+        "flux"
+      ],
+      "matchDatasources": [
+        "docker"
+      ],
+      "pinDigests": false
+    },
+    {
+      "description": "The kubectl tag in the controller's ConfigMap is read by a regex customManager that captures the tag only, so a digest pin cannot be written there. Same failure shape as above, on the renovate/k3s branch -- which means a k3s patch bump would have died with it. The ansible CronJobs carry the same image as volumes[].image.reference WITH a digest, read by a separate customManager, and keep their digest updates.",
+      "matchFileNames": [
+        "infrastructure/system-upgrade-controller/patch-controller-env.yaml"
+      ],
+      "pinDigests": false
+    },
+    {
+      "description": "Untagged by design: the system-upgrade-controller derives the tag from the Plan's version at run time, and a digest on the base reference would break that concatenation.",
+      "matchPackageNames": [
+        "rancher/k3s-upgrade"
+      ],
+      "pinDigests": false
+    },
+    {
+      "description": "Lives in the vendored upstream controller.yaml, which the kustomization keeps byte-for-byte so a re-vendor is an overwrite. Tag bumps there are tolerated; a digest would silently outlive the next re-vendor. Listed in .ci/image-pin-allowlist for the same reason.",
+      "matchPackageNames": [
+        "rancher/system-upgrade-controller"
+      ],
+      "pinDigests": false
+    },
+    {
       "description": "Merging a k3s bump rolls all three control-plane nodes unattended. The bot's global config automerges every non-major update for '*', so this must opt out explicitly or a patch release would restart the control plane with nobody watching. rancher/kubectl rides along so the drain kubectl and the Plan version land in one PR when both have a patch pending -- they are independent release streams, so grouping cannot guarantee they always move together, and it is the minor gate below that keeps the skew in policy. The tag lives in three places: the controller's ConfigMap and the three ansible hypervisor-upgrade CronJobs, each read by its own customManager below.",
       "matchPackageNames": [
         "k3s-io/k3s",
