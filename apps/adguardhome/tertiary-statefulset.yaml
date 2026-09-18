@@ -113,9 +113,38 @@ spec:
             capabilities:
               drop:
                 - ALL
+        # The image's binary carries cap_net_bind_service as a FILE capability
+        # (setcap, in upstream's Dockerfile). Under allowPrivilegeEscalation:
+        # false the kernel refuses to exec a +ep file-caps binary at all --
+        # "operation not permitted" before the process even starts. A plain cp
+        # does not carry xattrs, so the copy has no file capabilities, and the
+        # sysctl above lets it bind 53 without any. Same image as the main
+        # container, so Renovate moves both together.
+        - name: strip-caps
+          image: adguard/adguardhome:v0.107.79@sha256:aba9e3bf0613be3ba3755e1fc311b126e2c24bec25e18b6483894a88283074f0
+          imagePullPolicy: IfNotPresent
+          command: ["cp", "/opt/adguardhome/AdGuardHome", "/binary/AdGuardHome"]
+          volumeMounts:
+            - name: binary
+              mountPath: /binary
+          resources:
+            requests:
+              cpu: 10m
+              memory: 16Mi
+            limits:
+              cpu: 100m
+              memory: 64Mi
+          securityContext:
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop:
+                - ALL
       containers:
         - name: adguardhome-tertiary
           image: adguard/adguardhome:v0.107.79@sha256:aba9e3bf0613be3ba3755e1fc311b126e2c24bec25e18b6483894a88283074f0
+          # The copied binary, with the image's own arguments.
+          command: ["/binary/AdGuardHome"]
+          args: ["--no-check-update", "-c", "/opt/adguardhome/conf/AdGuardHome.yaml", "-w", "/opt/adguardhome/work"]
           imagePullPolicy: IfNotPresent
           ports:
             - name: dns-udp
@@ -166,6 +195,9 @@ spec:
               drop:
                 - ALL
           volumeMounts:
+            - name: binary
+              mountPath: /binary
+              readOnly: true
             - name: config-target
               mountPath: /opt/adguardhome/conf
             - name: work-volume
@@ -178,6 +210,8 @@ spec:
           configMap:
             name: adguardhome-config
         - name: config-target
+          emptyDir: {}
+        - name: binary
           emptyDir: {}
         - name: work-volume
           persistentVolumeClaim:
