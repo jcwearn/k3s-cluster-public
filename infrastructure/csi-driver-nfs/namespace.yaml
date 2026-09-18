@@ -4,7 +4,7 @@ metadata:
   name: csi-driver-nfs
   labels:
     # The node DaemonSet mounts the host kubelet directory and propagates mounts
-    # back to it, so it must run privileged. Nothing enforces Pod Security on this
-    # cluster today; the label is here so that turning enforcement on later does
-    # not take storage down with it.
+    # back to it, so it must run privileged.
     pod-security.kubernetes.io/enforce: privileged
+    pod-security.kubernetes.io/warn: restricted
+    pod-security.kubernetes.io/audit: restricted
