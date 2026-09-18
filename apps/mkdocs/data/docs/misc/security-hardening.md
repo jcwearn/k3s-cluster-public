@@ -36,7 +36,7 @@ Facts, as of the date at the bottom of the page. Each row links to the phase tha
 | Secrets encryption at rest | **Off** — Secrets are plaintext in etcd → phase 9 |
 | `protect-kernel-defaults` | **Off** → phase 9 |
 | etcd snapshots | k3s default: local disk only, no off-site copy → phase 9 |
-| Pod Security Admission | Every namespace enforces `baseline` and warns/audits at `restricted`, except five that are `privileged` with the reason in the manifest: csi-driver-nfs, system-upgrade, prometheus (node-exporter), tailscale (proxies), ebooks (gluetun). Moving namespaces to `enforce: restricted` is the remaining step → phase 7 |
+| Pod Security Admission | 23 namespaces enforce `restricted`; 9 enforce `baseline` (ansible runs as root by design, four Helm charts need values, four images run as root); 5 are `privileged` with the reason in the manifest (csi-driver-nfs, system-upgrade, prometheus, tailscale, ebooks). All warn and audit at `restricted` |
 | Admission configuration | None; a namespace created outside Git gets no policy at all → phase 9 |
 
 ### Workloads
