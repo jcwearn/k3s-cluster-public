@@ -9,7 +9,7 @@ data:
   kubernetes.yaml: |
     mode: cluster
   settings.yaml: |
-    background: 
+    background:
       image: /images/background.webp
       opacity: 75
     color: slate

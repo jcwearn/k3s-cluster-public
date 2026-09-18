@@ -5,6 +5,9 @@ metadata:
   namespace: zeroclaw
   annotations:
     reloader.stakater.com/auto: "true"
+    # The init container's busybox is untagged. Pinning it is part of the
+    # workload-hardening pass in docs/plans/cluster-hardening; drop this then.
+    ignore-check.kube-linter.io/latest-tag: "busybox init image pinned in the cluster-hardening plan, phase 6"
 spec:
   revisionHistoryLimit: 1
   replicas: 1

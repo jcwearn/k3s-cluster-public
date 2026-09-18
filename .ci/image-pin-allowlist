@@ -1,0 +1,15 @@
+# Images scripts/check-image-digests.sh may find without a digest. One exact
+# reference per line; "#" starts a comment.
+#
+# Permanent: the system-upgrade-controller derives this image's tag from the
+# Plan's `version` field at run time, so the manifest cannot carry one.
+rancher/k3s-upgrade
+
+# Temporary: pinned in docs/plans/cluster-hardening phase 6. Remove each line
+# in the PR that pins it.
+busybox
+ghcr.io/corentinth/it-tools:2024.10.22-7ca5933
+louislam/uptime-kuma:2
+lscr.io/linuxserver/calibre-web:0.6.26-ls370
+rancher/system-upgrade-controller:v0.20.1
+squidfunk/mkdocs-material:9

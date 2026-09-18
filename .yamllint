@@ -1,0 +1,36 @@
+# yamllint runs in CI on every tracked YAML file. It catches what kustomize
+# does not: a file that parses but is malformed in a way the next edit will
+# trip over -- duplicate keys, a tab, trailing whitespace, inconsistent
+# indentation inside a list.
+#
+# Style rules that would fight the repo are off. Lines are long because
+# manifests carry prose comments and digest-pinned images; documents rarely
+# start with "---"; comments are indented to match the code they explain.
+extends: default
+
+ignore:
+  # sops writes these and rewrites them on every edit, with its own
+  # indentation. scripts/check-sops-files.sh checks what matters in them.
+  - "*.sops.yaml"
+  # Vendored upstream manifests are kept verbatim so the next update is a diff.
+  - infrastructure/system-upgrade-controller/crd.yaml
+  - infrastructure/system-upgrade-controller/controller.yaml
+  - infrastructure/kube-vip/kube-vip.yaml
+
+rules:
+  line-length: disable
+  document-start: disable
+  comments-indentation: disable
+  comments:
+    min-spaces-from-content: 1
+  truthy:
+    # GitHub Actions uses `on:` as a key; Helm values use bare yes/no in places.
+    check-keys: false
+  indentation:
+    spaces: 2
+    indent-sequences: consistent
+  braces:
+    # ${VAR} substitution placeholders are not flow mappings.
+    forbid: false
+    min-spaces-inside: 0
+    max-spaces-inside: 1

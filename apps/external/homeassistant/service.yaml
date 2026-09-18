@@ -3,6 +3,10 @@ kind: Service
 metadata:
   name: homeassistant
   namespace: homeassistant
+  annotations:
+    # No selector on purpose: the backend is off-cluster and the EndpointSlice
+    # below supplies the address.
+    ignore-check.kube-linter.io/dangling-service: "off-cluster backend addressed by a hand-written EndpointSlice"
 spec:
   ports:
     - name: http

@@ -5,6 +5,9 @@ metadata:
   namespace: flux-system
   annotations:
     tailscale.com/funnel: "true"
+    # webhook-receiver is created by the notification-controller inside the
+    # cluster; it is not part of this overlay, so the linter cannot see it.
+    ignore-check.kube-linter.io/dangling-ingress: "Service is created by the notification-controller, not by Git"
 spec:
   ingressClassName: tailscale
   defaultBackend:

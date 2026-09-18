@@ -9,7 +9,7 @@ spec:
   jobTemplate:
     spec:
       template:
-        spec: 
+        spec:
           initContainers:
             - name: move-config
               # nginx purely for the envsubst binary it ships for its own template feature.

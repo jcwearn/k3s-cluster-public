@@ -1,0 +1,50 @@
+# kube-linter runs in CI against the RENDERED overlays (scripts/render-all.sh),
+# so it sees what Flux applies, post-substitution. It never sees the objects a
+# HelmRelease produces, so chart-managed workloads are out of its reach.
+#
+# Checks are opted in one at a time rather than with addAllBuiltIn, and only
+# once every existing violation is either fixed or carries an
+#   ignore-check.kube-linter.io/<check>: "<reason>"
+# annotation. That annotation list IS the exception list -- there is no second
+# one -- so a new exception needs a reason written next to it.
+#
+# The rollout of the remaining checks is tracked in
+# docs/plans/cluster-hardening/. Each phase adds its check here in the same PR
+# that fixes the workloads it would flag:
+#
+#   phase 4  no-liveness-probe, no-readiness-probe
+#   phase 6  run-as-non-root, privilege-escalation-container,
+#            drop-net-raw-capability, no-read-only-root-fs, default-service-account
+#
+# schema-validation is deliberately absent: kubeconform does the same job with
+# the CRD schemas kube-linter lacks, in the step before this one.
+checks:
+  doNotAutoAddDefaults: true
+  addAllBuiltIn: false
+  include:
+    # Repo rule from CLAUDE.md: every container declares requests and limits.
+    - unset-cpu-requirements
+    - unset-memory-requirements
+    # Renovate pins by digest; an untagged or :latest image escapes it.
+    - latest-tag
+    # Wiring mistakes that render fine and fail on the cluster.
+    - invalid-target-ports
+    - mismatching-selector
+    - dangling-service
+    - dangling-ingress
+    - dangling-servicemonitor
+    - dangling-networkpolicy
+    - dangling-networkpolicypeer-podselector
+    - non-existent-service-account
+    - duplicate-env-var
+    # Host-namespace and host-filesystem access.
+    - host-network
+    - host-pid
+    - host-ipc
+    - privileged-container
+    - docker-sock
+    - sensitive-host-mounts
+    - unsafe-proc-mount
+    - unsafe-sysctls
+    # A Secret's value belongs in a volume or a secretKeyRef, not a literal.
+    - env-var-secret

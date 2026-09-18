@@ -168,13 +168,25 @@ Claude Code skills are available for common cluster operations. Use them by typi
 ### Validating changes locally
 
 ```bash
-# Validate Kustomize output
-kustomize build apps/homepage
+# Render one overlay the way Flux applies it (kustomize build, plus strict
+# ${VAR} substitution on the paths that have it)
+scripts/render.sh apps/homepage
+
+# Render every overlay into a directory; what CI lints and schema-checks
+scripts/render-all.sh /tmp/rendered
 
 # Check Flux reconciliation status
 flux get kustomizations
 flux get helmreleases -A
 ```
+
+CI (`.github/workflows/validate.yaml`) runs, on that rendering: `kubeconform -strict` with the
+CRD schemas, `kube-linter` with the checks in `.kube-linter.yaml`, and
+`scripts/check-image-digests.sh`; plus `yamllint` (`.yamllint`) over every tracked file. A
+permanent exception to a kube-linter check carries an `ignore-check.kube-linter.io/<check>`
+annotation with the reason; an image that cannot yet be digest-pinned is listed in
+`.ci/image-pin-allowlist`. Pull requests also get a rendered diff against the base branch in
+the job summary -- read it, it is what actually changes on the cluster.
 
 ## Network Configuration
 
@@ -220,11 +232,12 @@ Rules when editing:
 Before merging a change to a substituted path, confirm the render is unchanged:
 
 ```bash
-kustomize build <path> | flux envsubst --strict
+scripts/render.sh <path>
 ```
 
 `--strict` fails on a variable that would blank, but it cannot see a `$$` that would collapse.
-Diffing the rendered output against the previous commit's is the check that catches everything.
+Diffing the rendered output against the previous commit's is the check that catches everything --
+CI posts exactly that diff in the pull request's job summary.
 
 **Commit messages are published too.** `.github/workflows/publish.yaml` replays them onto the
 public mirror verbatim, so do not name hostnames, addresses or the tailnet in a commit message —

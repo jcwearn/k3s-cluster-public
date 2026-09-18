@@ -19,6 +19,12 @@ on:
       - main
   workflow_dispatch:
 
+# The reusable workflow declares the same, and a caller cannot grant it less
+# than it asks for. Pushing to the mirror goes through the deploy key, not the
+# token, so read is all either side needs.
+permissions:
+  contents: read
+
 jobs:
   publish:
     uses: jcwearn/workflows/.github/workflows/public-sync.yaml@c14d136b89f9008a5602dbf6a7c02b16562d0a62 # v1

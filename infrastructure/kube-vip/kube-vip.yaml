@@ -49,6 +49,10 @@ metadata:
   labels:
     app.kubernetes.io/name: kube-vip-ds
     app.kubernetes.io/version: v0.9.0
+  annotations:
+    # It holds the control-plane VIP and the LoadBalancer addresses on the
+    # node's own interface; there is no version of this that is not hostNetwork.
+    ignore-check.kube-linter.io/host-network: "ARP-based VIP holder must share the node's network namespace"
   name: kube-vip-ds
   namespace: kube-system
 spec:
