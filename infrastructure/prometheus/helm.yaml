@@ -63,26 +63,27 @@ spec:
         #
         # Retention was never set here before -- the 10d everyone assumed was
         # the chart default.
-        # Sized from head series, not from what `kubectl top` reported at the
-        # time: memory tracks series count at roughly 8 KiB each, and 234k
-        # series puts steady state near 2 GiB. Measuring instead would have
-        # given 823 MiB, because the pod had restarted minutes earlier and the
-        # head block was still filling -- it climbed from 399 to 839 MiB in the
-        # five minutes either side of the reading.
+        # Sized from 27 days of measurement (2026-08-20 to 2026-09-17): working
+        # set p50 2.1 GiB, p99 3.7 GiB, max 4.4 GiB, with head series peaking at
+        # 418k. The original 2 GiB request was an estimate from 234k series and
+        # sat right at steady state, which meant the pod was over its request
+        # half the time and therefore first in line for eviction -- the exact
+        # thing a request is supposed to prevent. 3 GiB is above steady state.
         #
-        # The limit is deliberately 3x the request rather than snug. Compaction
-        # and wide range queries both spike well above steady state, and an
-        # OOM-kill mid-compaction is a worse outcome than a pod that is briefly
-        # large. Reaching 6 GiB would mean something is genuinely wrong -- a
-        # cardinality explosion, most likely -- and being killed for it is then
-        # the right behaviour.
+        # The limit is deliberately loose rather than snug. Compaction and wide
+        # range queries both spike well above steady state, and an OOM-kill
+        # mid-compaction is a worse outcome than a pod that is briefly large.
+        # 8 GiB is ~1.8x the observed max and leaves room for series growth
+        # (17% in the first month). Reaching it would mean something is
+        # genuinely wrong -- a cardinality explosion, most likely -- and being
+        # killed for it is then the right behaviour.
         resources:
           requests:
             cpu: 250m
-            memory: 2Gi
+            memory: 3Gi
           limits:
             cpu: "2"
-            memory: 6Gi
+            memory: 8Gi
         retention: 30d
         retentionSize: 50GiB
         # Cuts WAL write volume, which is worth having when the WAL is on NFS.
@@ -253,13 +254,14 @@ spec:
               - url: "https://hc-ping.com/placeholder"
                 send_resolved: false
       alertmanagerSpec:
+        # Max working set over 27 days was 25 MiB.
         resources:
           requests:
             cpu: 10m
-            memory: 96Mi
+            memory: 32Mi
           limits:
             cpu: 200m
-            memory: 256Mi
+            memory: 128Mi
         # Silences and the notification log. Small, but losing a silence on
         # restart means a deliberately-quietened alert starts paging again.
         storage:
@@ -282,10 +284,12 @@ spec:
             mountPath: /passwords
             readOnly: true
     grafana:
+      # Working set over 27 days: p50 661 MiB, max 730 MiB, flat. The request
+      # was 384 MiB, half of steady state.
       resources:
         requests:
           cpu: 50m
-          memory: 384Mi
+          memory: 768Mi
         limits:
           cpu: 500m
           memory: 1Gi
@@ -305,13 +309,17 @@ spec:
       sidecar:
         # Covers both sidecars -- grafana-sc-dashboard and
         # grafana-sc-datasources share this key.
+        #
+        # Memory sits at 84-96 MiB. The CPU limit was 100m, and the dashboard
+        # sidecar bursts when it reloads ConfigMaps: it spent a third of its
+        # first 27 days CFS-throttled above 25%.
         resources:
           requests:
             cpu: 10m
-            memory: 64Mi
+            memory: 96Mi
           limits:
-            cpu: 100m
-            memory: 128Mi
+            cpu: 250m
+            memory: 192Mi
         dashboards:
           folderAnnotation: grafana_folder
       ingress:
@@ -321,7 +329,7 @@ spec:
       resources:
         requests:
           cpu: 25m
-          memory: 64Mi
+          memory: 96Mi
         limits:
           cpu: 200m
           memory: 256Mi
@@ -339,17 +347,24 @@ spec:
       resources:
         requests:
           cpu: 25m
-          memory: 64Mi
+          memory: 96Mi
         limits:
           cpu: 200m
           memory: 256Mi
     prometheus-node-exporter:
+      # The CPU limit is a ceiling for runaway behaviour, not a budget.
+      # node-exporter averages 2m of CPU but every scrape is a burst, and CFS
+      # enforces the limit per 100ms period: at 100m that is 10ms of CPU per
+      # period, so each scrape was throttled and stretched to ~400ms at p50
+      # (max 6.4s against a 10s scrape timeout). CPUThrottlingHigh fired for
+      # 27 days straight without anyone seeing it, because it is severity
+      # info and InfoInhibitor swallows it.
       resources:
         requests:
           cpu: 25m
-          memory: 48Mi
+          memory: 32Mi
         limits:
-          cpu: 100m
+          cpu: 500m
           memory: 128Mi
     kubeControllerManager:
       enabled: false
