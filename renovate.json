@@ -73,7 +73,7 @@
       "pinDigests": false
     },
     {
-      "description": "Merging a k3s bump rolls all three control-plane nodes unattended. The bot's global config automerges every non-major update for '*', so this must opt out explicitly or a patch release would restart the control plane with nobody watching. rancher/kubectl rides along so the drain kubectl and the Plan version land in one PR when both have a patch pending -- they are independent release streams, so grouping cannot guarantee they always move together, and it is the minor gate below that keeps the skew in policy.",
+      "description": "Merging a k3s bump rolls all three control-plane nodes unattended. The bot's global config automerges every non-major update for '*', so this must opt out explicitly or a patch release would restart the control plane with nobody watching. rancher/kubectl rides along so the drain kubectl and the Plan version land in one PR when both have a patch pending -- they are independent release streams, so grouping cannot guarantee they always move together, and it is the minor gate below that keeps the skew in policy. The tag lives in three places: the controller's ConfigMap and the three ansible hypervisor-upgrade CronJobs, each read by its own customManager below.",
       "matchPackageNames": [
         "k3s-io/k3s",
         "rancher/kubectl"
@@ -164,6 +164,19 @@
       ],
       "matchStrings": [
         "SYSTEM_UPGRADE_JOB_KUBECTL_IMAGE: rancher/kubectl:(?<currentValue>v\\d+\\.\\d+\\.\\d+)\\n"
+      ],
+      "datasourceTemplate": "docker",
+      "depNameTemplate": "rancher/kubectl",
+      "versioningTemplate": "regex:^v(?<major>\\d+)\\.(?<minor>\\d+)\\.(?<patch>\\d+)$"
+    },
+    {
+      "customType": "regex",
+      "description": "The same kubectl, mounted into the ansible hypervisor-upgrade Jobs as an image volume. rancher/kubectl has no shell to copy the binary out with, so it is a `volumes[].image.reference` rather than an initContainer `image:`, and the kubernetes manager does not read that field either. Third site of the tag; the k3s packageRules above govern it like the other two.",
+      "managerFilePatterns": [
+        "/^apps/ansible/cronjob-upgrade-hypervisor-\\d+\\.yaml$/"
+      ],
+      "matchStrings": [
+        "reference: rancher/kubectl:(?<currentValue>v\\d+\\.\\d+\\.\\d+)@(?<currentDigest>sha256:[a-f0-9]{64})\\n"
       ],
       "datasourceTemplate": "docker",
       "depNameTemplate": "rancher/kubectl",

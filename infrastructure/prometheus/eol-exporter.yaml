@@ -1,7 +1,7 @@
 # Lifecycle awareness. PVE 8 went end of life on 2026-08-31 and the upgrade off it
 # landed on 2026-08-19 with twelve days to spare -- not because anything watched,
 # but because someone happened to open the PVE web UI. Renovate covers images and
-# charts, ansible-update-linux covers packages; neither has any notion of a major
+# charts, the ansible hypervisor-upgrade jobs cover packages; neither has any notion of a major
 # release reaching the end of its support window.
 #
 # The poller itself is data/eol_exporter.py, pulled in by the configMapGenerator in

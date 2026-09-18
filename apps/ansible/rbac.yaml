@@ -1,0 +1,70 @@
+# What upgrade-hypervisor.yml needs from the API: enough to cordon, drain and
+# uncordon one node, to read cluster state for its gate, and to ask each node's
+# etcd directly whether it is healthy. Nothing that writes a workload.
+#
+# Drain is narrower than it looks. Current kubectl reads a pod's ownerReference
+# to classify it and only fetches the owner when it is a DaemonSet, so the
+# ReplicaSet/StatefulSet/Job reads other guides list are not needed, and
+# pods/delete is only reached through --disable-eviction, which the CNPG PDB
+# removal made unnecessary. Widen this on a Forbidden from a supervised run,
+# not in anticipation of one.
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: ansible-upgrade-hypervisor
+rules:
+  - apiGroups: [""]
+    resources: ["nodes"]
+    verbs: ["get", "list", "patch"]
+  - apiGroups: [""]
+    resources: ["pods"]
+    verbs: ["get", "list"]
+  - apiGroups: [""]
+    resources: ["pods/eviction"]
+    verbs: ["create"]
+  - apiGroups: ["apps"]
+    resources: ["daemonsets"]
+    verbs: ["get", "list"]
+  # system:public-info-viewer grants /healthz to everyone but not its
+  # sub-paths, and /healthz/etcd is the one the return-to-service step reads.
+  - nonResourceURLs: ["/healthz/etcd", "/readyz/etcd"]
+    verbs: ["get"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: ansible-upgrade-hypervisor
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: ansible-upgrade-hypervisor
+subjects:
+  - kind: ServiceAccount
+    name: ansible-runner
+    namespace: ansible
+---
+# The gate lists this namespace's Jobs to refuse to run beside a sibling. That
+# is the lock between the three CronJobs; their schedules are only the order.
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: ansible-upgrade-hypervisor
+  namespace: ansible
+rules:
+  - apiGroups: ["batch"]
+    resources: ["jobs"]
+    verbs: ["get", "list"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: ansible-upgrade-hypervisor
+  namespace: ansible
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: ansible-upgrade-hypervisor
+subjects:
+  - kind: ServiceAccount
+    name: ansible-runner
+    namespace: ansible

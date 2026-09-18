@@ -21,8 +21,8 @@ in person. That is the reason for the caution below and for keeping a fallback k
 
 ## Why `autoremove` does not prune kernels
 
-`ansible-update-linux` runs `apt autoremove` weekly across every host including these, and it has
-never removed an old kernel. Two independent reasons:
+The `ansible-upgrade-hypervisor-*` jobs run `apt autoremove` weekly on every host including these,
+and it has never removed an old kernel. Two independent reasons:
 
 1. **The versioned packages are marked manually installed.** `apt-mark showmanual` lists them, and
    `autoremove` only ever considers automatically-installed packages. They are manual because the

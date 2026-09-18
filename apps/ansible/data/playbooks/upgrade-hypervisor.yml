@@ -1,0 +1,605 @@
+---
+# Upgrade one Proxmox host and the k3s guest it carries, rebooting either or both
+# when the packages call for it, without taking the cluster below quorum.
+#
+# The shape is the system-upgrade-controller's, applied to the layer below it:
+# gate, cordon and drain the guest, shut the VM down, work on the host, reboot,
+# bring the VM back, wait for etcd, uncordon, soak. Three CronJobs run this
+# playbook against one host each, two and a half hours apart on Saturday, and
+# the gate at the top is what keeps them from overlapping -- a run that finds
+# the cluster anything less than whole aborts and says so rather than waiting.
+#
+# It is one play on localhost that delegates to the host and the guest, rather
+# than one play per machine, because Ansible has no cross-play `always:` and
+# the two things that must happen however the run ends -- expiring the
+# Alertmanager silences and posting the report -- live in that block.
+#
+# A failure after the drain leaves the node cordoned on purpose. That is the
+# controller's behaviour too: a node that is down for a reason nobody has read
+# yet should not take work, and a cordoned node is the visible sign that a
+# human owes this run a look.
+#
+# Run by hand (on the LAN, never over Tailscale -- a drain can sever that path):
+#   kubectl -n ansible create job --from=cronjob/ansible-upgrade-hypervisor-03 \
+#     upg-03-$(date +%s)
+# Extra vars for a supervised run, spliced into the Job's args before applying:
+#   -e dry_run=true          apt in check mode, no silence, no drain, no reboot
+#   -e force_reboot=host     exercise the full path regardless of packages
+#   -e force_reboot=guest    exercise the guest-only path
+
+- name: Upgrade a Proxmox host and its k3s guest
+  hosts: localhost
+  connection: local
+  gather_facts: false
+
+  vars:
+    dry_run: false
+    # none | guest | host
+    force_reboot: none
+    kubectl: /opt/kubectl/bin/kubectl
+    sa_dir: /var/run/secrets/kubernetes.io/serviceaccount
+    alertmanager_url: http://kube-prometheus-stack-alertmanager.prometheus.svc.cluster.local:9093
+    ntfy_url: http://ntfy-svc.ntfy.svc.cluster.local:4080/hypervisor-upgrades
+    # The silence is the safety net for the one failure `always:` cannot catch:
+    # the Job hitting activeDeadlineSeconds and being killed mid-run. It must
+    # outlast a slow-but-healthy run and nothing more.
+    silence_minutes: 120
+    drain_timeout: 15m
+    soak_minutes: 10
+    apt_env:
+      DEBIAN_FRONTEND: noninteractive
+      NEEDRESTART_SUSPEND: "1"
+    apt_dpkg_options: force-confdef,force-confold
+    job_name: "{{ lookup('env', 'JOB_NAME') | default('manual', true) }}"
+
+  tasks:
+    - name: Check the target is a hypervisor we know about
+      ansible.builtin.assert:
+        that:
+          - target is defined
+          - target in groups['proxmox']
+          - force_reboot in ['none', 'guest', 'host']
+        fail_msg: "target must be one of {{ groups['proxmox'] }} and force_reboot one of none|guest|host"
+
+    - name: Resolve the guest behind the target
+      ansible.builtin.set_fact:
+        vmid: "{{ hostvars[target].vmid }}"
+        guest: "{{ hostvars[target].guest }}"
+        k3s_node: "{{ hostvars[target].k3s_node }}"
+        k3s_ips: "{{ groups['k3s'] | map('extract', hostvars, 'ansible_host') | list }}"
+        silence_ids: []
+        stamps: { start: "{{ now(utc=true).timestamp() | int }}" }
+        run_failed: false
+        host_reboot: false
+        guest_reboot: false
+        reboot_performed: none
+        host_upgraded: "?"
+        guest_upgraded: "?"
+        host_reboot_reasons: []
+        guest_reboot_required: false
+        onboot: "?"
+
+    - name: Upgrade {{ target }} and {{ guest }}
+      block:
+        # ------------------------------------------------------------------
+        # Silence what is about to happen on purpose. Matchers within one
+        # silence are ANDed, so each expected shape gets its own. TargetDown
+        # aggregates by job with no instance label, so it cannot be scoped to
+        # this host -- it is muted for the window and that is documented.
+        # ------------------------------------------------------------------
+        - name: Silence the alerts this run will trip
+          ansible.builtin.uri:
+            url: "{{ alertmanager_url }}/api/v2/silences"
+            method: POST
+            body_format: json
+            body:
+              matchers: "{{ item }}"
+              startsAt: "{{ '%Y-%m-%dT%H:%M:%SZ' | strftime(now(utc=true).timestamp(), utc=true) }}"
+              endsAt: "{{ '%Y-%m-%dT%H:%M:%SZ' | strftime(now(utc=true).timestamp() + silence_minutes * 60, utc=true) }}"
+              createdBy: ansible-upgrade-hypervisor
+              comment: "{{ job_name }}: {{ target }} / {{ guest }}"
+            status_code: 200
+          register: silence
+          retries: 6
+          delay: 10
+          until: silence.status == 200
+          loop:
+            - - { name: id, value: "node/{{ target | replace('proxmox', 'pve') }}|qemu/{{ vmid }}", isRegex: true, isEqual: true }
+            - - { name: node, value: "{{ k3s_node }}", isRegex: false, isEqual: true }
+            - - { name: alertname, value: TargetDown, isRegex: false, isEqual: true }
+          loop_control:
+            label: "{{ item[0].name }}={{ item[0].value }}"
+          when: not dry_run | bool
+
+        - name: Remember the silence IDs
+          ansible.builtin.set_fact:
+            silence_ids: "{{ silence.results | default([]) | selectattr('json', 'defined') | map(attribute='json.silenceID') | list }}"
+
+        # ------------------------------------------------------------------
+        # Gate. Everything here is read-only and every check is one that
+        # would make taking a node out unsafe. Pod churn is retried briefly;
+        # nothing else is -- a cordoned node or a missing quorum vote is a
+        # state, not a blip.
+        # ------------------------------------------------------------------
+        - name: "Gate: every node Ready and schedulable"
+          ansible.builtin.command: >-
+            {{ kubectl }} get nodes -o 'custom-columns=NAME:.metadata.name,READY:.status.conditions[?(@.type=="Ready")].status,CORDONED:.spec.unschedulable'
+            --no-headers
+          register: node_rows
+          changed_when: false
+          failed_when: >-
+            node_rows.rc != 0
+            or node_rows.stdout_lines | map('split') | rejectattr('1', 'equalto', 'True') | list | length > 0
+            or node_rows.stdout_lines | map('split') | selectattr('2', 'equalto', 'true') | list | length > 0
+
+        - name: "Gate: no pod Pending or Unknown"
+          ansible.builtin.command: >-
+            {{ kubectl }} get pods -A -o name
+            --field-selector=status.phase!=Running,status.phase!=Succeeded,status.phase!=Failed
+          register: waiting_pods
+          changed_when: false
+          retries: 3
+          delay: 20
+          until: waiting_pods.rc == 0 and waiting_pods.stdout | trim | length == 0
+
+        - name: "Gate: every Running pod Ready"
+          ansible.builtin.command: >-
+            {{ kubectl }} get pods -A --no-headers --field-selector=status.phase=Running
+            -o 'custom-columns=NS:.metadata.namespace,NAME:.metadata.name,READY:.status.conditions[?(@.type=="Ready")].status'
+          register: running_pods
+          changed_when: false
+          retries: 3
+          delay: 20
+          until: running_pods.rc == 0 and running_pods.stdout_lines | map('split') | rejectattr('2', 'equalto', 'True') | list | length == 0
+
+        - name: "Gate: no sibling upgrade Job running"
+          ansible.builtin.command: >-
+            {{ kubectl }} -n ansible get jobs -l app.kubernetes.io/name=ansible-upgrade-hypervisor -o json
+          register: sibling_jobs
+          changed_when: false
+          failed_when: >-
+            sibling_jobs.rc != 0
+            or (sibling_jobs.stdout | from_json)['items']
+               | rejectattr('metadata.name', 'equalto', job_name)
+               | selectattr('status.active', 'defined')
+               | list | length > 0
+
+        - name: "Gate: hypervisor cluster quorate and the guest running"
+          delegate_to: "{{ target }}"
+          become: true
+          block:
+            - name: Read pvecm status
+              ansible.builtin.command: pvecm status
+              register: pvecm
+              changed_when: false
+              failed_when: pvecm.rc != 0 or 'Quorate:' not in pvecm.stdout or not (pvecm.stdout | regex_search('Quorate:\\s+Yes'))
+
+            - name: Read the guest's status and onboot flag
+              ansible.builtin.shell: >-
+                qm status {{ vmid }};
+                qm config {{ vmid }} | grep -E '^onboot:' || echo 'onboot: 0'
+              register: qm_pre
+              changed_when: false
+              failed_when: >-
+                qm_pre.rc != 0 or 'status: running' not in qm_pre.stdout
+
+            - name: Record onboot
+              ansible.builtin.set_fact:
+                onboot: "{{ qm_pre.stdout | regex_search('(?<=onboot: )\\d') | default('?', true) }}"
+
+        # The guard is what stops a VM shutdown hanging on dirty NFS buffers.
+        # It is installed by the suspended ansible-configure-k3s-shutdown job;
+        # this run refuses to proceed without it rather than installing it,
+        # because a host that has lost it has been rebuilt and deserves a look.
+        - name: "Gate: the NFS-unmount guard is enabled on {{ guest }}"
+          ansible.builtin.command: systemctl is-enabled k3s-pre-shutdown.service
+          delegate_to: "{{ guest }}"
+          become: true
+          register: guard
+          changed_when: false
+          failed_when: guard.rc != 0 or guard.stdout | trim != 'enabled'
+
+        - name: Stamp the gate
+          ansible.builtin.set_fact:
+            stamps: "{{ stamps | combine({'gate': now(utc=true).timestamp() | int}) }}"
+
+        # ------------------------------------------------------------------
+        # Packages, guest first. apt never needs the node drained; only the
+        # reboot does, and that decision is made after both apt runs.
+        # ------------------------------------------------------------------
+        - name: Upgrade packages on {{ guest }}
+          delegate_to: "{{ guest }}"
+          become: true
+          environment: "{{ apt_env }}"
+          block:
+            - name: Prefer IPv4 for apt
+              ansible.builtin.copy:
+                content: 'Acquire::ForceIPv4 "true";'
+                dest: /etc/apt/apt.conf.d/99-force-ipv4
+                mode: "0644"
+
+            - name: Refresh the apt cache
+              ansible.builtin.apt:
+                update_cache: true
+                cache_valid_time: 0
+
+            - name: Dist-upgrade
+              ansible.builtin.apt:
+                upgrade: dist
+                autoclean: true
+                dpkg_options: "{{ apt_dpkg_options }}"
+              check_mode: "{{ dry_run | bool }}"
+              register: guest_apt
+
+            - name: Autoremove
+              ansible.builtin.apt:
+                autoremove: true
+              check_mode: "{{ dry_run | bool }}"
+
+            - name: Check whether the guest wants a reboot
+              ansible.builtin.stat:
+                path: /var/run/reboot-required
+              register: guest_reboot_file
+
+            - name: Record the guest result
+              ansible.builtin.set_fact:
+                guest_upgraded: "{{ guest_apt.stdout | default('') | regex_search('\\d+(?= upgraded)') | default('0', true) }}"
+                guest_reboot_required: "{{ guest_reboot_file.stat.exists }}"
+
+        - name: Upgrade packages on {{ target }}
+          delegate_to: "{{ target }}"
+          become: true
+          environment: "{{ apt_env }}"
+          block:
+            - name: Prefer IPv4 for apt
+              ansible.builtin.copy:
+                content: 'Acquire::ForceIPv4 "true";'
+                dest: /etc/apt/apt.conf.d/99-force-ipv4
+                mode: "0644"
+
+            - name: Refresh the apt cache
+              ansible.builtin.apt:
+                update_cache: true
+                cache_valid_time: 0
+
+            - name: Dist-upgrade
+              ansible.builtin.apt:
+                upgrade: dist
+                autoclean: true
+                dpkg_options: "{{ apt_dpkg_options }}"
+              check_mode: "{{ dry_run | bool }}"
+              register: host_apt
+
+            # Safe on these hosts only because every kernel is manually marked
+            # and there is no 01autoremove-kernels; see the kernel-maintenance
+            # runbook before changing either fact.
+            - name: Autoremove
+              ansible.builtin.apt:
+                autoremove: true
+              check_mode: "{{ dry_run | bool }}"
+
+            - name: Check whether the host wants a reboot
+              ansible.builtin.script: /ansible/scripts/pve-reboot-required.sh
+              register: host_reboot_check
+              changed_when: false
+
+            - name: Record the host result
+              ansible.builtin.set_fact:
+                host_upgraded: "{{ host_apt.stdout | default('') | regex_search('\\d+(?= upgraded)') | default('0', true) }}"
+                host_reboot_reasons: "{{ host_reboot_check.stdout_lines | default([]) | map('trim') | select | list }}"
+
+        - name: Decide what reboots
+          ansible.builtin.set_fact:
+            host_reboot: "{{ host_reboot_reasons | length > 0 or force_reboot == 'host' }}"
+            guest_reboot: "{{ guest_reboot_required | bool or host_reboot_reasons | length > 0 or force_reboot in ['guest', 'host'] }}"
+            stamps: "{{ stamps | combine({'apt': now(utc=true).timestamp() | int}) }}"
+
+        # ------------------------------------------------------------------
+        # The reboot path. Skipped entirely when nothing asked for one, so a
+        # quiet week never cordons anything.
+        # ------------------------------------------------------------------
+        - name: Reboot what needs it
+          when: (host_reboot | bool or guest_reboot | bool) and not dry_run | bool
+          block:
+            - name: Snapshot etcd on {{ guest }} and prune old pre-upgrade snapshots
+              ansible.builtin.shell: |
+                set -e
+                k3s etcd-snapshot save --name pre-upgrade
+                k3s etcd-snapshot prune --name pre-upgrade --snapshot-retention 3
+              delegate_to: "{{ guest }}"
+              become: true
+              changed_when: true
+
+            # The VIP fails over when a control-plane node drains and the
+            # in-flight kubectl sees a reset; drain is idempotent so the retry
+            # simply continues where it left off.
+            - name: Drain {{ k3s_node }}
+              ansible.builtin.command: >-
+                {{ kubectl }} drain {{ k3s_node }} --ignore-daemonsets --delete-emptydir-data --force
+                --timeout={{ drain_timeout }}
+              register: drain
+              retries: 1
+              delay: 15
+              until: drain.rc == 0
+              changed_when: true
+
+            # A drain once cordoned the node and evicted nothing. Trust the
+            # pod list, not the exit code.
+            - name: Confirm only DaemonSet pods remain on {{ k3s_node }}
+              ansible.builtin.command: >-
+                {{ kubectl }} get pods -A --field-selector spec.nodeName={{ k3s_node }} -o json
+              register: node_pods
+              changed_when: false
+              retries: 2
+              delay: 15
+              until: >-
+                node_pods.rc == 0
+                and (node_pods.stdout | from_json)['items']
+                    | rejectattr('status.phase', 'in', ['Succeeded', 'Failed'])
+                    | map(attribute='metadata.name') | list
+                    | difference((node_pods.stdout | from_json)['items']
+                                 | selectattr('metadata.ownerReferences', 'defined')
+                                 | selectattr('metadata.ownerReferences.0.kind', 'equalto', 'DaemonSet')
+                                 | map(attribute='metadata.name') | list)
+                    | length == 0
+
+            - name: Stamp the drain
+              ansible.builtin.set_fact:
+                stamps: "{{ stamps | combine({'drain': now(utc=true).timestamp() | int}) }}"
+
+            - name: Reboot {{ target }} with the guest shut down
+              when: host_reboot | bool
+              delegate_to: "{{ target }}"
+              become: true
+              block:
+                # A clean guest stop, or nothing. `qm stop` is a power cut and
+                # is never issued here; a guest that will not shut down in five
+                # minutes is a guest a human needs to look at.
+                - name: Shut the guest down
+                  ansible.builtin.command: qm shutdown {{ vmid }} --timeout 300
+                  changed_when: true
+
+                - name: Wait for the guest to report stopped
+                  ansible.builtin.command: qm status {{ vmid }}
+                  register: qm_status
+                  changed_when: false
+                  retries: 36
+                  delay: 10
+                  until: >-
+                    qm_status.rc == 0 and 'status: stopped' in qm_status.stdout
+
+                - name: Reboot the host
+                  ansible.builtin.reboot:
+                    reboot_timeout: 900
+                    post_reboot_delay: 60
+                    test_command: systemctl is-active pve-cluster
+
+                - name: Wait for the host to rejoin its cluster
+                  ansible.builtin.command: pvecm status
+                  register: pvecm_post
+                  changed_when: false
+                  retries: 12
+                  delay: 10
+                  until: pvecm_post.rc == 0 and pvecm_post.stdout | regex_search('Quorate:\\s+Yes')
+
+                - name: Confirm PVE services and local-lvm are up
+                  ansible.builtin.shell: |
+                    systemctl is-active pve-cluster pvedaemon pveproxy
+                    pvesm status | awk '$1 == "local-lvm" && $3 == "active" { found = 1 } END { exit !found }'
+                  register: pve_post
+                  changed_when: false
+                  retries: 12
+                  delay: 10
+                  until: pve_post.rc == 0
+
+                - name: Read the guest's status after the host boot
+                  ansible.builtin.command: qm status {{ vmid }}
+                  register: qm_after_boot
+                  changed_when: false
+
+                - name: Start the guest if onboot did not
+                  ansible.builtin.command: qm start {{ vmid }}
+                  when: "'status: running' not in qm_after_boot.stdout"
+                  changed_when: true
+
+                - name: Record the reboot
+                  ansible.builtin.set_fact:
+                    reboot_performed: host
+
+            - name: Wait for {{ guest }} to come back over SSH
+              ansible.builtin.wait_for_connection:
+                timeout: 600
+                delay: 15
+              delegate_to: "{{ guest }}"
+              when: host_reboot | bool
+
+            - name: Reboot {{ guest }} alone
+              when: guest_reboot | bool and not host_reboot | bool
+              delegate_to: "{{ guest }}"
+              become: true
+              block:
+                - name: Reboot the guest
+                  ansible.builtin.reboot:
+                    reboot_timeout: 600
+                    post_reboot_delay: 30
+                    test_command: systemctl is-active k3s
+
+                - name: Record the reboot
+                  ansible.builtin.set_fact:
+                    reboot_performed: guest
+
+            - name: Stamp the reboot
+              ansible.builtin.set_fact:
+                stamps: "{{ stamps | combine({'reboot': now(utc=true).timestamp() | int}) }}"
+
+            # ----------------------------------------------------------------
+            # Return to service. Ready is not enough on an embedded-etcd
+            # cluster -- the member can lag the kubelet -- so each node's own
+            # etcd health endpoint is asked directly, bypassing the VIP.
+            # ----------------------------------------------------------------
+            - name: Wait for {{ k3s_node }} to be Ready
+              ansible.builtin.command: >-
+                {{ kubectl }} get node {{ k3s_node }} -o 'jsonpath={.status.conditions[?(@.type=="Ready")].status}'
+              register: node_ready
+              changed_when: false
+              retries: 60
+              delay: 10
+              until: node_ready.rc == 0 and node_ready.stdout | trim == 'True'
+
+            - name: Wait for etcd to be healthy on every node
+              ansible.builtin.shell: >-
+                {{ kubectl }} --server https://{{ item }}:6443
+                --certificate-authority {{ sa_dir }}/ca.crt
+                --token "$(cat {{ sa_dir }}/token)"
+                get --raw /healthz/etcd
+              register: etcd_health
+              changed_when: false
+              retries: 12
+              delay: 10
+              until: etcd_health.rc == 0 and etcd_health.stdout | trim == 'ok'
+              loop: "{{ k3s_ips }}"
+
+            - name: Uncordon {{ k3s_node }}
+              ansible.builtin.command: "{{ kubectl }} uncordon {{ k3s_node }}"
+              register: uncordon
+              retries: 3
+              delay: 10
+              until: uncordon.rc == 0
+              changed_when: true
+
+            - name: Wait for every pod to settle
+              ansible.builtin.command: >-
+                {{ kubectl }} get pods -A --no-headers
+                -o 'custom-columns=NS:.metadata.namespace,NAME:.metadata.name,PHASE:.status.phase,READY:.status.conditions[?(@.type=="Ready")].status'
+              register: settle
+              changed_when: false
+              retries: 60
+              delay: 10
+              until: >-
+                settle.rc == 0
+                and settle.stdout_lines | map('split')
+                    | rejectattr('2', 'in', ['Succeeded', 'Failed'])
+                    | rejectattr('3', 'equalto', 'True')
+                    | list | length == 0
+
+            - name: Stamp the return
+              ansible.builtin.set_fact:
+                stamps: "{{ stamps | combine({'ready': now(utc=true).timestamp() | int}) }}"
+
+            - name: Soak for {{ soak_minutes }} minutes
+              ansible.builtin.pause:
+                minutes: "{{ soak_minutes }}"
+
+            - name: Confirm the cluster is whole after the soak
+              ansible.builtin.command: >-
+                {{ kubectl }} get nodes -o 'custom-columns=NAME:.metadata.name,READY:.status.conditions[?(@.type=="Ready")].status,CORDONED:.spec.unschedulable'
+                --no-headers
+              register: final_nodes
+              changed_when: false
+              failed_when: >-
+                final_nodes.rc != 0
+                or final_nodes.stdout_lines | map('split') | rejectattr('1', 'equalto', 'True') | list | length > 0
+                or final_nodes.stdout_lines | map('split') | selectattr('2', 'equalto', 'true') | list | length > 0
+
+      rescue:
+        - name: Record the failure
+          ansible.builtin.set_fact:
+            run_failed: true
+            failed_task: "{{ ansible_failed_task.name | default('unknown') }}"
+            failed_msg: "{{ ansible_failed_result.msg | default(ansible_failed_result.stderr | default(ansible_failed_result.stdout | default('no message'))) | trim }}"
+
+        # The node stays cordoned. The guest, though, is put back if the host
+        # is reachable and left it stopped: etcd at 3/3 while the report is
+        # read costs nothing, and a stopped member is the one state the
+        # controller-shaped stop does not intend.
+        - name: Check whether the guest was left stopped
+          ansible.builtin.command: qm status {{ vmid }}
+          delegate_to: "{{ target }}"
+          become: true
+          register: qm_rescue
+          changed_when: false
+          failed_when: false
+          when: host_reboot | bool
+
+        - name: Start the guest again
+          ansible.builtin.command: qm start {{ vmid }}
+          delegate_to: "{{ target }}"
+          become: true
+          changed_when: true
+          failed_when: false
+          when: >-
+            host_reboot | bool and qm_rescue.rc is defined and qm_rescue.rc == 0 and 'status: stopped' in qm_rescue.stdout
+
+      always:
+        - name: Expire the silences
+          ansible.builtin.uri:
+            url: "{{ alertmanager_url }}/api/v2/silence/{{ item }}"
+            method: DELETE
+            status_code: [200, 404]
+          register: expire
+          retries: 6
+          delay: 10
+          until: expire.status in [200, 404]
+          failed_when: false
+          loop: "{{ silence_ids }}"
+
+        - name: Compose the report
+          vars:
+            end: "{{ now(utc=true).timestamp() | int }}"
+            result: >-
+              {{ 'FAILED' if run_failed | bool
+                 else ('DRY RUN' if dry_run | bool
+                 else ('OK, rebooted ' ~ reboot_performed if reboot_performed != 'none' else 'OK, packages only')) }}
+            phases:
+              - ['gate', 'start', 'gate']
+              - ['apt', 'gate', 'apt']
+              - ['drain', 'apt', 'drain']
+              - ['reboot', 'drain', 'reboot']
+              - ['return', 'reboot', 'ready']
+          ansible.builtin.set_fact:
+            report_title: "{{ target }}: {{ result }}"
+            report_priority: "{{ 'high' if run_failed | bool else ('default' if reboot_performed != 'none' else 'low') }}"
+            report_tags: "{{ 'warning' if run_failed | bool else ('test_tube' if dry_run | bool else ('arrows_counterclockwise' if reboot_performed != 'none' else 'white_check_mark')) }}"
+            report_body: |
+              {{ target }} (VMID {{ vmid }}, onboot={{ onboot }}) / {{ guest }}
+              Result: {{ result }}
+              {% if run_failed | bool %}
+              Failed at: {{ failed_task }}
+              {{ failed_msg | truncate(600) }}
+              Node {{ k3s_node }} may be cordoned -- inspect, then kubectl uncordon.
+              {% endif %}
+              Packages upgraded: host {{ host_upgraded }}, guest {{ guest_upgraded }}
+              Reboot required: host {{ 'yes (' ~ host_reboot_reasons | join('; ') ~ ')' if host_reboot_reasons | length > 0 else 'no' }}, guest {{ 'yes' if guest_reboot_required | bool else 'no' }}{{ ', forced=' ~ force_reboot if force_reboot != 'none' else '' }}
+              Reboot performed: {{ reboot_performed }}
+              {% for p in phases if stamps[p[1]] is defined and stamps[p[2]] is defined %}
+              {{ p[0] }}: {{ ((stamps[p[2]] | int) - (stamps[p[1]] | int)) // 60 }}m{{ ((stamps[p[2]] | int) - (stamps[p[1]] | int)) % 60 }}s
+              {% endfor %}
+              Total: {{ ((end | int) - (stamps.start | int)) // 60 }}m
+              Job: {{ job_name }}
+
+        - name: Post the report to ntfy
+          ansible.builtin.uri:
+            url: "{{ ntfy_url }}"
+            method: POST
+            headers:
+              Authorization: "Bearer {{ lookup('env', 'NTFY_TOKEN') }}"
+              Title: "{{ report_title }}"
+              Priority: "{{ report_priority }}"
+              Tags: "{{ report_tags }}"
+              Content-Type: text/plain
+            body: "{{ report_body }}"
+            status_code: 200
+          register: ntfy
+          retries: 6
+          delay: 10
+          until: ntfy.status == 200
+          failed_when: false
+
+        - name: Print the report
+          ansible.builtin.debug:
+            msg: "{{ report_body }}"
+
+        - name: Fail the Job if the run failed
+          ansible.builtin.fail:
+            msg: "{{ report_title }} -- {{ failed_task }}: {{ failed_msg }}"
+          when: run_failed | bool

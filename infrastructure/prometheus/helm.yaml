@@ -1416,7 +1416,7 @@ spec:
           - name: pod-not-healthy-group
             rules:
               - alert: KubernetesPodNotHealthy
-                expr: sum by (namespace, pod) (kube_pod_status_phase{phase=~"Pending|Unknown|Failed", namespace!="renovate"}) > 0
+                expr: sum by (namespace, pod) (kube_pod_status_phase{phase=~"Pending|Unknown|Failed", namespace!~"renovate|ansible"}) > 0
                 for: 10m
                 labels:
                   severity: critical
@@ -1440,6 +1440,22 @@ spec:
               # RenovateStale is what covers a run that is genuinely, repeatedly failing.
               - alert: KubernetesPodNotHealthy
                 expr: sum by (namespace, pod) (kube_pod_status_phase{phase=~"Pending|Unknown", namespace="renovate"}) > 0
+                for: 10m
+                labels:
+                  severity: critical
+                annotations:
+                  summary: Kubernetes Pod not healthy (instance {{ $labels.instance }})
+                  description: "Pod {{ $labels.namespace }}/{{ $labels.pod }} has been in a non-running state for longer than 10 minutes.\n  VALUE = {{ $value }}\n  LABELS = {{ $labels }}"
+              # The ansible namespace has the same shape for a different reason: its
+              # Jobs are weekly, backoffLimit: 0, and kept for three days so the logs
+              # of a failed hypervisor upgrade can be read on Monday. A `Failed` pod
+              # there is a real failure, but it is already reported -- KubeJobFailed
+              # fires on the Job and the playbook posts the reason to ntfy -- and a
+              # critical page repeating every 12h for three days on top of that is
+              # how a real signal gets tuned out. Pending still matters: it is the
+              # nodeAffinity finding no node to land on.
+              - alert: KubernetesPodNotHealthy
+                expr: sum by (namespace, pod) (kube_pod_status_phase{phase=~"Pending|Unknown", namespace="ansible"}) > 0
                 for: 10m
                 labels:
                   severity: critical
@@ -1509,6 +1525,40 @@ spec:
                 annotations:
                   summary: Renovate has not completed a successful run in over 6 hours
                   description: "renovate-bot last succeeded {{ $value | humanizeDuration }} ago. Runs are scheduled every 30 minutes, so this is ~12 consecutive failures or a CronJob that is suspended and was never resumed."
+      hypervisor-upgrades:
+        groups:
+          - name: hypervisor-upgrades-group
+            rules:
+              # Same freshness shape as RenovateStale, for the three weekly
+              # hypervisor-upgrade CronJobs. Eight days is one missed Saturday
+              # plus slack. The metric only exists once a CronJob has succeeded
+              # at least once, so a job still suspended for its supervised
+              # rollout is silent; one suspended after it has run is not, which
+              # is the intended nudge. A gate abort counts as a failure here
+              # too -- a cluster that is not whole three Saturdays running is
+              # worth a look for its own sake.
+              - alert: HypervisorUpgradeStale
+                expr: time() - kube_cronjob_status_last_successful_time{namespace="ansible", cronjob=~"ansible-upgrade-hypervisor-.*"} > 8 * 86400
+                for: 1h
+                labels:
+                  severity: warning
+                annotations:
+                  summary: "{{ $labels.cronjob }} has not succeeded in over 8 days"
+                  description: "Last success {{ $value | humanizeDuration }} ago. It runs weekly, so either it aborted at its gate, failed part-way, or is suspended. Check the ntfy hypervisor-upgrades topic and the Job logs in the ansible namespace."
+              # A failed upgrade run, ansible's or the system-upgrade-controller's,
+              # leaves the node cordoned on purpose: it is the visible sign that
+              # the run stopped and a human owes it a look. Both finish well inside
+              # two hours, so a cordon older than that is one nobody has cleared.
+              # No upstream rule watches spec.unschedulable; Ready is a different
+              # condition and a cordoned node is Ready.
+              - alert: KubeNodeCordonedTooLong
+                expr: kube_node_spec_unschedulable == 1
+                for: 2h
+                labels:
+                  severity: warning
+                annotations:
+                  summary: "Node {{ $labels.node }} has been cordoned for over 2 hours"
+                  description: "Read the most recent ansible-upgrade-hypervisor Job logs and the system-upgrade Plan status before clearing it. Once the hypervisor and VM are confirmed healthy: kubectl uncordon {{ $labels.node }}."
       flux-reconciliation:
         groups:
           - name: flux-reconciliation-group

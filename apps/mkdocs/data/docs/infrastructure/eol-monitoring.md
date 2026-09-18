@@ -4,7 +4,7 @@ Watches the major-version support windows of everything this cluster runs, and p
 notification while there is still time to plan the upgrade.
 
 The gap this closes is narrow but real. Renovate covers container images and Helm charts;
-`ansible-update-linux` covers OS packages weekly. Neither has any notion of a *release* reaching
+the `ansible-upgrade-hypervisor-*` jobs cover OS packages weekly. Neither has any notion of a *release* reaching
 the end of its support window. Proxmox VE 8 went end of life on 2026-08-31 and the upgrade off it
 landed on 2026-08-19 -- twelve days of margin, and only because somebody happened to open the PVE
 web UI.

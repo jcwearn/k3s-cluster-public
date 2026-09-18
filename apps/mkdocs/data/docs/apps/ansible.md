@@ -4,7 +4,8 @@ Automated server management via Kubernetes CronJobs running Ansible playbooks.
 
 ## What it does
 
-- **Weekly Linux updates:** Runs `apt dist-upgrade` on all Proxmox hypervisors and k3s VMs every Saturday at 3:00 AM. Sends an email summary reporting which hosts were updated and which need manual reboots.
+- **Weekly hypervisor upgrades:** Runs `apt dist-upgrade` on each Proxmox host and the k3s VM it carries, one host at a time on Saturday mornings, and **reboots either or both when the packages call for it** — draining the k3s node first, shutting the VM down cleanly, and bringing it all back before the next host starts. Posts a per-host summary to ntfy. The full flow, its gate and what a failure leaves behind are in the [hypervisor upgrades runbook](../misc/hypervisor-upgrades.md).
+- **LVM thin-pool metrics:** Re-asserts a node_exporter textfile collector on the Proxmox hosts weekly so metadata fullness is graphed and alerted.
 - **Host onboarding:** One-shot playbook to create an `ansible` user, configure sudo, and deploy SSH keys on new hosts.
 - **Node configuration:** On-demand playbooks for kernel sysctls, clean-shutdown ordering, and bounding the containerd image store by age.
 
@@ -12,22 +13,35 @@ Automated server management via Kubernetes CronJobs running Ansible playbooks.
 
 - **Container image:** [`ghcr.io/jcwearn/ansible-runner`](https://github.com/jcwearn/ansible-runner) — custom slim image (~300MB) based on `python:3.12-slim` with `ansible-core` and `community.general` collection.
 - **Playbooks & inventory:** Mounted as a ConfigMap via `configMapGenerator`.
-- **Secrets:** SOPS-encrypted SSH private key and Gmail SMTP credentials.
-- **No auto-reboots:** All reboots are manual. Email reports flag which hosts need attention.
+- **kubectl:** The upgrade Jobs mount `rancher/kubectl` as an [image volume](https://kubernetes.io/docs/tasks/configure-pod-container/image-volumes/) at `/opt/kubectl` — the image is a single static binary with no shell, so there is nothing to copy it out with, and the runner image is not rebuilt for it. The tag is pinned alongside the system-upgrade-controller's drain kubectl and moves with it.
+- **RBAC:** `rbac.yaml` grants the `ansible-runner` ServiceAccount exactly what a cordon/drain/uncordon needs plus `/healthz/etcd`; every other playbook is SSH-only.
+- **Secrets:** SOPS-encrypted SSH private key and an ntfy access token.
 
 ## CronJobs
 
-| Name | Schedule | Playbook |
+| Name | Schedule (America/New_York) | Playbook |
 |------|----------|----------|
-| `ansible-update-linux` | Saturday 3:00 AM | `update-linux.yml` |
+| `ansible-upgrade-hypervisor-03` | Saturday 3:10 AM | `upgrade-hypervisor.yml -e target=proxmox-03` |
+| `ansible-upgrade-hypervisor-02` | Saturday 5:40 AM | `upgrade-hypervisor.yml -e target=proxmox-02` |
+| `ansible-upgrade-hypervisor-01` | Saturday 8:10 AM | `upgrade-hypervisor.yml -e target=proxmox-01` |
+| `ansible-configure-lvm-thin-metrics` | Sunday 4:00 AM | `configure-lvm-thin-metrics.yml` |
 | `ansible-configure-node-sysctl` | suspended | `configure-node-sysctl.yml` |
 | `ansible-configure-image-gc` | suspended | `configure-image-gc.yml` |
 | `ansible-configure-k3s-shutdown` | suspended | `configure-k3s-shutdown.yml` |
 
-Only the first runs on a schedule. The others are **suspended**, and carry a placeholder schedule of
-`0 0 1 1 *` purely because a CronJob requires one — they exist to be triggered by hand when a node
-needs (re)configuring, not to run periodically. Triggering one is the same
-`create job --from=cronjob/...` as below.
+The three upgrade Jobs are one per hypervisor rather than one loop, because the runner is a pod
+inside the cluster it reboots — each is pinned by node affinity *off* the k3s node whose VM it will
+shut down. They run in the order pve-03 → pve-02 → pve-01 (the host carrying the database primaries
+last), two and a half hours apart; a run takes about 45 minutes and is killed at two. The
+playbook's gate refuses to start while a sibling Job is active or the cluster is anything less
+than whole, so the spacing is the order, not the lock.
+
+The `configure-*` Jobs marked suspended carry a placeholder schedule of `0 0 1 1 *` purely because
+a CronJob requires one — they exist to be triggered by hand when a node needs (re)configuring, not
+to run periodically. Triggering one is the same `create job --from=cronjob/...` as below.
+`configure-k3s-shutdown` matters more than it looks: the service it installs is what lets
+`qm shutdown` finish instead of hanging on dirty NFS buffers, and the upgrade playbook refuses to
+proceed on a guest that has lost it.
 
 `configure-image-gc` writes a kubelet config drop-in setting `imageMaximumGCAge: 168h`, so images
 unused for a week are evicted regardless of disk pressure. It **does not restart k3s** — the setting
@@ -42,10 +56,20 @@ lands on each node's next restart. Two things about it are easy to get wrong:
 
 ## Manual operations
 
-**Trigger an update manually:**
+**Trigger a hypervisor upgrade manually** (on the LAN, never over Tailscale — a drain can sever it):
 
 ```bash
-kubectl -n ansible create job manual-linux --from=cronjob/ansible-update-linux
+kubectl -n ansible create job upg-03-$(date +%s) --from=cronjob/ansible-upgrade-hypervisor-03
+```
+
+To pass extra vars — `dry_run=true` for apt in check mode with no drain, `force_reboot=host` or
+`force_reboot=guest` to exercise a reboot path regardless of packages — splice them into the args:
+
+```bash
+kubectl -n ansible create job upg-03-dry --from=cronjob/ansible-upgrade-hypervisor-03 \
+  --dry-run=client -o yaml \
+  | yq '.spec.template.spec.containers[0].args += ["-e", "dry_run=true"]' \
+  | kubectl apply -f -
 ```
 
 **Onboard a new host:**
@@ -138,8 +162,7 @@ Stored in `secrets.sops.yaml`:
 |-----|-------------|
 | `ssh-private-key` | SSH private key for the `ansible` user on managed hosts |
 | `ssh-public-key` | SSH public key deployed to new hosts during onboarding |
-| `smtp-username` | Gmail address for sending reports |
-| `smtp-password` | Gmail app password |
+| `ntfy-token` | Access token for a write-only ntfy user on the `hypervisor-upgrades` topic |
 
 Edit with: `sops apps/ansible/secrets.sops.yaml`
 
@@ -149,7 +172,11 @@ Edit with: `sops apps/ansible/secrets.sops.yaml`
 apps/ansible/
   namespace.yaml
   serviceaccount.yaml
-  cronjob-update-linux.yaml
+  rbac.yaml
+  cronjob-upgrade-hypervisor-01.yaml
+  cronjob-upgrade-hypervisor-02.yaml
+  cronjob-upgrade-hypervisor-03.yaml
+  cronjob-configure-lvm-thin-metrics.yaml
   cronjob-configure-node-sysctl.yaml
   cronjob-configure-k3s-shutdown.yaml
   cronjob-configure-image-gc.yaml
@@ -159,9 +186,13 @@ apps/ansible/
     ansible.cfg
     inventory.yml
     playbooks/
-      update-linux.yml
+      upgrade-hypervisor.yml
       onboard-host.yml
+      configure-lvm-thin-metrics.yml
       configure-node-sysctl.yml
       configure-k3s-shutdown.yml
       configure-image-gc.yml
+    scripts/
+      lvm-thin-metrics.sh
+      pve-reboot-required.sh
 ```

@@ -1,0 +1,118 @@
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: ansible-upgrade-hypervisor-02
+  namespace: ansible
+spec:
+  # Second of three; the header in cronjob-upgrade-hypervisor-03.yaml explains
+  # the shape and the spacing.
+  schedule: "40 5 * * 6"
+  timeZone: America/New_York
+  # Removed once each host has been through a supervised run. See
+  # docs/plans/hypervisor-upgrade-automation/progress.md.
+  suspend: true
+  concurrencyPolicy: Forbid
+  successfulJobsHistoryLimit: 3
+  failedJobsHistoryLimit: 3
+  jobTemplate:
+    metadata:
+      labels:
+        app.kubernetes.io/name: ansible-upgrade-hypervisor
+    spec:
+      backoffLimit: 0
+      # The backstop for a hung apt or a drain that never finishes. When it
+      # fires the playbook's always: block does not run, so the Alertmanager
+      # silence is created with its own expiry rather than relying on this.
+      activeDeadlineSeconds: 7200
+      # Pod logs are the only full record of a run; the ntfy summary is a
+      # digest. Three days covers a Saturday run being read on Monday.
+      ttlSecondsAfterFinished: 259200
+      template:
+        metadata:
+          labels:
+            app.kubernetes.io/name: ansible-upgrade-hypervisor
+        spec:
+          serviceAccountName: ansible-runner
+          affinity:
+            nodeAffinity:
+              requiredDuringSchedulingIgnoredDuringExecution:
+                nodeSelectorTerms:
+                  - matchExpressions:
+                      - key: kubernetes.io/hostname
+                        operator: NotIn
+                        values: ["k3s-02"]
+          containers:
+            - name: ansible
+              image: ghcr.io/jcwearn/ansible-runner:0.1.49@sha256:4db69c9567130064dae663b6d5542d00617151c22ddac2bf4eea408cbb93d5c4
+              imagePullPolicy: IfNotPresent
+              securityContext:
+                runAsUser: 0
+              command: ["ansible-playbook"]
+              args: ["/ansible/playbooks/upgrade-hypervisor.yml", "-e", "target=proxmox-02"]
+              env:
+                - name: ANSIBLE_CONFIG
+                  value: /ansible/ansible.cfg
+                # Lets the gate tell its own Job apart from a sibling's.
+                - name: JOB_NAME
+                  valueFrom:
+                    fieldRef:
+                      fieldPath: metadata.labels['batch.kubernetes.io/job-name']
+                - name: NTFY_TOKEN
+                  valueFrom:
+                    secretKeyRef:
+                      name: ansible-secrets
+                      key: ntfy-token
+              volumeMounts:
+                - name: ansible-data
+                  mountPath: /ansible
+                - name: ssh-key
+                  mountPath: /secrets
+                  readOnly: true
+                - name: kubectl
+                  mountPath: /opt/kubectl
+                  readOnly: true
+              resources:
+                requests:
+                  cpu: 100m
+                  memory: 128Mi
+                limits:
+                  cpu: 500m
+                  memory: 256Mi
+          restartPolicy: Never
+          volumes:
+            - name: ansible-data
+              configMap:
+                name: ansible-data
+                items:
+                  - key: ansible.cfg
+                    path: ansible.cfg
+                  - key: inventory.yml
+                    path: inventory.yml
+                  - key: upgrade-hypervisor.yml
+                    path: playbooks/upgrade-hypervisor.yml
+                  - key: pve-reboot-required.sh
+                    path: scripts/pve-reboot-required.sh
+            - name: ssh-key
+              secret:
+                secretName: ansible-secrets
+                defaultMode: 0400
+                items:
+                  - key: ssh-private-key
+                    path: ssh-private-key
+                  - key: ssh-public-key
+                    path: ssh-public-key
+            # The kubectl that drains. rancher/kubectl is a from-scratch image
+            # holding exactly one file, /bin/kubectl -- no shell, no cp -- so an
+            # initContainer cannot copy it out, and the runner image is not
+            # rebuilt for it. An image volume mounts the image's filesystem
+            # directly; the binary is at /opt/kubectl/bin/kubectl.
+            #
+            # Same tag as system-upgrade-controller's drain kubectl and under
+            # the same rule: within one minor of the apiserver, moved by the
+            # k3s hop PR, never ahead of it. Renovate reads `reference:` here
+            # through a customManager in renovate.json, since the kubernetes
+            # manager only sees `image:` keys.
+            - name: kubectl
+              image:
+                reference: rancher/kubectl:v1.36.2@sha256:06c7a7a9772737494ae1e0c3af90f1b5385630c147e47c1c7cea92f4bed55fbe
+                pullPolicy: IfNotPresent

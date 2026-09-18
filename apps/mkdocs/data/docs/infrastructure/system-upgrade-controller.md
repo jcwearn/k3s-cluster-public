@@ -3,7 +3,7 @@
 Upgrades k3s on the nodes themselves, declaratively, from a `Plan` in Git.
 
 The gap this closes is specific. Renovate covers container images and Helm charts;
-`ansible-update-linux` covers OS packages weekly. k3s is installed on the hosts by a shell script
+the `ansible-upgrade-hypervisor-*` jobs cover OS packages weekly. k3s is installed on the hosts by a shell script
 and is neither, so its version existed only at runtime — which is how the cluster spent nearly six
 months on a release that had reached upstream end of life without anything noticing. The
 [EOL monitoring](eol-monitoring.md) alert found it; this is what fixes it, and what keeps the

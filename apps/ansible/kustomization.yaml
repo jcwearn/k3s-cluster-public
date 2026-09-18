@@ -3,7 +3,10 @@ kind: Kustomization
 resources:
   - namespace.yaml
   - serviceaccount.yaml
-  - cronjob-update-linux.yaml
+  - rbac.yaml
+  - cronjob-upgrade-hypervisor-01.yaml
+  - cronjob-upgrade-hypervisor-02.yaml
+  - cronjob-upgrade-hypervisor-03.yaml
   - cronjob-configure-image-gc.yaml
   - cronjob-configure-k3s-shutdown.yaml
   - cronjob-configure-node-sysctl.yaml
@@ -15,10 +18,11 @@ configMapGenerator:
     files:
       - data/ansible.cfg
       - data/inventory.yml
-      - data/playbooks/update-linux.yml
+      - data/playbooks/upgrade-hypervisor.yml
       - data/playbooks/onboard-host.yml
       - data/playbooks/configure-image-gc.yml
       - data/playbooks/configure-k3s-shutdown.yml
       - data/playbooks/configure-node-sysctl.yml
       - data/playbooks/configure-lvm-thin-metrics.yml
       - data/scripts/lvm-thin-metrics.sh
+      - data/scripts/pve-reboot-required.sh

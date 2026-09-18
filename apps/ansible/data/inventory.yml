@@ -2,14 +2,28 @@ all:
   children:
     linux_servers:
       children:
+        # Each hypervisor carries exactly one k3s guest. upgrade-hypervisor.yml
+        # is pointed at a proxmox host and follows these three variables to the
+        # VM it must drain and shut down first: vmid for qm, guest for the SSH
+        # side of the reboot, k3s_node for kubectl. The last two happen to
+        # match today; they are separate fields because nothing forces them to.
         proxmox:
           hosts:
             proxmox-01:
               ansible_host: ${LAN_PREFIX}.21
+              vmid: 100
+              guest: k3s-01
+              k3s_node: k3s-01
             proxmox-02:
               ansible_host: ${LAN_PREFIX}.22
+              vmid: 201
+              guest: k3s-02
+              k3s_node: k3s-02
             proxmox-03:
               ansible_host: ${LAN_PREFIX}.23
+              vmid: 301
+              guest: k3s-03
+              k3s_node: k3s-03
         k3s:
           hosts:
             k3s-01:
