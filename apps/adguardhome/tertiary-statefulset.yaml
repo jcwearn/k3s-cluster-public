@@ -45,6 +45,20 @@ spec:
         app: adguardhome-tertiary
         app.kubernetes.io/name: adguardhome
     spec:
+      automountServiceAccountToken: false
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 1000
+        runAsGroup: 1000
+        seccompProfile:
+          type: RuntimeDefault
+        # AdGuard binds 53, 80, 443 and 853. Lowering the unprivileged-port
+        # floor lets uid 1000 do that; NET_BIND_SERVICE would not, because a
+        # non-root process gets no ambient capabilities. Safe sysctl, allowed
+        # under the restricted profile.
+        sysctls:
+          - name: net.ipv4.ip_unprivileged_port_start
+            value: "0"
       affinity:
         podAntiAffinity:
           # Hard, not preferred. These three instances are the LAN's only
@@ -74,9 +88,7 @@ spec:
           command: ["/bin/sh", "-c"]
           args:
             - |
-              envsubst < /config/AdGuardHome.yaml > /config-target/AdGuardHome.yaml &&
-              chown -R 1000:1000 /config-target &&
-              chmod -R 755 /config-target
+              envsubst < /config/AdGuardHome.yaml > /config-target/AdGuardHome.yaml
           env:
             - name: TLS_SERVER_NAME
               value: dns-tertiary.${DOMAIN}
@@ -96,6 +108,11 @@ spec:
             limits:
               cpu: 200m
               memory: 64Mi
+          securityContext:
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop:
+                - ALL
       containers:
         - name: adguardhome-tertiary
           image: adguard/adguardhome:v0.107.79@sha256:aba9e3bf0613be3ba3755e1fc311b126e2c24bec25e18b6483894a88283074f0
@@ -143,6 +160,11 @@ spec:
             requests:
               memory: "512Mi"
               cpu: "250m"
+          securityContext:
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop:
+                - ALL
           volumeMounts:
             - name: config-target
               mountPath: /opt/adguardhome/conf
