@@ -1,0 +1,154 @@
+#!/usr/bin/env bash
+#
+# Pre-commit hook. Enable once per clone:
+#
+#   git config core.hooksPath .githooks
+#
+# Runs the checks CI would run, on the files being committed, before the
+# commit exists -- so a broken overlay or a plaintext Secret is refused here
+# rather than found on the pull request. `git commit --no-verify` skips it.
+#
+# Everything here works with the tools CI already needs (kustomize, flux, yq).
+# Nothing calls kubectl or needs the age key.
+#
+# What it checks, on the STAGED content:
+#
+#   1. every staged YAML file parses
+#   2. every overlay a staged file belongs to renders (scripts/render.sh:
+#      kustomize build, plus strict ${VAR} substitution on substituted paths)
+#   3. if a *.sops.yaml is staged, the structural secrets check
+#   4. no Secret with data and no sops block -- i.e. a plaintext secret
+#   5. no literal private address, tailnet name or R2 endpoint in a file
+#      that the public mirror would publish
+#
+set -euo pipefail
+
+root="$(git rev-parse --show-toplevel)"
+cd "$root"
+
+staged=$(git diff --cached --name-only --diff-filter=ACMR)
+[ -n "$staged" ] || exit 0
+
+fail=0
+say() { printf 'pre-commit: %s\n' "$*" >&2; }
+
+# The index, not the working tree: a partially staged file must be checked as
+# it will be committed, and an unstaged edit must not make a bad commit pass.
+tmp=$(mktemp -d)
+trap 'rm -rf "$tmp"' EXIT
+git checkout-index -a --prefix="$tmp/"
+
+# --- 1. parse -------------------------------------------------------------
+yaml=$(printf '%s\n' "$staged" | grep -E '\.ya?ml$' || true)
+for f in $yaml; do
+  if ! yq -e 'true' "$tmp/$f" >/dev/null 2>&1; then
+    say "does not parse as YAML: $f"
+    fail=1
+  fi
+done
+[ "$fail" -eq 0 ] || exit 1
+
+# --- 2. render the overlays the staged files belong to --------------------
+overlays=""
+for f in $yaml; do
+  case "$f" in
+    apps/*|infrastructure/*) ;;
+    *) continue ;;
+  esac
+  d=$(dirname "$f")
+  while [ "$d" != "." ] && [ ! -f "$tmp/$d/kustomization.yaml" ]; do
+    d=$(dirname "$d")
+  done
+  [ "$d" != "." ] && overlays=$(printf '%s\n%s' "$overlays" "$d")
+done
+overlays=$(printf '%s\n' "$overlays" | grep -v '^$' | sort -u || true)
+if [ -n "$overlays" ]; then
+  # render.sh finds its repo root with `git rev-parse --show-toplevel`;
+  # pointing GIT_WORK_TREE at the exported index makes that $tmp, so the
+  # scripts, the overlays and clusters/prod/ are all read from the index.
+  gitdir=$(git rev-parse --absolute-git-dir)
+  while read -r d; do
+    [ -n "$d" ] || continue
+    if ! err=$(GIT_DIR="$gitdir" GIT_WORK_TREE="$tmp" bash "$tmp/scripts/render.sh" "$d" /dev/null 2>&1); then
+      say "overlay does not render: $d"
+      printf '%s\n' "$err" | sed 's/^/    /' >&2
+      fail=1
+    fi
+  done <<< "$overlays"
+fi
+
+# --- 3. encrypted secrets, structurally -----------------------------------
+if printf '%s\n' "$staged" | grep -q '\.sops\.yaml$'; then
+  ./scripts/check-sops-files.sh >/dev/null || fail=1
+fi
+
+# --- 4. plaintext Secret ---------------------------------------------------
+# A Secret is fine with no data at all (a service-account-token Secret is
+# populated by the API server), and fine with a top-level sops: block. A
+# Secret with data or stringData and no sops: block is about to be committed
+# in the clear.
+for f in $yaml; do
+  case "$f" in .github/*|docs/*|.claude/*) continue ;; esac
+  n=$(yq -N '
+    select(.kind == "Secret")
+    | select((.data // {} | length) > 0 or (.stringData // {} | length) > 0)
+    | select(has("sops") | not)
+    | .metadata.name
+  ' "$tmp/$f" 2>/dev/null | grep -v '^---$' | grep -v '^$' || true)
+  if [ -n "$n" ]; then
+    say "plaintext Secret in $f: $(printf '%s' "$n" | tr '\n' ' ')"
+    say "  encrypt it: sops -e -i $f   (the file must end in .sops.yaml)"
+    fail=1
+  fi
+done
+
+# --- 5. literal private values ---------------------------------------------
+# The repo is mirrored publicly. The domain, LAN prefixes and tailnet live in
+# the cluster-vars Secret and are substituted at reconcile time, so a literal
+# in a manifest is both a leak and a value that stops tracking the Secret.
+# What a regex can catch without knowing the real values: an RFC1918 address
+# (the CI placeholders 10.255.254.x/10.255.255.x are allowed), a *.ts.net
+# name, an R2 endpoint. Scope follows .publicignore -- what the mirror
+# publishes is what matters.
+#
+# .publicgate-local, if present and gitignored, holds exact strings that must
+# never appear (the real domain, the real tailnet). It is optional; the hook
+# is useful without it.
+patterns=(
+  '\b10\.(25[0-3]|2[0-4][0-9]|1?[0-9]?[0-9])\.[0-9]{1,3}\.[0-9]{1,3}\b'
+  '\b192\.168\.[0-9]{1,3}\.[0-9]{1,3}\b'
+  '\b172\.(1[6-9]|2[0-9]|3[01])\.[0-9]{1,3}\.[0-9]{1,3}\b'
+  '\b[a-z0-9-]+\.ts\.net\b'
+  '\b[a-f0-9]{32}\.r2\.cloudflarestorage\.com\b'
+)
+# Not private: the CI placeholder values, and the k3s pod/service CIDRs
+# (10.42/16 and 10.43/16 are the k3s defaults, not this LAN).
+allow='10\.255\.25[45]\.|10\.4[23]\.|example[a-z0-9-]*\.ts\.net|example\.r2\.cloudflarestorage\.com'
+for f in $staged; do
+  case "$f" in
+    docs/plans/*|.claude/*|.publicgate-extra|.publicgate-local|.git/*) continue ;;
+  esac
+  [ -f "$tmp/$f" ] || continue
+  for p in "${patterns[@]}"; do
+    hit=$(grep -nE "$p" "$tmp/$f" | grep -vE "$allow" | head -3 || true)
+    if [ -n "$hit" ]; then
+      say "literal private value in $f (use the \${...} variable):"
+      printf '%s\n' "$hit" | sed 's/^/    /' >&2
+      fail=1
+    fi
+  done
+  if [ -f "$root/.publicgate-local" ]; then
+    while read -r needle; do
+      [ -n "$needle" ] || continue
+      if grep -qF -- "$needle" "$tmp/$f"; then
+        say "literal value from .publicgate-local in $f"
+        fail=1
+      fi
+    done < "$root/.publicgate-local"
+  fi
+done
+
+if [ "$fail" -ne 0 ]; then
+  say "refusing the commit (git commit --no-verify to override)"
+  exit 1
+fi

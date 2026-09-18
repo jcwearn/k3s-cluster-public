@@ -3,3 +3,6 @@
 # Python bytecode from linting the exporter script under infrastructure/prometheus/data/
 __pycache__/
 *.pyc
+
+# Private needles for the git hooks (real domain, tailnet). See .githooks/pre-commit.
+.publicgate-local

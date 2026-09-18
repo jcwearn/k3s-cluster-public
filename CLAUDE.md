@@ -180,6 +180,12 @@ flux get kustomizations
 flux get helmreleases -A
 ```
 
+Enable the repo's git hooks once per clone with `git config core.hooksPath .githooks`. The
+pre-commit hook renders the overlays a commit touches, refuses a plaintext `Secret`, and refuses a
+literal private address or `.ts.net` name; the commit-msg hook applies that last rule to the message.
+An optional gitignored `.publicgate-local` (one exact string per line: the real domain, the real
+tailnet) makes both hooks catch the values a regex cannot know.
+
 CI (`.github/workflows/validate.yaml`) runs, on that rendering: `kubeconform -strict` with the
 CRD schemas, `kube-linter` with the checks in `.kube-linter.yaml`, and
 `scripts/check-image-digests.sh`; plus `yamllint` (`.yamllint`) over every tracked file. A
