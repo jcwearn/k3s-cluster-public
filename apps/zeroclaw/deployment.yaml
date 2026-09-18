@@ -11,6 +11,12 @@ metadata:
 spec:
   revisionHistoryLimit: 1
   replicas: 1
+  # Recreate, not RollingUpdate: the daemon takes an exclusive lock on
+  # daemon.sock in its PVC, so a new pod cannot start while the old one runs.
+  # With a readiness probe a RollingUpdate deadlocks -- the new pod never
+  # becomes Ready, so the old one is never told to stop.
+  strategy:
+    type: Recreate
   selector:
     matchLabels:
       app: zeroclaw

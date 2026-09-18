@@ -42,16 +42,24 @@ spec:
             limits:
               memory: "256Mi"
               cpu: "500m"
+          # HOMEPAGE_ALLOWED_HOSTS makes the app answer 400 to any other Host
+          # header, and the kubelet sends the pod IP. Send the allowed one.
           livenessProbe:
             httpGet:
               path: /api/healthcheck
               port: http
+              httpHeaders:
+                - name: Host
+                  value: ${DOMAIN}
             periodSeconds: 20
             timeoutSeconds: 3
           readinessProbe:
             httpGet:
               path: /api/healthcheck
               port: http
+              httpHeaders:
+                - name: Host
+                  value: ${DOMAIN}
             periodSeconds: 5
             timeoutSeconds: 3
           volumeMounts:
