@@ -7,17 +7,20 @@ spec:
     pod:
       dnsPolicy: "None"
       dnsConfig:
-        # Public resolvers only, and no CoreDNS. This pod resolves one thing that
-        # matters, controlplane.tailscale.com, and losing DNS must not cost remote
-        # access: a cluster resolver would put the exit node and the subnet router
-        # behind the cluster's own DNS, and a LAN address would put them behind the
-        # gateway. Tailnet clients do not resolve through this pod -- they use the
-        # tailnet's global nameserver -- so nothing here needs to answer *.${DOMAIN}.
+        # CoreDNS first, then public fallbacks. containerboot fetches its state Secret
+        # from kubernetes.default.svc by name, so a resolver that cannot answer
+        # cluster.local leaves the pod in CrashLoopBackOff -- which took the subnet
+        # router down on 2026-09-19 when this list was made public-only. The public
+        # entries are what let a running exit node re-reach controlplane.tailscale.com
+        # through a CoreDNS outage; a restart during one is lost either way, since
+        # the Secret lives behind the same API. Tailnet clients do not resolve through
+        # this pod -- they use the tailnet's global nameserver -- so nothing here needs
+        # to answer *.${DOMAIN} for anyone but the pod itself.
         # glibc honours only the first three nameserver lines (MAXNS).
         nameservers:
+          - "10.43.0.10"
           - "9.9.9.9"
           - "1.1.1.1"
-          - "1.0.0.1"
         searches:
           - "tailscale.svc.cluster.local"
           - "svc.cluster.local"
