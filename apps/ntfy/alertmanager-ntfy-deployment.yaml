@@ -32,7 +32,7 @@ spec:
           # init ran `apk add gettext` on every boot -- a network dependency at
           # the worst moment -- and then chowned as root. The target is an
           # emptyDir, writable by any uid, so neither is needed.
-          image: nginx:1.31.6-alpine-slim@sha256:5a9423ea46b45f4025fe28a74c7ccea42291c8f54f828c7cadc2d75faca1abe5
+          image: nginx:1.31.6-alpine-slim@sha256:80149a0e5bc9fa0b8beaff5b8a453f71ba8ba038895d418381297ffa5cd57782
           imagePullPolicy: IfNotPresent
           command: ["/bin/sh", "-c"]
           args:
