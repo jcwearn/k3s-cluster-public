@@ -285,14 +285,20 @@
             or '--audit-log-path=' not in apiserver_args.stdout
             or '--admission-control-config-file=' not in apiserver_args.stdout
 
-        - name: Read the flags the kubelet started with
-          ansible.builtin.shell: >-
-            journalctl -u k3s -b --no-pager | grep 'Running kubelet' | tail -n 1
-          register: kubelet_args
+        # Not from the journal like the apiserver flags: k3s hands the
+        # kubelet a KubeletConfiguration file (--config-dir), so the logged
+        # command line does not carry this. The kubelet's configz endpoint
+        # is what it actually loaded.
+        - name: Read the configuration the kubelet started with
+          ansible.builtin.command: >-
+            {{ kubectl }} get --raw /api/v1/nodes/{{ inventory_hostname }}/proxy/configz
+          register: kubelet_config
           changed_when: false
           failed_when: >-
-            kubelet_args.rc != 0
-            or '--protect-kernel-defaults=true' not in kubelet_args.stdout
+            kubelet_config.rc != 0
+            or not ((kubelet_config.stdout | from_json).kubeletconfig.protectKernelDefaults | default(false) | bool)
+          delegate_to: localhost
+          become: false
 
         # The file appears on the first request the policy records, which
         # the waits above have already made.

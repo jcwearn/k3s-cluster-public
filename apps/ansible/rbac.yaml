@@ -16,6 +16,12 @@ rules:
   - apiGroups: [""]
     resources: ["nodes"]
     verbs: ["get", "list", "patch"]
+  # configure-k3s-server.yml reads each restarted kubelet's live configuration
+  # (/api/v1/nodes/<node>/proxy/configz) to prove protect-kernel-defaults took;
+  # k3s passes it in a config file, not on the command line the journal shows.
+  - apiGroups: [""]
+    resources: ["nodes/proxy"]
+    verbs: ["get"]
   - apiGroups: [""]
     resources: ["pods"]
     verbs: ["get", "list"]

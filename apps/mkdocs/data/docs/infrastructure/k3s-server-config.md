@@ -173,7 +173,9 @@ The order matters. `configure-node-sysctl.yml` owns the six values (it sets them
 `/etc/sysctl.d/99-k3s-node.conf` and reads each back), and it ran on every node before this drop-in
 existed. `configure-k3s-server.yml` reads the six back itself before writing this file, so a node
 whose sysctls are not in place fails the play with the file unwritten and k3s untouched. After the
-restart it checks the kubelet's logged command line for `--protect-kernel-defaults=true`. To turn
+restart it reads the kubelet's live configuration (`/api/v1/nodes/<node>/proxy/configz`) and
+requires `protectKernelDefaults: true` — k3s passes the setting in a `KubeletConfiguration` file,
+so unlike the apiserver flags it is not on the command line the journal shows. To turn
 it off, set the key to `false` in the playbook and run it: the changed file is what triggers the
 restart.
 
@@ -190,7 +192,8 @@ kubectl -n ansible logs -f job/configure-k3s-server-<ts>
 For each node in turn it gates on every node Ready and etcd healthy on all three, writes the
 drop-ins and policy files, and — only where a file actually changed — restarts k3s, waits for the
 node to come back and etcd to answer on all three, checks the apiserver's logged command line for
-both the audit and admission flags and the kubelet's for `--protect-kernel-defaults=true`, waits
+both the audit and admission flags and the kubelet's live configuration for
+`protectKernelDefaults`, waits
 for `audit.log` to be written, then takes a snapshot
 named `configure-check`, waits for its `ETCDSnapshotFile` to show up with `spec.s3` and
 `readyToUse: true`, and deletes it again. A node that will not come back stops the play there,
