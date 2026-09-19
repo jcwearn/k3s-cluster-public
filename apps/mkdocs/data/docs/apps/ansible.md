@@ -45,6 +45,13 @@ to run periodically. Triggering one is the same `create job --from=cronjob/...` 
 `qm shutdown` finish instead of hanging on dirty NFS buffers, and the upgrade playbook refuses to
 proceed on a guest that has lost it.
 
+`configure-node-sysctl` raises the inotify limits and sets the six kernel parameters the kubelet
+checks under `protect-kernel-defaults` (`vm.overcommit_memory`, `vm.panic_on_oom`, `kernel.panic`,
+`kernel.panic_on_oops`, `kernel.keys.root_maxkeys`, `kernel.keys.root_maxbytes`), reading each back
+afterwards. It must have run on every node before that flag is turned on — a kubelet that finds one
+of them at another value refuses to start — and its values must never drift from the kubelet's
+list. See [k3s server configuration](../infrastructure/k3s-server-config.md).
+
 `configure-image-gc` writes a kubelet config drop-in setting `imageMaximumGCAge: 168h`, so images
 unused for a week are evicted regardless of disk pressure. It **does not restart k3s** — the setting
 lands on each node's next restart. Two things about it are easy to get wrong:

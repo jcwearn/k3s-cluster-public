@@ -5,6 +5,13 @@
 # workload creates inotify instances for file watching, and with 30-50 pods per
 # node the defaults are easily exhausted, causing container startup failures.
 #
+# It also sets the six kernel parameters the kubelet checks at start under
+# `protect-kernel-defaults` (50-hardening.yaml, written by
+# configure-k3s-server.yml). With that flag on, a kubelet that finds any of
+# them at another value refuses to start, so this playbook runs and is
+# verified on every node BEFORE that drop-in is written, and the values here
+# must never drift from the kubelet's list (pkg/kubelet/cm, setupKernelTunables).
+#
 # Run manually:
 #   kubectl create job -n ansible --from=cronjob/ansible-configure-node-sysctl \
 #     ansible-configure-node-sysctl-$(date +%s)
@@ -13,6 +20,18 @@
   hosts: k3s
   become: true
   gather_facts: false
+
+  vars:
+    # What the kubelet expects, verbatim from its source. Three are the
+    # kernel's own defaults, written here so a distro change cannot take
+    # the kubelet down on a reboot.
+    kubelet_sysctls:
+      - {name: vm.overcommit_memory, value: "1"}
+      - {name: vm.panic_on_oom, value: "0"}
+      - {name: kernel.panic, value: "10"}
+      - {name: kernel.panic_on_oops, value: "1"}
+      - {name: kernel.keys.root_maxkeys, value: "1000000"}
+      - {name: kernel.keys.root_maxbytes, value: "25000000"}
 
   tasks:
     - name: Set fs.inotify.max_user_instances
@@ -30,3 +49,23 @@
         state: present
         reload: true
         sysctl_file: /etc/sysctl.d/99-k3s-node.conf
+
+    - name: Set the kernel parameters protect-kernel-defaults checks
+      ansible.posix.sysctl:
+        name: "{{ item.name }}"
+        value: "{{ item.value }}"
+        state: present
+        reload: true
+        sysctl_file: /etc/sysctl.d/99-k3s-node.conf
+      loop: "{{ kubelet_sysctls }}"
+      loop_control:
+        label: "{{ item.name }}={{ item.value }}"
+
+    - name: Read back the kernel parameters the kubelet will check
+      ansible.builtin.command: "sysctl -n {{ item.name }}"
+      register: sysctl_now
+      changed_when: false
+      failed_when: sysctl_now.rc != 0 or sysctl_now.stdout | trim != item.value
+      loop: "{{ kubelet_sysctls }}"
+      loop_control:
+        label: "{{ item.name }}={{ item.value }}"
