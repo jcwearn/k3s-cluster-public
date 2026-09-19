@@ -31,11 +31,11 @@ Facts, as of the date at the bottom of the page. Each row links to the phase tha
 | --- | --- |
 | k3s version | `v1.36.4+k3s1`, pinned in [system-upgrade-controller](../infrastructure/system-upgrade-controller.md); Renovate proposes patches, minors go by hand |
 | `anonymous-auth`, authorization mode | k3s defaults: anonymous auth off, `Node,RBAC`. **Nothing to do** — the old checklist item here was wrong for k3s |
-| Server configuration | No `/etc/rancher/k3s/config.yaml` on any node; every argument is in the systemd unit's `ExecStart` |
+| Server configuration | The bootstrap flags are in the systemd unit; everything added since is a drop-in under `/etc/rancher/k3s/config.yaml.d/`, written from Git by `configure-k3s-server.yml` |
 | API audit log | **None** → phase 9 |
 | Secrets encryption at rest | **Off** — Secrets are plaintext in etcd → phase 9 |
 | `protect-kernel-defaults` | **Off** → phase 9 |
-| etcd snapshots | k3s default: local disk only, no off-site copy → phase 9 |
+| etcd snapshots | Every six hours from each node to the `k3s-etcd-snapshots` R2 bucket, 28 kept, credentials in a Flux-managed Secret; see [k3s server configuration](../infrastructure/k3s-server-config.md). A restore has not yet been rehearsed |
 | Pod Security Admission | 26 namespaces enforce `restricted`; 6 enforce `baseline` (ansible runs as root by design, immich's subcharts and four other images run as root); 5 are `privileged` with the reason in the manifest (csi-driver-nfs, system-upgrade, prometheus, tailscale, ebooks). All warn and audit at `restricted` |
 | Admission configuration | None; a namespace created outside Git gets no policy at all → phase 9 |
 
@@ -55,7 +55,7 @@ Facts, as of the date at the bottom of the page. Each row links to the phase tha
 | Item | State |
 | --- | --- |
 | CNI | Flannel, k3s default. **k3s's embedded network-policy controller is active**, so `NetworkPolicy` objects are enforced without a CNI change — another place the old checklist was wrong |
-| NetworkPolicy | **None**, apart from the Flux operator's own (`cluster.networkPolicy: true`). Every pod can reach every other pod and every Postgres instance → phase 8 |
+| NetworkPolicy | Each Postgres instance accepts 5432 from its own app only (plus Prometheus on 9187 and the operator on 8000); the llama-cpp servers accept 8080 from open-webui and n8n only; zeroclaw's egress is DNS and HTTPS to the internet with pods, Services, both LANs and the tailnet excepted. East-west is otherwise open by choice; k3s's embedded policy controller rejects with connection refused, and enforcement was proven from a throwaway pod before the first policy was written |
 | Ingress | Envoy Gateway on one LoadBalancer IP, wildcard certificate from cert-manager, hostnames resolve to the Tailscale gateway. `insecureSkipVerify` only towards the external HTTPS backends (Proxmox, TrueNAS, UniFi), which present self-signed certificates |
 | Public exposure | The Flux webhook receiver, via Tailscale Funnel, authenticated by a shared secret. Nothing else |
 
@@ -81,8 +81,8 @@ Ordered so that nothing which can take a pod down lands before the alerting that
 | 4 | ~~Liveness and readiness probes on every workload~~ done | low |
 | 5 | ~~Flux → Alertmanager → ntfy on any failed reconcile; a [fast-revert runbook](fast-revert.md); a [canary-namespace pattern](canary-deployments.md) for risky upgrades~~ done | none |
 | 6 | ~~`securityContext` on every raw workload, `automountServiceAccountToken: false` by default, image digests everywhere, Headlamp off `cluster-admin`~~ done | low–medium, per app |
-| 7 | Pod Security Admission: `warn`/`audit` everywhere, then `enforce: baseline`, then `restricted` one namespace at a time | low |
-| 8 | NetworkPolicy, targeted: Postgres ingress, egress limits on the LLM workloads, ingress limits on the secret-bearing apps | medium, per namespace |
+| 7 | ~~Pod Security Admission: `warn`/`audit` everywhere, then `enforce: baseline`, then `restricted` one namespace at a time~~ done | low |
+| 8 | ~~NetworkPolicy, targeted: Postgres ingress, egress limits on the LLM workloads, ingress limits on the secret-bearing apps~~ done | medium, per namespace |
 | 9 | Node configuration via Ansible: etcd snapshots to R2, audit log, secrets encryption, `protect-kernel-defaults`, a cluster-wide PSA default | high — k3s restarts |
 | 10 | Optional: `flux diff` against the live cluster from CI | none to the cluster |
 
