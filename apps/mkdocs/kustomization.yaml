@@ -38,7 +38,6 @@ configMapGenerator:
       - data/docs/apps/withjoy-exporter.md
       - data/docs/apps/hivemind.md
       - data/docs/apps/world-clock.md
-      - data/docs/apps/zeroclaw.md
   - name: mkdocs-infra
     namespace: mkdocs
     files:

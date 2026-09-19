@@ -39,7 +39,7 @@ spec:
       # kubelet walk the whole volume chowning it to the pod's fsGroup on every
       # mount. The in-tree NFS plugin reports Managed: false, so fsGroup has never
       # been applied to these volumes -- the 0777 directories above are what makes
-      # n8n, renovate, paperless-ngx and zeroclaw work. Enabling it would stall
+      # n8n, renovate and paperless-ngx work. Enabling it would stall
       # immich-library (100Gi, over NFS) before its pod is allowed to start.
       enableFSGroupPolicy: false
 

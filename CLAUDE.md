@@ -52,7 +52,6 @@ apps/                    # User-facing applications
   ├── stirling-pdf/      # PDF tools
   ├── uptime-kuma/       # Uptime monitoring
   ├── withjoy-exporter/  # WithJoy guest list → Google Sheets (CronJob + web trigger)
-  ├── zeroclaw/          # AI personal assistant (Telegram + Gemini)
   └── external/          # Ingress for non-K8s services
       ├── homeassistant/ # Home automation
       ├── proxmox/       # Hypervisor UI

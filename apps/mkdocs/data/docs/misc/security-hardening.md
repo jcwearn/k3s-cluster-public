@@ -55,7 +55,7 @@ Facts, as of the date at the bottom of the page. Each row links to the phase tha
 | Item | State |
 | --- | --- |
 | CNI | Flannel, k3s default. **k3s's embedded network-policy controller is active**, so `NetworkPolicy` objects are enforced without a CNI change — another place the old checklist was wrong |
-| NetworkPolicy | Each Postgres instance accepts 5432 from its own app only (plus Prometheus on 9187 and the operator on 8000); the llama-cpp servers accept 8080 from open-webui and n8n only; zeroclaw's egress is DNS and HTTPS to the internet with pods, Services, both LANs and the tailnet excepted. East-west is otherwise open by choice; k3s's embedded policy controller rejects with connection refused, and enforcement was proven from a throwaway pod before the first policy was written |
+| NetworkPolicy | Each Postgres instance accepts 5432 from its own app only (plus Prometheus on 9187 and the operator on 8000); the llama-cpp servers accept 8080 from open-webui and n8n only. East-west is otherwise open by choice; k3s's embedded policy controller rejects with connection refused, and enforcement was proven from a throwaway pod before the first policy was written |
 | Ingress | Envoy Gateway on one LoadBalancer IP, wildcard certificate from cert-manager, hostnames resolve to the Tailscale gateway. `insecureSkipVerify` only towards the external HTTPS backends (Proxmox, TrueNAS, UniFi), which present self-signed certificates |
 | Public exposure | The Flux webhook receiver, via Tailscale Funnel, authenticated by a shared secret. Nothing else |
 

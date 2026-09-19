@@ -29,7 +29,6 @@ data:
     rewrite name uptime.${DOMAIN} envoy-proxy.envoy-gateway-system.svc.cluster.local
     rewrite name ${DOMAIN} envoy-proxy.envoy-gateway-system.svc.cluster.local
     rewrite name withjoy-exporter.${DOMAIN} envoy-proxy.envoy-gateway-system.svc.cluster.local
-    rewrite name zeroclaw.${DOMAIN} envoy-proxy.envoy-gateway-system.svc.cluster.local
     # Infrastructure
     rewrite name alerts.${DOMAIN} envoy-proxy.envoy-gateway-system.svc.cluster.local
     rewrite name grafana.${DOMAIN} envoy-proxy.envoy-gateway-system.svc.cluster.local
