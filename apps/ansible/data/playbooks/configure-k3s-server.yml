@@ -106,14 +106,14 @@
         mode: "0600"
       register: etcd_s3_dropin
 
-    - name: Report what changed on {{ inventory_hostname }}
+    - name: Report what changed
       ansible.builtin.debug:
         msg: >-
           {{ 'etcd-s3 drop-in written; k3s will be restarted' if etcd_s3_dropin.changed and restart_k3s | bool
              else 'etcd-s3 drop-in written; restart_k3s is false, nothing restarted' if etcd_s3_dropin.changed
              else 'nothing changed; nothing to restart' }}
 
-    - name: Restart k3s on {{ inventory_hostname }} and wait for it to return
+    - name: Restart k3s and wait for it to return
       when: etcd_s3_dropin.changed and restart_k3s | bool
       block:
         - name: Restart k3s
@@ -121,7 +121,7 @@
             name: k3s
             state: restarted
 
-        - name: Wait for {{ inventory_hostname }} to be Ready
+        - name: Wait for the node to be Ready
           ansible.builtin.command: >-
             {{ kubectl }} get node {{ inventory_hostname }} -o 'jsonpath={.status.conditions[?(@.type=="Ready")].status}'
           register: node_ready
@@ -151,11 +151,11 @@
         # named snapshot through the same path the schedule uses. Not pruned
         # with `k3s etcd-snapshot prune`, which reads the drop-in's retention
         # and refuses a second value; it is deleted by name once confirmed.
-        - name: Snapshot etcd on {{ inventory_hostname }} through the new configuration
+        - name: Snapshot etcd through the new configuration
           ansible.builtin.command: k3s etcd-snapshot save --name configure-check
           changed_when: true
 
-        - name: Confirm the snapshot from {{ inventory_hostname }} reached the bucket
+        - name: Confirm the snapshot reached the bucket
           ansible.builtin.command: "{{ kubectl }} get etcdsnapshotfile -o json"
           register: snapshot_files
           changed_when: false
@@ -173,12 +173,21 @@
           delegate_to: localhost
           become: false
 
-        - name: Delete the check snapshots again, local and S3
-          ansible.builtin.command: "k3s etcd-snapshot delete {{ item }}"
-          loop: >-
-            {{ (snapshot_files.stdout | from_json)['items']
-               | selectattr('spec.nodeName', 'equalto', inventory_hostname)
-               | map(attribute='spec.snapshotName')
-               | select('search', '^configure-check')
-               | unique | list }}
-          changed_when: true
+    # Outside the restart block on purpose: a run that changes nothing on this
+    # node still sweeps up check snapshots an earlier, failed run left behind.
+    - name: List the check snapshots this node has
+      ansible.builtin.command: "{{ kubectl }} get etcdsnapshotfile -o json"
+      register: leftover_files
+      changed_when: false
+      delegate_to: localhost
+      become: false
+
+    - name: Delete the check snapshots, local and S3
+      ansible.builtin.command: "k3s etcd-snapshot delete {{ item }}"
+      loop: >-
+        {{ (leftover_files.stdout | from_json)['items']
+           | selectattr('spec.nodeName', 'equalto', inventory_hostname)
+           | map(attribute='spec.snapshotName')
+           | select('search', '^configure-check')
+           | unique | list }}
+      changed_when: true
