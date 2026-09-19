@@ -70,6 +70,14 @@ Note that `config:best-practices` already enables weekly lock file maintenance (
     here, so use the scoped `security:minimumReleaseAge*` presets — they carry the necessary opt-out
     rules.
 
+    A scoped age is not safe on a Docker Hub image either. Its timestamps come from a crawl of
+    the tag list (`renovate/renovate` has ~46k tags), and when that crawl fails Renovate falls back
+    to the registry's bare tag list, which has none — under the default
+    `minimumReleaseAgeBehaviour: timestamp-required` every release is then withheld permanently.
+    The only symptoms are a "Pending Status Checks" entry on the dashboard that never clears and a
+    `debug`-level log line. A 1-hour age on the bot's own image stalled its self-update for a week
+    (2026-09-12 to 09-19) this way.
+
 ## Bot config highlights
 
 * `automerge` + `autoApprove` for all `minor`/`patch`/`pin`/`digest` updates, grouped into a single
@@ -256,17 +264,17 @@ being less important.
 ## Validating a config change
 
 CI does this — `.github/workflows/validate-renovate.yaml`, which is path-filtered to
-`renovate.json` and `apps/renovate/**` so unrelated pull requests do not pay its ~45s npm
-install. That filter covers `cronjob.yaml` deliberately: the validator's version is read from
-the CronJob image, so Renovate's own image bumps re-trigger the check and re-validate the
-config against the version they introduce, rather than merging a deprecation unnoticed.
+`renovate.json` and `apps/renovate/**` so unrelated pull requests do not pay its image pull.
+That filter covers `cronjob.yaml` deliberately: the validator's version is read from the
+CronJob image, so Renovate's own image bumps re-trigger the check and re-validate the config
+against the version they introduce, rather than merging a deprecation unnoticed.
 
-One consequence of reading the version from the image: Renovate pushes its Docker tag a few
-minutes before the matching npm package lands, and a bump opened inside that window fails here
-with `npm error notarget` until the bot rebases. The `renovate/renovate` rule in `renovate.json`
-sets `minimumReleaseAge: "1 hour"` on version bumps so the PR is not raised before `npx` can
-resolve the version -- scoped to the one package and to `major`/`minor`/`patch`, per the warning
-above about blanket ages.
+The validator runs from `renovate/renovate:<version>` (the slim tag; same package as the
+`-full` image the bot runs, a fifth of the size) rather than from `npx renovate@<version>`. The
+image is what a self-bump introduces, so it exists whenever the bot could propose it — the npm
+package lands a few minutes later, and validating against npm failed with `notarget` inside that
+window. Gating the bump on a `minimumReleaseAge` instead stalled it outright, per the warning
+above.
 
 It validates the two files differently, which is the part worth knowing about:
 

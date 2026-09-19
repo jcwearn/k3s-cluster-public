@@ -8,8 +8,16 @@ name: Validate Renovate Config
 #
 # Split out of validate.yaml rather than living beside the other checks, because `paths`
 # is a workflow-level trigger in GitHub Actions and cannot be applied to a single step.
-# The npm install costs ~45s, which is not worth paying on pull requests that do not
-# touch Renovate at all -- the vast majority of them.
+# The image pull costs the better part of a minute, which is not worth paying on pull
+# requests that do not touch Renovate at all -- the vast majority of them.
+#
+# The validator runs from the renovate/renovate image rather than the npm package because
+# the image is what a bot self-bump introduces: it exists by the time the PR is opened, or
+# the bot could not have proposed it. The npm package lands a few minutes after the Docker
+# tag, and validating against npm failed with ETARGET inside that window -- twice on
+# 2026-09-12. The minimumReleaseAge gate added to work around that stalled every
+# self-update for a week instead: Docker Hub timestamps for this image are lost whenever
+# its ~46k-tag crawl fails, and a release with no timestamp is withheld permanently.
 #
 # apps/renovate/** is deliberately broader than the two config files: the version below
 # is read from cronjob.yaml, so Renovate's own image bumps must re-trigger this and
@@ -45,13 +53,6 @@ jobs:
         with:
           persist-credentials: false
 
-      # Renovate 44 declares engines.node ^24.11.0, tighter than "whatever the runner
-      # ships", so the version is pinned rather than inherited.
-      - name: Install Node
-        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
-        with:
-          node-version: "24"
-
       - name: Install yq
         env:
           YQ_VERSION: "4.53.3"
@@ -72,9 +73,14 @@ jobs:
       #   global config, pass, and the bot would silently ignore the option at runtime.
       #
       # The version is read from the CronJob instead of pinned here, so it cannot drift
-      # from the binary that actually consumes these files. Warnings already exit
-      # non-zero; --strict additionally fails when a config migration is needed, which is
-      # the signal that would otherwise decay quietly across upgrades.
+      # from the binary that actually consumes these files. The slim tag is pulled, not the
+      # -full variant the bot runs: same package inside, the validator needs none of the
+      # third-party tools that make -full 2.5 GiB. It is pulled by tag because the repo
+      # holds no digest for it and pinning a second reference here is exactly the drift
+      # reading the version from the CronJob avoids; the job has contents: read, no
+      # secrets and no persisted credentials. Warnings already exit non-zero; --strict
+      # additionally fails when a config migration is needed, which is the signal that
+      # would otherwise decay quietly across upgrades.
       - name: Validate Renovate config
         run: |
           set -euo pipefail
@@ -86,10 +92,14 @@ jobs:
             echo "::error file=apps/renovate/cronjob.yaml::could not read the renovate image tag"
             exit 1
           fi
-          echo "Validating against renovate@${version}"
+          image="renovate/renovate:${version}"
+          echo "Validating with ${image}"
+          docker pull --quiet "$image"
 
-          npx --yes --package "renovate@${version}" renovate-config-validator \
-            --strict apps/renovate/data/renovate.json
+          validate() {
+            docker run --rm -v "$PWD:/repo:ro" -w /repo "$image" \
+              renovate-config-validator "$@"
+          }
 
-          npx --yes --package "renovate@${version}" renovate-config-validator \
-            --strict --no-global renovate.json
+          validate --strict apps/renovate/data/renovate.json
+          validate --strict --no-global renovate.json
