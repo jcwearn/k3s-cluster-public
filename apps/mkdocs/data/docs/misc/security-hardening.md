@@ -34,7 +34,7 @@ Facts, as of the date at the bottom of the page. Each row links to the phase tha
 | Server configuration | The bootstrap flags are in the systemd unit; everything added since is a drop-in under `/etc/rancher/k3s/config.yaml.d/`, written from Git by `configure-k3s-server.yml` |
 | API audit log | On every server, `/var/lib/rancher/k3s/server/logs/audit.log`: request bodies for writes, metadata for reads, who-not-what for Secrets and ConfigMaps; ten 100 MB files or thirty days. It stays on the node — nothing ships it — see [k3s server configuration](../infrastructure/k3s-server-config.md) |
 | Secrets encryption at rest | On, `secretbox` (XSalsa20-Poly1305): every Secret is encrypted by the apiserver before it reaches etcd, so a snapshot or a guest's disk holds none in the clear. Enabled by the documented k3s procedure from one supervised Job; the key is in the servers' `cred/` directory and the bootstrap data behind the server token — see [k3s server configuration](../infrastructure/k3s-server-config.md) |
-| `protect-kernel-defaults` | **Off** → phase 9 |
+| `protect-kernel-defaults` | On: the kubelet refuses to start on a node whose six kernel parameters are not what it expects, instead of setting them itself. `configure-node-sysctl.yml` owns the values and `configure-k3s-server.yml` reads them back before writing the drop-in; see [k3s server configuration](../infrastructure/k3s-server-config.md) |
 | etcd snapshots | Every six hours from each node to the `k3s-etcd-snapshots` R2 bucket, 28 kept, credentials in a Flux-managed Secret; see [k3s server configuration](../infrastructure/k3s-server-config.md). A restore has not yet been rehearsed |
 | Pod Security Admission | 26 namespaces enforce `restricted`; 6 enforce `baseline` (ansible runs as root by design, immich's subcharts and four other images run as root); 5 are `privileged` with the reason in the manifest (csi-driver-nfs, system-upgrade, prometheus, tailscale, ebooks). All warn and audit at `restricted` |
 | Admission configuration | `PodSecurity` defaults for any namespace without labels: `enforce: baseline`, `warn` and `audit: restricted`, `kube-system` exempt. Namespace labels win, so this is the floor under `default`, `flux-system` and anything created outside Git; proven by a privileged pod refused in `default` |
@@ -83,7 +83,7 @@ Ordered so that nothing which can take a pod down lands before the alerting that
 | 6 | ~~`securityContext` on every raw workload, `automountServiceAccountToken: false` by default, image digests everywhere, Headlamp off `cluster-admin`~~ done | low–medium, per app |
 | 7 | ~~Pod Security Admission: `warn`/`audit` everywhere, then `enforce: baseline`, then `restricted` one namespace at a time~~ done | low |
 | 8 | ~~NetworkPolicy, targeted: Postgres ingress, egress limits on the LLM workloads, ingress limits on the secret-bearing apps~~ done | medium, per namespace |
-| 9 | Node configuration via Ansible: ~~etcd snapshots to R2, audit log, a cluster-wide PSA default, secrets encryption~~ done; `protect-kernel-defaults` | high — k3s restarts |
+| 9 | ~~Node configuration via Ansible: etcd snapshots to R2, audit log, a cluster-wide PSA default, secrets encryption, `protect-kernel-defaults`~~ done | high — k3s restarts |
 | 10 | Optional: `flux diff` against the live cluster from CI | none to the cluster |
 
 ## Why there is no staging environment
