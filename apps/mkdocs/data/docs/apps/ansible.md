@@ -28,6 +28,7 @@ Automated server management via Kubernetes CronJobs running Ansible playbooks.
 | `ansible-configure-node-sysctl` | suspended | `configure-node-sysctl.yml` |
 | `ansible-configure-image-gc` | suspended | `configure-image-gc.yml` |
 | `ansible-configure-k3s-shutdown` | suspended | `configure-k3s-shutdown.yml` |
+| `ansible-configure-k3s-server` | suspended | `configure-k3s-server.yml` |
 
 The three upgrade Jobs are one per hypervisor rather than one loop, because the runner is a pod
 inside the cluster it reboots — each is pinned by node affinity *off* the k3s node whose VM it will
@@ -53,6 +54,12 @@ lands on each node's next restart. Two things about it are easy to get wrong:
 - Kubelet's own image GC only runs under **disk pressure**, evicting from 85% down to 80% and no
   further. These nodes sat at 79–83% for months, so it never ran, and accumulated 244–318 images
   each against 73 referenced cluster-wide.
+
+`configure-k3s-server` is the one that **does restart k3s**, one node at a time. It writes the
+k3s server configuration as drop-ins under `/etc/rancher/k3s/config.yaml.d/` and, where a file
+changed, restarts k3s on that node, waits for it to be Ready and for etcd to answer healthy on all
+three, then proves the change with a real snapshot before moving on. The drop-ins and what each
+one is for are on the [k3s server configuration](../infrastructure/k3s-server-config.md) page.
 
 ## Manual operations
 
@@ -180,6 +187,7 @@ apps/ansible/
   cronjob-configure-node-sysctl.yaml
   cronjob-configure-k3s-shutdown.yaml
   cronjob-configure-image-gc.yaml
+  cronjob-configure-k3s-server.yaml
   secrets.sops.yaml
   kustomization.yaml
   data/
@@ -192,6 +200,7 @@ apps/ansible/
       configure-node-sysctl.yml
       configure-k3s-shutdown.yml
       configure-image-gc.yml
+      configure-k3s-server.yml
     scripts/
       lvm-thin-metrics.sh
       pve-reboot-required.sh

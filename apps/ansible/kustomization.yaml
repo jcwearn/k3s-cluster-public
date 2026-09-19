@@ -11,6 +11,7 @@ resources:
   - cronjob-configure-k3s-shutdown.yaml
   - cronjob-configure-node-sysctl.yaml
   - cronjob-configure-lvm-thin-metrics.yaml
+  - cronjob-configure-k3s-server.yaml
   - secrets.sops.yaml
 configMapGenerator:
   - name: ansible-data
@@ -24,5 +25,6 @@ configMapGenerator:
       - data/playbooks/configure-k3s-shutdown.yml
       - data/playbooks/configure-node-sysctl.yml
       - data/playbooks/configure-lvm-thin-metrics.yml
+      - data/playbooks/configure-k3s-server.yml
       - data/scripts/lvm-thin-metrics.sh
       - data/scripts/pve-reboot-required.sh

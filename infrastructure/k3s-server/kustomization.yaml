@@ -1,0 +1,9 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+# What the k3s server processes themselves read from the cluster. Today that
+# is one thing: the S3 credentials for etcd snapshots. The node-side half --
+# the config.yaml drop-ins that tell k3s to use them -- is written by the
+# ansible-configure-k3s-server CronJob in apps/ansible/, not by Flux, because
+# Flux cannot write to a node's filesystem.
+resources:
+  - etcd-s3-secret.sops.yaml

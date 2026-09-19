@@ -204,7 +204,7 @@
       "customType": "regex",
       "description": "The same kubectl, mounted into the ansible hypervisor-upgrade Jobs as an image volume. rancher/kubectl has no shell to copy the binary out with, so it is a `volumes[].image.reference` rather than an initContainer `image:`, and the kubernetes manager does not read that field either. Third site of the tag; the k3s packageRules above govern it like the other two.",
       "managerFilePatterns": [
-        "/^apps/ansible/cronjob-upgrade-hypervisor-\\d+\\.yaml$/"
+        "/^apps/ansible/cronjob-[a-z0-9-]+\\.yaml$/"
       ],
       "matchStrings": [
         "reference: rancher/kubectl:(?<currentValue>v\\d+\\.\\d+\\.\\d+)@(?<currentDigest>sha256:[a-f0-9]{64})\\n"

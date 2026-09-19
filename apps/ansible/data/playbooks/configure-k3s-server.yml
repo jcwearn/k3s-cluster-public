@@ -1,0 +1,177 @@
+---
+# Playbook to manage the k3s server configuration on the three control-plane
+# nodes, one node at a time, restarting k3s where something changed.
+#
+# Every k3s argument lives in the systemd unit's ExecStart today, and nothing
+# in Git describes it. This playbook owns the part that should be declarative:
+# drop-in files under /etc/rancher/k3s/config.yaml.d/, which k3s merges with
+# the unit's flags at start. Each drop-in is one concern, numbered so the
+# merge order is obvious. Today:
+#
+#   10-etcd-s3.yaml   upload every etcd snapshot to R2 (credentials in the
+#                     kube-system/k3s-etcd-s3 Secret, managed by Flux from
+#                     infrastructure/k3s-server/), every six hours, keep 28
+#
+# A drop-in only takes effect when k3s restarts. `systemctl restart k3s`
+# restarts the supervisor and the apiserver on that node; containerd and the
+# pods keep running (the unit's KillMode is process), and the control-plane
+# VIP fails over to another node for the seconds it takes. Between nodes the
+# play waits for the node to be Ready and for etcd to report healthy on all
+# three, so a config that k3s refuses to start with stops the play at one node
+# with the other two holding quorum.
+#
+# Run it as a Job from its CronJob (the schedule is a placeholder and the
+# CronJob is suspended):
+#
+#   kubectl -n ansible create job --from=cronjob/ansible-configure-k3s-server \
+#     configure-k3s-server-$(date +%s)
+#
+# To write the files and inspect them without restarting anything, make a copy
+# of the Job with `-e restart_k3s=false` appended to the args.
+
+- name: Configure the k3s servers
+  hosts: k3s
+  serial: 1
+  gather_facts: false
+  become: true
+
+  vars:
+    restart_k3s: true
+    kubectl: /opt/kubectl/bin/kubectl
+    sa_dir: /var/run/secrets/kubernetes.io/serviceaccount
+    config_dir: /etc/rancher/k3s/config.yaml.d
+    k3s_ips: "{{ groups['k3s'] | map('extract', hostvars, 'ansible_host') | list }}"
+
+  tasks:
+    - name: "Gate: every node Ready"
+      ansible.builtin.command: >-
+        {{ kubectl }} get nodes -o 'custom-columns=NAME:.metadata.name,READY:.status.conditions[?(@.type=="Ready")].status'
+        --no-headers
+      register: node_rows
+      changed_when: false
+      failed_when: >-
+        node_rows.rc != 0
+        or node_rows.stdout_lines | map('split') | rejectattr('1', 'equalto', 'True') | list | length > 0
+      delegate_to: localhost
+      become: false
+
+    - name: "Gate: etcd healthy on every node"
+      ansible.builtin.shell: >-
+        {{ kubectl }} --server https://{{ item }}:6443
+        --certificate-authority {{ sa_dir }}/ca.crt
+        --token "$(cat {{ sa_dir }}/token)"
+        get --raw /healthz/etcd
+      register: etcd_health
+      changed_when: false
+      failed_when: etcd_health.rc != 0 or etcd_health.stdout | trim != 'ok'
+      loop: "{{ k3s_ips }}"
+      delegate_to: localhost
+      become: false
+
+    - name: Ensure the drop-in directory exists
+      ansible.builtin.file:
+        path: "{{ config_dir }}"
+        state: directory
+        mode: "0700"
+
+    # k3s reads config.yaml and then config.yaml.d/*.yaml. The main file has
+    # never existed on these nodes; an empty one with a pointer removes any
+    # doubt about whether the directory is read without it.
+    - name: Ensure config.yaml exists and points at the drop-ins
+      ansible.builtin.copy:
+        dest: /etc/rancher/k3s/config.yaml
+        content: |
+          # Managed by apps/ansible/data/playbooks/configure-k3s-server.yml in
+          # jcwearn/k3s-cluster. Settings live in config.yaml.d/, one file per
+          # concern. The flags in the systemd unit still apply and win on conflict.
+        mode: "0600"
+        force: false
+
+    - name: Write the etcd snapshot drop-in
+      ansible.builtin.copy:
+        dest: "{{ config_dir }}/10-etcd-s3.yaml"
+        content: |
+          # Every etcd snapshot is uploaded to R2 as well as kept locally, so
+          # the cluster's state survives the loss of the three guests. The
+          # endpoint and credentials are read from the kube-system/k3s-etcd-s3
+          # Secret, which Flux manages from infrastructure/k3s-server/ -- so
+          # rotating them never touches a node.
+          #
+          # Every six hours, keep 28: a week. Retention applies to the bucket
+          # too; k3s prunes its own uploads.
+          etcd-s3: true
+          etcd-s3-config-secret: k3s-etcd-s3
+          etcd-snapshot-schedule-cron: "0 */6 * * *"
+          etcd-snapshot-retention: 28
+        mode: "0600"
+      register: etcd_s3_dropin
+
+    - name: Report what changed on {{ inventory_hostname }}
+      ansible.builtin.debug:
+        msg: >-
+          {{ 'etcd-s3 drop-in written; k3s will be restarted' if etcd_s3_dropin.changed and restart_k3s | bool
+             else 'etcd-s3 drop-in written; restart_k3s is false, nothing restarted' if etcd_s3_dropin.changed
+             else 'nothing changed; nothing to restart' }}
+
+    - name: Restart k3s on {{ inventory_hostname }} and wait for it to return
+      when: etcd_s3_dropin.changed and restart_k3s | bool
+      block:
+        - name: Restart k3s
+          ansible.builtin.systemd:
+            name: k3s
+            state: restarted
+
+        - name: Wait for {{ inventory_hostname }} to be Ready
+          ansible.builtin.command: >-
+            {{ kubectl }} get node {{ inventory_hostname }} -o 'jsonpath={.status.conditions[?(@.type=="Ready")].status}'
+          register: node_ready
+          changed_when: false
+          retries: 30
+          delay: 10
+          until: node_ready.rc == 0 and node_ready.stdout | trim == 'True'
+          delegate_to: localhost
+          become: false
+
+        - name: Wait for etcd to be healthy on every node
+          ansible.builtin.shell: >-
+            {{ kubectl }} --server https://{{ item }}:6443
+            --certificate-authority {{ sa_dir }}/ca.crt
+            --token "$(cat {{ sa_dir }}/token)"
+            get --raw /healthz/etcd
+          register: etcd_health_after
+          changed_when: false
+          retries: 12
+          delay: 10
+          until: etcd_health_after.rc == 0 and etcd_health_after.stdout | trim == 'ok'
+          loop: "{{ k3s_ips }}"
+          delegate_to: localhost
+          become: false
+
+        # The proof that the drop-in works is an upload, not a log line. A
+        # named snapshot is taken through the same path the schedule uses,
+        # then pruned back to one so these do not accumulate across runs
+        # (retention only counts the scheduled ones).
+        - name: Snapshot etcd on {{ inventory_hostname }} through the new configuration
+          ansible.builtin.shell: |
+            set -e
+            k3s etcd-snapshot save --name configure-check
+            k3s etcd-snapshot prune --name configure-check --snapshot-retention 1
+          changed_when: true
+
+        - name: Confirm the snapshot from {{ inventory_hostname }} reached the bucket
+          ansible.builtin.command: "{{ kubectl }} get etcdsnapshotfile -o json"
+          register: snapshot_files
+          changed_when: false
+          retries: 6
+          delay: 10
+          until: >-
+            snapshot_files.rc == 0
+            and (snapshot_files.stdout | from_json)['items']
+                | selectattr('spec.nodeName', 'equalto', inventory_hostname)
+                | selectattr('spec.s3', 'defined')
+                | selectattr('spec.snapshotName', 'search', '^configure-check')
+                | selectattr('status.readyToUse', 'defined')
+                | selectattr('status.readyToUse', 'equalto', true)
+                | list | length > 0
+          delegate_to: localhost
+          become: false

@@ -25,6 +25,11 @@ rules:
   - apiGroups: ["apps"]
     resources: ["daemonsets"]
     verbs: ["get", "list"]
+  # configure-k3s-server.yml proves an etcd-s3 upload by finding the
+  # ETCDSnapshotFile k3s records for it.
+  - apiGroups: ["k3s.cattle.io"]
+    resources: ["etcdsnapshotfiles"]
+    verbs: ["get", "list"]
   # system:public-info-viewer grants /healthz to everyone but not its
   # sub-paths, and /healthz/etcd is the one the return-to-service step reads.
   - nonResourceURLs: ["/healthz/etcd", "/readyz/etcd"]

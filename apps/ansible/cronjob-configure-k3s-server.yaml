@@ -1,0 +1,98 @@
+# Runs configure-k3s-server.yml against the three control-plane nodes, one at
+# a time, restarting k3s where a drop-in changed. Suspended with a placeholder
+# schedule: it is run by hand, after a change to the playbook has merged, as
+#
+#   kubectl -n ansible create job --from=cronjob/ansible-configure-k3s-server \
+#     configure-k3s-server-$(date +%s)
+#
+# and watched. It restarts control-plane processes; it is not something to
+# run unattended on a timer.
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: ansible-configure-k3s-server
+  namespace: ansible
+  annotations:
+    # A Job runs to completion; a probe would only ever restart it mid-run.
+    ignore-check.kube-linter.io/no-liveness-probe: "run-to-completion Job"
+    ignore-check.kube-linter.io/no-readiness-probe: "run-to-completion Job"
+    # The SSH key Secret is mounted 0400 and owned by root; only root can read
+    # it. Dropping root here means fsGroup plus a 0440 mode on that mount,
+    # which is a change to the automation that reboots the hypervisors and
+    # gets a supervised run of its own.
+    ignore-check.kube-linter.io/run-as-non-root: "reads a root-owned 0400 SSH key; see comment"
+spec:
+  schedule: "0 0 1 1 *"
+  suspend: true
+  timeZone: America/New_York
+  concurrencyPolicy: Forbid
+  successfulJobsHistoryLimit: 3
+  failedJobsHistoryLimit: 3
+  jobTemplate:
+    metadata:
+      labels:
+        app.kubernetes.io/name: ansible-configure-k3s-server
+    spec:
+      backoffLimit: 0
+      activeDeadlineSeconds: 3600
+      ttlSecondsAfterFinished: 259200
+      template:
+        metadata:
+          labels:
+            app.kubernetes.io/name: ansible-configure-k3s-server
+        spec:
+          serviceAccountName: ansible-runner
+          containers:
+            - name: ansible
+              image: ghcr.io/jcwearn/ansible-runner:0.1.49@sha256:4db69c9567130064dae663b6d5542d00617151c22ddac2bf4eea408cbb93d5c4
+              imagePullPolicy: IfNotPresent
+              securityContext:
+                runAsUser: 0
+              command: ["ansible-playbook"]
+              args: ["/ansible/playbooks/configure-k3s-server.yml"]
+              env:
+                - name: ANSIBLE_CONFIG
+                  value: /ansible/ansible.cfg
+              volumeMounts:
+                - name: ansible-data
+                  mountPath: /ansible
+                - name: ssh-key
+                  mountPath: /secrets
+                  readOnly: true
+                - name: kubectl
+                  mountPath: /opt/kubectl
+                  readOnly: true
+              resources:
+                requests:
+                  cpu: 100m
+                  memory: 128Mi
+                limits:
+                  cpu: 500m
+                  memory: 256Mi
+          restartPolicy: Never
+          volumes:
+            - name: ansible-data
+              configMap:
+                name: ansible-data
+                items:
+                  - key: ansible.cfg
+                    path: ansible.cfg
+                  - key: inventory.yml
+                    path: inventory.yml
+                  - key: configure-k3s-server.yml
+                    path: playbooks/configure-k3s-server.yml
+            - name: ssh-key
+              secret:
+                secretName: ansible-secrets
+                defaultMode: 0400
+                items:
+                  - key: ssh-private-key
+                    path: ssh-private-key
+                  - key: ssh-public-key
+                    path: ssh-public-key
+            # kubectl for the gates and waits, as an image volume: the
+            # rancher/kubectl image has no shell to copy the binary out with.
+            - name: kubectl
+              image:
+                reference: rancher/kubectl:v1.36.2@sha256:06c7a7a9772737494ae1e0c3af90f1b5385630c147e47c1c7cea92f4bed55fbe
+                pullPolicy: IfNotPresent
