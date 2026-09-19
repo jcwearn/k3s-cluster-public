@@ -33,7 +33,7 @@ Facts, as of the date at the bottom of the page. Each row links to the phase tha
 | `anonymous-auth`, authorization mode | k3s defaults: anonymous auth off, `Node,RBAC`. **Nothing to do** — the old checklist item here was wrong for k3s |
 | Server configuration | The bootstrap flags are in the systemd unit; everything added since is a drop-in under `/etc/rancher/k3s/config.yaml.d/`, written from Git by `configure-k3s-server.yml` |
 | API audit log | On every server, `/var/lib/rancher/k3s/server/logs/audit.log`: request bodies for writes, metadata for reads, who-not-what for Secrets and ConfigMaps; ten 100 MB files or thirty days. It stays on the node — nothing ships it — see [k3s server configuration](../infrastructure/k3s-server-config.md) |
-| Secrets encryption at rest | **Off** — Secrets are plaintext in etcd → phase 9 |
+| Secrets encryption at rest | On, `secretbox` (XSalsa20-Poly1305): every Secret is encrypted by the apiserver before it reaches etcd, so a snapshot or a guest's disk holds none in the clear. Enabled by the documented k3s procedure from one supervised Job; the key is in the servers' `cred/` directory and the bootstrap data behind the server token — see [k3s server configuration](../infrastructure/k3s-server-config.md) |
 | `protect-kernel-defaults` | **Off** → phase 9 |
 | etcd snapshots | Every six hours from each node to the `k3s-etcd-snapshots` R2 bucket, 28 kept, credentials in a Flux-managed Secret; see [k3s server configuration](../infrastructure/k3s-server-config.md). A restore has not yet been rehearsed |
 | Pod Security Admission | 26 namespaces enforce `restricted`; 6 enforce `baseline` (ansible runs as root by design, immich's subcharts and four other images run as root); 5 are `privileged` with the reason in the manifest (csi-driver-nfs, system-upgrade, prometheus, tailscale, ebooks). All warn and audit at `restricted` |
@@ -83,7 +83,7 @@ Ordered so that nothing which can take a pod down lands before the alerting that
 | 6 | ~~`securityContext` on every raw workload, `automountServiceAccountToken: false` by default, image digests everywhere, Headlamp off `cluster-admin`~~ done | low–medium, per app |
 | 7 | ~~Pod Security Admission: `warn`/`audit` everywhere, then `enforce: baseline`, then `restricted` one namespace at a time~~ done | low |
 | 8 | ~~NetworkPolicy, targeted: Postgres ingress, egress limits on the LLM workloads, ingress limits on the secret-bearing apps~~ done | medium, per namespace |
-| 9 | Node configuration via Ansible: ~~etcd snapshots to R2, audit log, a cluster-wide PSA default~~ done; secrets encryption, `protect-kernel-defaults` | high — k3s restarts |
+| 9 | Node configuration via Ansible: ~~etcd snapshots to R2, audit log, a cluster-wide PSA default, secrets encryption~~ done; `protect-kernel-defaults` | high — k3s restarts |
 | 10 | Optional: `flux diff` against the live cluster from CI | none to the cluster |
 
 ## Why there is no staging environment
