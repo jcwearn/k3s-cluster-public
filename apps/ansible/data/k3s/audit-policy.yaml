@@ -1,0 +1,41 @@
+---
+# kube-apiserver audit policy, written to /var/lib/rancher/k3s/server/audit-policy.yaml
+# on every server by apps/ansible/data/playbooks/configure-k3s-server.yml.
+#
+# The first rule that matches a request decides its level, so the order is:
+# drop the noise, then cap the resources whose bodies must never land in a
+# log, then record bodies for writes, then metadata for everything else.
+apiVersion: audit.k8s.io/v1
+kind: Policy
+omitStages: [RequestReceived]
+rules:
+  - level: None
+    users: ["system:kube-proxy"]
+    verbs: ["watch"]
+    resources:
+      - group: ""
+        resources: ["endpoints", "services", "services/status"]
+  - level: None
+    resources:
+      - group: "coordination.k8s.io"
+        resources: ["leases"]
+  - level: None
+    resources:
+      - group: ""
+        resources: ["events"]
+  - level: None
+    nonResourceURLs: ["/healthz*", "/readyz*", "/livez*", "/version", "/metrics"]
+
+  # Who touched a Secret, never what was in it. Before the write rule below on
+  # purpose: a Secret create must not be logged at Request level.
+  - level: Metadata
+    resources:
+      - group: ""
+        resources: ["secrets", "configmaps", "serviceaccounts/token"]
+      - group: "authentication.k8s.io"
+        resources: ["tokenreviews"]
+
+  - level: Request
+    verbs: ["create", "update", "patch", "delete", "deletecollection"]
+
+  - level: Metadata

@@ -81,6 +81,10 @@ spec:
                     path: inventory.yml
                   - key: configure-k3s-server.yml
                     path: playbooks/configure-k3s-server.yml
+                  - key: audit-policy.yaml
+                    path: k3s/audit-policy.yaml
+                  - key: psa.yaml
+                    path: k3s/psa.yaml
             - name: ssh-key
               secret:
                 secretName: ansible-secrets

@@ -11,6 +11,23 @@
 #   10-etcd-s3.yaml   upload every etcd snapshot to R2 (credentials in the
 #                     kube-system/k3s-etcd-s3 Secret, managed by Flux from
 #                     infrastructure/k3s-server/), every six hours, keep 28
+#   20-audit.yaml     kube-apiserver audit log on the node, under the policy
+#                     in /var/lib/rancher/k3s/server/audit-policy.yaml
+#   30-psa.yaml       a Pod Security default for namespaces without labels,
+#                     from /var/lib/rancher/k3s/server/psa.yaml
+#
+# The two policy files come from apps/ansible/data/k3s/, mounted into the Job
+# at /ansible/k3s/. k3s reads them only at start, so a change to either is a
+# restart as much as a drop-in change is.
+#
+# A key that appears in two drop-ins is replaced by the later file, lists
+# included -- unless the later file writes the key with a `+` suffix, which
+# appends instead. 20-audit.yaml owns `kube-apiserver-arg`; 30-psa.yaml and
+# any later drop-in that adds an apiserver flag must write
+# `kube-apiserver-arg+`, and the check after the restart reads the flags the
+# apiserver actually started with. Grep this file and upgrade-hypervisor.yml
+# for a flag before adding it to a drop-in: a config.yaml key is read by every
+# k3s subcommand, not only `k3s server`.
 #
 # A drop-in only takes effect when k3s restarts. `systemctl restart k3s`
 # restarts the supervisor and the apiserver on that node; containerd and the
@@ -106,15 +123,80 @@
         mode: "0600"
       register: etcd_s3_dropin
 
+    # The apiserver does not create this directory and will not start
+    # without it once audit-log-path points into it.
+    - name: Ensure the audit log directory exists
+      ansible.builtin.file:
+        path: /var/lib/rancher/k3s/server/logs
+        state: directory
+        mode: "0700"
+
+    - name: Write the audit policy
+      ansible.builtin.copy:
+        src: /ansible/k3s/audit-policy.yaml
+        dest: /var/lib/rancher/k3s/server/audit-policy.yaml
+        mode: "0600"
+      register: audit_policy
+
+    - name: Write the audit log drop-in
+      ansible.builtin.copy:
+        dest: "{{ config_dir }}/20-audit.yaml"
+        content: |
+          # Every API request is recorded on this node under the policy in
+          # audit-policy.yaml (next to the log: who touched a Secret, never
+          # what was in it; request bodies for writes; metadata otherwise).
+          # The log stays on the node -- nothing ships it anywhere -- and is
+          # capped at ten 100 MB files or thirty days, whichever comes first.
+          #
+          # This file owns kube-apiserver-arg. A later drop-in adding a flag
+          # must write `kube-apiserver-arg+` or it replaces this list.
+          kube-apiserver-arg:
+            - audit-log-path=/var/lib/rancher/k3s/server/logs/audit.log
+            - audit-policy-file=/var/lib/rancher/k3s/server/audit-policy.yaml
+            - audit-log-maxage=30
+            - audit-log-maxbackup=10
+            - audit-log-maxsize=100
+        mode: "0600"
+      register: audit_dropin
+
+    - name: Write the admission configuration
+      ansible.builtin.copy:
+        src: /ansible/k3s/psa.yaml
+        dest: /var/lib/rancher/k3s/server/psa.yaml
+        mode: "0600"
+      register: psa_config
+
+    - name: Write the Pod Security default drop-in
+      ansible.builtin.copy:
+        dest: "{{ config_dir }}/30-psa.yaml"
+        content: |
+          # A namespace with no pod-security.kubernetes.io labels gets the
+          # levels in psa.yaml (enforce baseline, warn and audit restricted;
+          # kube-system exempt). Every namespace in Git carries labels, which
+          # win; this is the floor for the ones created outside Git.
+          #
+          # `+` appends to the list 20-audit.yaml started. Without it this
+          # file would replace that list and the audit log would go away.
+          kube-apiserver-arg+:
+            - admission-control-config-file=/var/lib/rancher/k3s/server/psa.yaml
+        mode: "0600"
+      register: psa_dropin
+
+    - name: Note whether anything k3s reads at start changed
+      ansible.builtin.set_fact:
+        k3s_config_changed: >-
+          {{ etcd_s3_dropin.changed or audit_policy.changed or audit_dropin.changed
+             or psa_config.changed or psa_dropin.changed }}
+
     - name: Report what changed
       ansible.builtin.debug:
         msg: >-
-          {{ 'etcd-s3 drop-in written; k3s will be restarted' if etcd_s3_dropin.changed and restart_k3s | bool
-             else 'etcd-s3 drop-in written; restart_k3s is false, nothing restarted' if etcd_s3_dropin.changed
+          {{ 'k3s configuration changed; k3s will be restarted' if k3s_config_changed | bool and restart_k3s | bool
+             else 'k3s configuration changed; restart_k3s is false, nothing restarted' if k3s_config_changed | bool
              else 'nothing changed; nothing to restart' }}
 
     - name: Restart k3s and wait for it to return
-      when: etcd_s3_dropin.changed and restart_k3s | bool
+      when: k3s_config_changed | bool and restart_k3s | bool
       block:
         - name: Restart k3s
           ansible.builtin.systemd:
@@ -146,6 +228,30 @@
           loop: "{{ k3s_ips }}"
           delegate_to: localhost
           become: false
+
+        # k3s logs the full apiserver command line once per start. Both
+        # flags on it is the proof that 30-psa.yaml appended to the list
+        # rather than replacing it; a lost `+` stops the play here, on the
+        # first node, with the other two holding quorum.
+        - name: Read the flags the apiserver started with
+          ansible.builtin.shell: >-
+            journalctl -u k3s -b --no-pager | grep 'Running kube-apiserver' | tail -n 1
+          register: apiserver_args
+          changed_when: false
+          failed_when: >-
+            apiserver_args.rc != 0
+            or '--audit-log-path=' not in apiserver_args.stdout
+            or '--admission-control-config-file=' not in apiserver_args.stdout
+
+        # The file appears on the first request the policy records, which
+        # the waits above have already made.
+        - name: Wait for the audit log to be written
+          ansible.builtin.stat:
+            path: /var/lib/rancher/k3s/server/logs/audit.log
+          register: audit_log
+          retries: 6
+          delay: 5
+          until: audit_log.stat.exists and audit_log.stat.size > 0
 
         # The proof that the drop-in works is an upload, not a log line: a
         # named snapshot through the same path the schedule uses. Not pruned

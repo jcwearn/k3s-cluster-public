@@ -28,3 +28,5 @@ configMapGenerator:
       - data/playbooks/configure-k3s-server.yml
       - data/scripts/lvm-thin-metrics.sh
       - data/scripts/pve-reboot-required.sh
+      - data/k3s/audit-policy.yaml
+      - data/k3s/psa.yaml

@@ -1,0 +1,27 @@
+---
+# kube-apiserver admission configuration, written to
+# /var/lib/rancher/k3s/server/psa.yaml on every server by
+# apps/ansible/data/playbooks/configure-k3s-server.yml.
+#
+# The Pod Security level a namespace gets when it carries no
+# pod-security.kubernetes.io/* labels. Every namespace in Git is labelled and
+# a label wins over these defaults, mode by mode; this is the floor for the
+# ones created outside Git (default, flux-system, anything new).
+apiVersion: apiserver.config.k8s.io/v1
+kind: AdmissionConfiguration
+plugins:
+  - name: PodSecurity
+    configuration:
+      apiVersion: pod-security.admission.config.k8s.io/v1
+      kind: PodSecurityConfiguration
+      defaults:
+        enforce: baseline
+        enforce-version: latest
+        audit: restricted
+        audit-version: latest
+        warn: restricted
+        warn-version: latest
+      exemptions:
+        usernames: []
+        runtimeClasses: []
+        namespaces: [kube-system]
