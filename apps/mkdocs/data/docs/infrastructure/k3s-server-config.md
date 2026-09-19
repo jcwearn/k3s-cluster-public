@@ -106,6 +106,55 @@ earlier value, lists included; `kube-apiserver-arg+` appends instead. `20-audit.
 `+`, or the audit log silently goes away. After each restart the playbook reads the command line the
 apiserver logged at start and fails the run if either flag is missing.
 
+### `40-secrets-encryption.yaml` — Secrets encrypted at rest
+
+```yaml
+secrets-encryption: true
+secrets-encryption-provider: secretbox
+```
+
+Every `Secret` is encrypted by the apiserver before it is written to etcd, so a copy of the
+datastore — a snapshot in the R2 bucket, a disk image of a guest — no longer holds them in the
+clear. The provider is `secretbox` (XSalsa20-Poly1305) rather than k3s's default `aescbc`, which
+upstream Kubernetes marks *not recommended*. The keys are in
+`/var/lib/rancher/k3s/server/cred/encryption-config.json` on each server and in the cluster's
+bootstrap data in etcd, where the **server token** protects them — so a restore from a snapshot
+needs the token for one more reason.
+
+This drop-in is the one file under `config.yaml.d/` that `configure-k3s-server.yml` does not
+write. Turning encryption on for an existing cluster is an ordered procedure — k3s warns that the
+wrong order can corrupt the cluster — and "restart where a file changed" cannot express it, so it
+has its own playbook, `enable-secrets-encryption.yml`, and its own CronJob,
+`ansible-enable-secrets-encryption`:
+
+1. On the first server, `k3s secrets-encrypt enable`: writes an encryption config with only the
+   identity (plaintext) provider and saves it into the bootstrap data for the others.
+2. On each server in turn, write the drop-in and restart k3s. Status now reads `Disabled`, stage
+   `start`, all hashes match.
+3. On the first server, `k3s secrets-encrypt rotate-keys`: the running server adds a secretbox key,
+   rewrites every Secret through it (about five a second) and returns when done.
+4. On each server in turn, restart k3s again so it reloads the saved config; until it has, its
+   hash differs from the first server's, which is what triggers the restart.
+5. On every server, status must read `Enabled`, `reencrypt_finished`, all hashes match, active key
+   `XSalsa20-POLY1305 secretboxkey-…`.
+
+Each step is gated on `k3s secrets-encrypt status --output json`, so the Job is safe to run
+again: on a cluster where this has already happened it changes nothing and restarts nothing.
+If a run stops between steps, run it again — the one state it cannot read past on its own is a
+`rotate-keys` interrupted mid-reencryption (stage `reencrypt_active`), which the final check
+reports; `k3s secrets-encrypt rotate-keys` on the first server is the documented remedy.
+
+From outside the nodes, the stage and hash each server holds are on the node objects:
+
+```bash
+kubectl get nodes -o custom-columns='NODE:.metadata.name,ENCRYPTION:.metadata.annotations.k3s\.io/encryption-config-hash'
+```
+
+The etcd snapshots taken before the run hold Secrets in plaintext; the retention in
+`10-etcd-s3.yaml` rolls them out of the bucket within a week. Rotating the key later is
+`rotate-keys` on one server followed by a restart of all three — the same playbook minus its first
+step, and not yet automated.
+
 ## Running the playbook
 
 After a change to the playbook has merged:
@@ -130,6 +179,11 @@ another node for the seconds it takes. Nothing is drained.
 
 To write the files and inspect them without restarting, copy the Job and append
 `-e restart_k3s=false` to its args.
+
+`enable-secrets-encryption.yml` runs the same way from its own CronJob
+(`ansible-enable-secrets-encryption`) and shares the restart-and-wait tasks
+(`apps/ansible/data/tasks/restart-k3s.yml`); it has no `restart_k3s` switch, because its restarts
+are the procedure.
 
 ## Restoring from an off-site snapshot
 

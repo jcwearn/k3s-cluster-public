@@ -16,6 +16,11 @@
 #   30-psa.yaml       a Pod Security default for namespaces without labels,
 #                     from /var/lib/rancher/k3s/server/psa.yaml
 #
+# Not this playbook's: 40-secrets-encryption.yaml, written by
+# enable-secrets-encryption.yml, because turning encryption on has an order
+# (enable, restart, rotate-keys, restart) that "restart where a file changed"
+# cannot express. This playbook leaves that file alone.
+#
 # The two policy files come from apps/ansible/data/k3s/, mounted into the Job
 # at /ansible/k3s/. k3s reads them only at start, so a change to either is a
 # restart as much as a drop-in change is.

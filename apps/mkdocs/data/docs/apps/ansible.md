@@ -29,6 +29,7 @@ Automated server management via Kubernetes CronJobs running Ansible playbooks.
 | `ansible-configure-image-gc` | suspended | `configure-image-gc.yml` |
 | `ansible-configure-k3s-shutdown` | suspended | `configure-k3s-shutdown.yml` |
 | `ansible-configure-k3s-server` | suspended | `configure-k3s-server.yml` |
+| `ansible-enable-secrets-encryption` | suspended | `enable-secrets-encryption.yml` |
 
 The three upgrade Jobs are one per hypervisor rather than one loop, because the runner is a pod
 inside the cluster it reboots — each is pinned by node affinity *off* the k3s node whose VM it will
@@ -60,6 +61,12 @@ k3s server configuration as drop-ins under `/etc/rancher/k3s/config.yaml.d/` and
 changed, restarts k3s on that node, waits for it to be Ready and for etcd to answer healthy on all
 three, then proves the change with a real snapshot before moving on. The drop-ins and what each
 one is for are on the [k3s server configuration](../infrastructure/k3s-server-config.md) page.
+
+`enable-secrets-encryption` is the other one that restarts k3s — twice per node — and it is a
+procedure rather than a configuration: k3s's documented steps for turning on encryption of Secrets
+at rest on a cluster that was started without it, in the order k3s says will not corrupt the
+cluster. It was run once; every step is guarded by `k3s secrets-encrypt status`, so a second run
+finds the work done and restarts nothing. The same page describes it.
 
 ## Manual operations
 
@@ -188,6 +195,7 @@ apps/ansible/
   cronjob-configure-k3s-shutdown.yaml
   cronjob-configure-image-gc.yaml
   cronjob-configure-k3s-server.yaml
+  cronjob-enable-secrets-encryption.yaml
   secrets.sops.yaml
   kustomization.yaml
   data/
@@ -201,7 +209,13 @@ apps/ansible/
       configure-k3s-shutdown.yml
       configure-image-gc.yml
       configure-k3s-server.yml
+      enable-secrets-encryption.yml
+    tasks/
+      restart-k3s.yml
     scripts/
       lvm-thin-metrics.sh
       pve-reboot-required.sh
+    k3s/
+      audit-policy.yaml
+      psa.yaml
 ```

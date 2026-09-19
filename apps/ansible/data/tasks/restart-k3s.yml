@@ -1,0 +1,39 @@
+---
+# Restart k3s on the current host and wait until the cluster is whole again:
+# this node Ready, etcd answering healthy on every server. Included by
+# enable-secrets-encryption.yml for each of its two restart rounds. The
+# including play supplies kubectl, sa_dir and k3s_ips.
+#
+# `systemctl restart k3s` restarts the supervisor and the apiserver; containerd
+# and the pods keep running (the unit's KillMode is process) and the VIP fails
+# over for the seconds it takes.
+- name: Restart k3s
+  ansible.builtin.systemd:
+    name: k3s
+    state: restarted
+
+- name: Wait for the node to be Ready
+  ansible.builtin.command: >-
+    {{ kubectl }} get node {{ inventory_hostname }} -o 'jsonpath={.status.conditions[?(@.type=="Ready")].status}'
+  register: node_ready
+  changed_when: false
+  retries: 30
+  delay: 10
+  until: node_ready.rc == 0 and node_ready.stdout | trim == 'True'
+  delegate_to: localhost
+  become: false
+
+- name: Wait for etcd to be healthy on every node
+  ansible.builtin.shell: >-
+    {{ kubectl }} --server https://{{ item }}:6443
+    --certificate-authority {{ sa_dir }}/ca.crt
+    --token "$(cat {{ sa_dir }}/token)"
+    get --raw /healthz/etcd
+  register: etcd_health_after
+  changed_when: false
+  retries: 12
+  delay: 10
+  until: etcd_health_after.rc == 0 and etcd_health_after.stdout | trim == 'ok'
+  loop: "{{ k3s_ips }}"
+  delegate_to: localhost
+  become: false
