@@ -155,6 +155,28 @@ The etcd snapshots taken before the run hold Secrets in plaintext; the retention
 `rotate-keys` on one server followed by a restart of all three — the same playbook minus its first
 step, and not yet automated.
 
+### `50-hardening.yaml` — the kubelet refuses a wrong kernel
+
+```yaml
+protect-kernel-defaults: true
+```
+
+The kubelet wants six kernel parameters at particular values — `vm.overcommit_memory=1`,
+`vm.panic_on_oom=0`, `kernel.panic=10`, `kernel.panic_on_oops=1`, `kernel.keys.root_maxkeys=1000000`,
+`kernel.keys.root_maxbytes=25000000` — and by default silently sets them itself at start. With this
+on it refuses to start instead, so a node's kernel configuration is something that is declared and
+checked rather than something the kubelet patches over. That is the CIS control; the practical
+effect is that a node where those values have drifted stops at the next k3s restart with a clear
+`invalid kernel flag` in `journalctl -u k3s`, not later and elsewhere.
+
+The order matters. `configure-node-sysctl.yml` owns the six values (it sets them in
+`/etc/sysctl.d/99-k3s-node.conf` and reads each back), and it ran on every node before this drop-in
+existed. `configure-k3s-server.yml` reads the six back itself before writing this file, so a node
+whose sysctls are not in place fails the play with the file unwritten and k3s untouched. After the
+restart it checks the kubelet's logged command line for `--protect-kernel-defaults=true`. To turn
+it off, set the key to `false` in the playbook and run it: the changed file is what triggers the
+restart.
+
 ## Running the playbook
 
 After a change to the playbook has merged:
@@ -168,7 +190,8 @@ kubectl -n ansible logs -f job/configure-k3s-server-<ts>
 For each node in turn it gates on every node Ready and etcd healthy on all three, writes the
 drop-ins and policy files, and — only where a file actually changed — restarts k3s, waits for the
 node to come back and etcd to answer on all three, checks the apiserver's logged command line for
-both the audit and admission flags, waits for `audit.log` to be written, then takes a snapshot
+both the audit and admission flags and the kubelet's for `--protect-kernel-defaults=true`, waits
+for `audit.log` to be written, then takes a snapshot
 named `configure-check`, waits for its `ETCDSnapshotFile` to show up with `spec.s3` and
 `readyToUse: true`, and deletes it again. A node that will not come back stops the play there,
 with the other two holding quorum; `journalctl -u k3s` on that node is the first look.

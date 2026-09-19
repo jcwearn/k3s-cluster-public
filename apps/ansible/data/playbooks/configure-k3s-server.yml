@@ -15,6 +15,9 @@
 #                     in /var/lib/rancher/k3s/server/audit-policy.yaml
 #   30-psa.yaml       a Pod Security default for namespaces without labels,
 #                     from /var/lib/rancher/k3s/server/psa.yaml
+#   50-hardening.yaml protect-kernel-defaults: the kubelet refuses to start
+#                     unless the six sysctls configure-node-sysctl.yml sets
+#                     are in place, so that playbook runs first
 #
 # Not this playbook's: 40-secrets-encryption.yaml, written by
 # enable-secrets-encryption.yml, because turning encryption on has an order
@@ -187,11 +190,45 @@
         mode: "0600"
       register: psa_dropin
 
+    # The gate before the drop-in: the values the kubelet will demand, read
+    # on this node right now. A node whose sysctls are not in place fails
+    # here, with the file unwritten and k3s untouched, instead of failing to
+    # start after the restart. The list is the kubelet's (setupKernelTunables)
+    # and matches configure-node-sysctl.yml.
+    - name: Confirm the sysctls protect-kernel-defaults checks are in place
+      ansible.builtin.command: "sysctl -n {{ item.name }}"
+      register: kernel_default
+      changed_when: false
+      failed_when: kernel_default.rc != 0 or kernel_default.stdout | trim != item.value
+      loop:
+        - {name: vm.overcommit_memory, value: "1"}
+        - {name: vm.panic_on_oom, value: "0"}
+        - {name: kernel.panic, value: "10"}
+        - {name: kernel.panic_on_oops, value: "1"}
+        - {name: kernel.keys.root_maxkeys, value: "1000000"}
+        - {name: kernel.keys.root_maxbytes, value: "25000000"}
+      loop_control:
+        label: "{{ item.name }}={{ item.value }}"
+
+    - name: Write the kernel defaults drop-in
+      ansible.builtin.copy:
+        dest: "{{ config_dir }}/50-hardening.yaml"
+        content: |
+          # The kubelet checks six kernel parameters at start and, with this
+          # on, refuses to run if any is not what it expects rather than
+          # setting it itself. configure-node-sysctl.yml owns those values;
+          # configure-k3s-server.yml reads them back before writing this
+          # file. Turn this off first if that playbook ever stops setting
+          # them.
+          protect-kernel-defaults: true
+        mode: "0600"
+      register: hardening_dropin
+
     - name: Note whether anything k3s reads at start changed
       ansible.builtin.set_fact:
         k3s_config_changed: >-
           {{ etcd_s3_dropin.changed or audit_policy.changed or audit_dropin.changed
-             or psa_config.changed or psa_dropin.changed }}
+             or psa_config.changed or psa_dropin.changed or hardening_dropin.changed }}
 
     - name: Report what changed
       ansible.builtin.debug:
@@ -247,6 +284,15 @@
             apiserver_args.rc != 0
             or '--audit-log-path=' not in apiserver_args.stdout
             or '--admission-control-config-file=' not in apiserver_args.stdout
+
+        - name: Read the flags the kubelet started with
+          ansible.builtin.shell: >-
+            journalctl -u k3s -b --no-pager | grep 'Running kubelet' | tail -n 1
+          register: kubelet_args
+          changed_when: false
+          failed_when: >-
+            kubelet_args.rc != 0
+            or '--protect-kernel-defaults=true' not in kubelet_args.stdout
 
         # The file appears on the first request the policy records, which
         # the waits above have already made.
