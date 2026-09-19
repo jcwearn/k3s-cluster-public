@@ -164,7 +164,7 @@ Flux will reconcile:
 * **Infrastructure stack** → `clusters/prod/infrastructure.yaml`
   (TrueNAS NFS, cert‑manager, ingress‑nginx, Reloader, …)
 * **Application stack**   → `clusters/prod/apps.yaml`
-  (AdGuard Home, Homepage, Kubernetes‑Dashboard, …)
+  (Homepage, Immich, Jellyfin, …)
 
 Grab a coffee — your fully‑GitOps, HA k3s homelab will be live in a few
 minutes. ☕️🚀

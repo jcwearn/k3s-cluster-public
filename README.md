@@ -12,7 +12,7 @@ everything the cluster runs is here; what has been removed is addresses, not arc
 | | |
 | --- | --- |
 | **Ingress** | Envoy Gateway (Gateway API), one shared Gateway, wildcard TLS from cert-manager via Let's Encrypt DNS-01 |
-| **DNS** | external-dns syncing records to Cloudflare, CoreDNS split-horizon so in-cluster pods resolve the same hostnames internally, AdGuard Home as the LAN resolver |
+| **DNS** | external-dns syncing records to Cloudflare, CoreDNS split-horizon so in-cluster pods resolve the same hostnames internally |
 | **Storage** | NFS-backed dynamic provisioning from a TrueNAS server, CloudNativePG for Postgres |
 | **Networking** | kube-vip for the control-plane VIP and LoadBalancer addresses, Tailscale operator for private access |
 | **Observability** | kube-prometheus-stack, with Proxmox and TrueNAS metrics fed in through a graphite exporter |

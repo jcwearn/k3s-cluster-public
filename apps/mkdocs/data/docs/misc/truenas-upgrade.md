@@ -189,11 +189,8 @@ done
 ```
 
 > **Note**
-> **AdGuard stays running.** Its three StatefulSets have NFS volumes, but only `/opt/adguardhome/work`
-> — the query log and stats — is on the NAS. The config is not, so DNS resolution does not depend on
-> the NAS being up, and taking DNS away from the whole house for the window costs more than the
-> exposure is worth. Worst case a pod wedges on a blocked query-log write and needs restarting in
-> step 6. Set a fallback resolver on your workstation anyway.
+> LAN DNS does not go through the cluster (the UDM Pro forwards to NextDNS), so the window
+> costs nothing on that front. Internal hostnames still resolve through the tailnet.
 
 Nothing else here needs DNS: `kubectl` reaches the API server through the kube-vip VIP by address,
 and the NAS is reached at `${LAN_PREFIX}.200` directly.
@@ -313,9 +310,7 @@ Then, in the UI and the cluster:
           print(i["metadata"]["namespace"], i["metadata"]["name"])'
   ```
 
-  Then confirm PVCs are `Bound`, pods are `Running`, and let a Time Machine backup complete. If an
-  AdGuard pod wedged on a blocked query-log write, `kubectl -n adguardhome rollout restart sts`
-  clears it.
+  Then confirm PVCs are `Bound`, pods are `Running`, and let a Time Machine backup complete.
 - **A fresh mount succeeds.** Every workload scaled back up above remounts the export from
   nothing, so the deployments reaching Ready is itself the proof that it came back usable.
 

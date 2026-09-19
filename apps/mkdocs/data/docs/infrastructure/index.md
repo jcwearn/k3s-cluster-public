@@ -19,7 +19,7 @@ Helm values, and any cluster-specific tweaks.
 | **Tailscale Operator** | Publishes any Service onto the Tailnet with a single annotation. | [Read more](tailscale-operator.md) |
 | **TrueNAS** | External NAS system providing network storage and data management services. | [Read more](truenas.md) |
 | **TrueNAS Monitoring** | Prometheus metrics, Grafana dashboards, and alerts for TrueNAS via Graphite exporter. | [Read more](truenas-monitoring.md) |
-| **DNS Monitoring** | Blackbox DNS probes and alerts for the AdGuard resolvers and the resolvers they fall back to. | [Read more](dns-monitoring.md) |
+| **DNS Monitoring** | Blackbox DNS probes and alerts for the UDM Pro resolver, with a public control. | [Read more](dns-monitoring.md) |
 | **Proxmox Monitoring** | PVE exporter + node_exporter metrics, Grafana dashboards, and alerts for Proxmox hypervisors. | [Read more](proxmox-monitoring.md) |
 | **EOL Monitoring** | Tracks major-version support windows for Proxmox VE, Debian, Ubuntu and Kubernetes, and alerts before one runs out. | [Read more](eol-monitoring.md) |
 | **Postgres Backups** | Nightly base backups and WAL archiving for the CloudNativePG clusters, off-site to Cloudflare R2, with a tested restore runbook. | [Read more](postgres-backups.md) |

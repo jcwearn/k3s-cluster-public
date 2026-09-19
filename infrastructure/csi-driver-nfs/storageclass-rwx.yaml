@@ -1,7 +1,7 @@
-# The cluster default. Twelve claims omit storageClassName entirely and rely on
-# the annotation below -- three AdGuard, four ebooks, immich-library, two ntfy,
-# uptime-kuma, and Jellyfin's chart-generated config claim -- so it is
-# load-bearing, not decorative.
+# The cluster default. Nine claims omit storageClassName entirely and rely on
+# the annotation below -- four ebooks, immich-library, two ntfy, uptime-kuma,
+# and Jellyfin's chart-generated config claim -- so it is load-bearing, not
+# decorative.
 #
 # subDir reproduces nfs-subdir's default layout exactly, so the directories
 # already on the share keep their names and a converted volume needs no rename.

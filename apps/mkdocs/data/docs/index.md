@@ -50,7 +50,6 @@ of the cluster.
 ```text
 .
 ├── apps/
-│   ├── adguardhome/        # DNS resolver & ad blocker
 │   ├── ansible/            # Ansible Runner CronJobs (infra automation)
 │   ├── ebooks/             # E-book library (Calibre-Web + Calibre)
 │   ├── headlamp/           # Kubernetes dashboard
@@ -126,7 +125,6 @@ FluxCD watches `clusters/prod/` and recursively applies everything under `apps/`
 
 | App | Type | Notes |
 |-----|------|-------|
-| **AdGuard Home** | 3 × StatefulSet + PVC | Local DNS / DoH / DoT resolver (one per node) |
 | **Ansible Runner** | CronJob | Automated infrastructure management |
 | **Ebooks** | Deployment + PVC | Calibre-Web + Calibre e-book library |
 | **Headlamp** | Deployment | Kubernetes dashboard |

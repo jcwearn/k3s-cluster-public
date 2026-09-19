@@ -16,8 +16,6 @@ configMapGenerator:
     files:
       - data/docs/apps/index.md
       - data/docs/apps/ansible.md
-      - data/docs/apps/adguardhome.md
-      - data/docs/apps/adguardhome-sync.md
       - data/docs/apps/homeassistant.md
       - data/docs/apps/homepage.md
       - data/docs/apps/immich.md

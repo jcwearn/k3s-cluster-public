@@ -1,31 +1,31 @@
 # Diagnosing a Blocked Domain
 
-When an app or a site half-loads, hangs on a spinner, or works only with Tailscale
-switched off, the cause is usually a DNS blocklist. This is the procedure for finding
-*which* name is being blocked and unblocking it without loosening the filter.
+When an app or a site half-loads or hangs on a spinner, the cause is usually a DNS
+blocklist. This is the procedure for finding *which* name is being blocked and unblocking
+it without loosening the filter.
 
 ## Know which resolver answered
 
-There is no single query log any more. Since the tailnet's global nameserver moved off
-the cluster, where a lookup is recorded depends on how the device was connected:
+Every path ends at the same NextDNS profile; where a lookup is recorded depends only on
+how the device was connected:
 
 | Device is… | Resolver | Query log |
 |---|---|---|
 | On the tailnet (anywhere, including cellular) | NextDNS profile, over DoH | NextDNS console → **Logs** |
-| On the LAN, Tailscale off, Default/Home Lab network | AdGuard Home (`${LAN_PREFIX}.2/.102/.103`) | AdGuard web UI |
-| On Guest/IoT/NoT/Protect networks | UDM Pro → NextDNS over DoH | NextDNS, attributed to the gateway |
+| On the LAN, Tailscale off, any network | UDM Pro → NextDNS over DoH | NextDNS, attributed to the gateway |
 | Off-network entirely, Tailscale off | Carrier or café resolver | nowhere |
 
-The first two rows are the ones that matter for "it works with Tailscale off": that
-sentence means *AdGuard allows it and NextDNS blocks it*, which is a real and expected
-gap. AdGuard runs `AdGuard DNS filter` + `HaGeZi Pro` + `HaGeZi TIF`; NextDNS runs
-`AdGuard DNS filter` + `HaGeZi Multi PRO` plus its own Security and Privacy toggles, and
-the two are equivalent in intent but not domain-for-domain.
+Until 2026-09-19 the LAN had its own resolver, AdGuard Home, running an equivalent but not
+identical filter set. "It works with Tailscale off" then meant *AdGuard allows it and
+NextDNS blocks it*, and the worked examples below were found that way. With AdGuard
+retired that symptom no longer points at the filter: on the LAN with Tailscale off the
+same profile answers, and `*.${DOMAIN}` does not resolve at all. It points at exit-node
+routing or MTU (step 1).
 
 NextDNS ran a third list, `NextDNS Ads & Trackers Blocklist`, until it was removed as the
-cause of the anti-adblock walls documented below. If a future investigation finds a
-NextDNS-only block, check first whether a list has been added back that AdGuard does not
-run — that asymmetry is where this class of gap lives.
+cause of the anti-adblock walls documented below. If a future investigation finds an
+over-broad block, check first whether a list has been added back — that is where this
+class of gap lived.
 
 ## Procedure
 
@@ -60,8 +60,8 @@ cannot present a valid certificate for someone else's domain — so on a practic
 all-HTTPS web it almost never displays as intended anyway. What it reliably produces is
 certificate errors and hangs.
 
-This is also why AdGuard never produced this class of failure: it answers blocked names
-with `0.0.0.0`.
+AdGuard Home never produced this class of failure — it answered blocked names with
+`0.0.0.0` — which is why the LAN never saw it while it was the LAN resolver.
 
 ### 3. Read the NextDNS log
 
@@ -118,14 +118,10 @@ done
 Keep one domain you know is fine and one you know is blocked in the list as controls, so
 an empty answer means "blocked" and not "script broken".
 
-**Where AdGuard fits, and where it does not.** AdGuard is *not* in the tailnet's chain —
-tailnet DNS goes straight to NextDNS over DoH. It is only worth consulting for the
-specific symptom "works with Tailscale off", where adding a
-`dig +short @${LAN_PREFIX}.2 "$d"` column locates the NextDNS-only delta, because that
-symptom *means* AdGuard allows what NextDNS blocks. Once the culprit is known its opinion
-is irrelevant. In particular, when narrowing an over-broad allowlist, toggle each entry
-off and query NextDNS alone: what a different blocklist thinks is not evidence about what
-the app needs.
+When narrowing an over-broad allowlist, toggle each entry off and query NextDNS alone:
+what a different blocklist thinks is not evidence about what the app needs. (The second
+resolver that used to provide that comparison, AdGuard Home, is gone; NextDNS is the only
+opinion that matters now.)
 
 ### 6. Allowlist narrowly, and only as a last resort
 
@@ -143,21 +139,6 @@ evidence that the app needs it. Enable entries one at a time against a reproduct
 If an allowlist entry does not take effect, the block came from a **Security** or
 **Privacy** toggle rather than a list. The attribution from step 3 names it; the only
 fix is turning that one toggle off.
-
-### 7. Decide whether AdGuard needs the same entry
-
-Only if step 5 showed AdGuard blocking the domain too. AdGuard's config is in Git and
-its web UI is ephemeral — the rendered config lands in an `emptyDir` and is re-derived
-from the ConfigMap on every restart — so the entry must go in
-`apps/adguardhome/data/AdGuardHome.yaml` under `user_rules`, in AdGuard syntax:
-
-```yaml
-user_rules:
-  - "@@||securepubads.g.doubleclick.net^"
-```
-
-Most of the time this step is a no-op: if the symptom was "works with Tailscale off",
-AdGuard was already allowing it.
 
 ## Worked example: Wordle in the NYT Games app
 
@@ -178,8 +159,8 @@ blocked.
 Publisher Tag host, which shares no substring with "nytimes" and never appeared in that
 search. The post-game stats screen renders an ad slot and would not finish without it.
 
-**But it did not need allowlisting either.** AdGuard blocks that same domain, returning
-`0.0.0.0`, and the app had always worked fine on the LAN. Both resolvers blocked it; only
+**But it did not need allowlisting either.** AdGuard Home, then the LAN resolver, blocked
+that same domain, returning `0.0.0.0`, and the app had always worked fine on the LAN. Both resolvers blocked it; only
 one caused a hang. The difference was the block page: NextDNS was answering with a real
 address, so the app opened a connection, failed TLS, and waited. Turning the block page
 off made the block fail instantly, the app took its error path, and the puzzle rendered
@@ -218,8 +199,8 @@ resolve through the same NextDNS profile.
 is still empty, and no ad blocking was lost.**
 
 **The measurement that located it.** Because the symptom was "works with Tailscale off",
-step 5's AdGuard column applies. Querying both resolvers side by side separated two
-categories that look identical from the browser:
+the LAN resolver of the day (AdGuard Home) could be queried alongside NextDNS. Side by
+side, the two separated two categories that look identical from the browser:
 
 | Domain | AdGuard | NextDNS (before) |
 |---|---|---|

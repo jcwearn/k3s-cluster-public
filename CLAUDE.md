@@ -32,7 +32,6 @@ infrastructure/          # Cluster infrastructure components
   └── tailscale-operator/ # Private VPN network overlay
 
 apps/                    # User-facing applications
-  ├── adguardhome/       # DNS resolver & ad blocker
   ├── ansible/           # Ansible Runner CronJobs (infra automation)
   ├── ebooks/            # E-book library (Calibre-Web + Calibre)
   ├── headlamp/          # Kubernetes dashboard

@@ -7,8 +7,6 @@ of the stack.
 | App | Purpose | Docs |
 |-----|---------|------|
 | **Ansible** | Automated server updates via CronJob-driven Ansible playbooks. | [Read more](ansible.md) |
-| **AdGuard Home** | Network-wide DNS resolver with ad-blocking and DoT/DoH. | [Read more](adguardhome.md) |
-| **AdGuard Sync** | Tool for synchronizing AdGuardHome config to replica instances.  | [Read more](adguardhome-sync.md) |
 | **Home Assistant** | Home-automation hub (runs off-cluster, proxied via Ingress). | [Read more](homeassistant.md) |
 | **Homepage** | Service dashboard & link hub. | [Read more](homepage.md) |
 | **Immich** | Self-hosted photo and video backup solution with AI features. | [Read more](immich.md) |

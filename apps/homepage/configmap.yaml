@@ -131,18 +131,6 @@ data:
             href: https://home.${DOMAIN}/
             description: Home Assistant is a free and open-source software platform that serves as a central hub for controlling and automating smart home devices
             icon: sh-home-assistant-light.webp
-        - AdGuard Home:
-            href: https://dns.${DOMAIN}/
-            description: AdGuard Home is a network-wide software for blocking ads & tracking
-            icon: sh-adguard-home-light.webp
-        - AdGuard Home (Secondary):
-            href: https://dns-secondary.${DOMAIN}/
-            description: Secondary AdGuard Home instance for redundant DNS ad-blocking
-            icon: sh-adguard-home-light.webp
-        - AdGuard Home (Tertiary):
-            href: https://dns-tertiary.${DOMAIN}/
-            description: Tertiary AdGuard Home instance for redundant DNS ad-blocking
-            icon: sh-adguard-home-light.webp
         - Router:
             href: https://router.${DOMAIN}/
             description: UniFi Dream Machine Pro is an all-in-one enterprise network appliance

@@ -43,7 +43,7 @@ Facts, as of the date at the bottom of the page. Each row links to the phase tha
 
 | Item | State |
 | --- | --- |
-| `securityContext` | Every raw workload runs as non-root with `seccompProfile: RuntimeDefault`, `allowPrivilegeEscalation: false` and every capability dropped, except the ones in the next row. Low ports (AdGuard's 53, the nginx frontends' 80) come from the `net.ipv4.ip_unprivileged_port_start` sysctl, not a capability. `kube-linter` refuses a new workload without this |
+| `securityContext` | Every raw workload runs as non-root with `seccompProfile: RuntimeDefault`, `allowPrivilegeEscalation: false` and every capability dropped, except the ones in the next row. Low ports (the nginx frontends' 80) come from the `net.ipv4.ip_unprivileged_port_start` sysctl, not a capability. `kube-linter` refuses a new workload without this |
 | ServiceAccounts | `automountServiceAccountToken: false` on every pod that does not talk to the API server. The ones that do (homepage, withjoy-exporter, the ansible CronJobs, kube-vip, system-upgrade) have their own accounts and Roles |
 | `cluster-admin` | One binding, to `headlamp-admin`, a ServiceAccount with no stored token: write sessions in Headlamp use a token minted for a few hours. Headlamp's own account holds `view` |
 | Still root, with a reason | The s6 images that start as root and drop to PUID themselves (calibre-web, shelfmark, paperless-ngx); the ansible CronJobs, which read a root-owned `0400` SSH key; gluetun (`NET_ADMIN`/`NET_RAW` for the tunnel); kube-vip (`hostNetwork`, ARP); csi-driver-nfs and the system-upgrade Jobs (privileged by nature). Each carries an `ignore-check.kube-linter.io/…` annotation saying so; that list is the exception list |

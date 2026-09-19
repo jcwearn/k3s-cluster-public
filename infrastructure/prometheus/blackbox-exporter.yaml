@@ -1,6 +1,5 @@
-# DNS reachability probes. Before this, an AdGuard outage surfaced only as
-# KubernetesPodNotHealthy after 10 minutes, and only if the pods actually entered a bad
-# phase -- a running-but-wedged resolver paged nobody at all.
+# DNS reachability probes. Before this, a resolver outage surfaced only through the
+# apps that depended on it -- a running-but-wedged resolver paged nobody at all.
 apiVersion: v1
 kind: ConfigMap
 metadata:
@@ -9,20 +8,7 @@ metadata:
 data:
   blackbox.yml: |
     modules:
-      # For the AdGuard instances. Queries a rewrite, which is answered from local config
-      # with no upstream involved, so this probe stays green during an ISP outage and only
-      # goes red when the resolver itself is genuinely not answering.
-      dns_local_rewrite:
-        prober: dns
-        timeout: 5s
-        dns:
-          transport_protocol: udp
-          preferred_ip_protocol: ip4
-          query_name: router
-          query_type: A
-          valid_rcodes:
-            - NOERROR
-      # For forwarding resolvers -- the UDM Pro fallback and the public control target.
+      # For forwarding resolvers -- the UDM Pro and the public control target.
       # A public name is the right question to ask something whose job is to forward.
       dns_public:
         prober: dns

@@ -76,8 +76,7 @@ port, because every node can forward.
 
 The cost of `Cluster` is the real client address: Envoy sees the node IP instead. Nothing in this
 cluster consumes it — there is no `clientIPDetection` and no address-based `SecurityPolicy` — and
-tailnet traffic is already SNATed by the proxy pod. The AdGuard Services make the same trade for
-the same reason.
+tailnet traffic is already SNATed by the proxy pod.
 
 ---
 

@@ -28,7 +28,7 @@ spec:
     # tailscale-operator, not tailscale-connector: the per-Service expose proxies are
     # created by the operator watching Services and do not need the Connector. Depending
     # on the Connector meant an unhealthy exit node blocked Flux from redeploying the
-    # apps -- including AdGuard, which is what you would need to fix it.
+    # apps -- including whichever one you would need to fix it.
     - name: tailscale-operator
     - name: csi-driver-nfs
     - name: cloudnative-pg

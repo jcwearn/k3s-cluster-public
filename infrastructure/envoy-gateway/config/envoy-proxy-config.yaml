@@ -25,8 +25,7 @@ spec:
         #
         # Cost is the real client IP, which becomes the node IP. Nothing here consumes it --
         # no clientIPDetection, no address-based SecurityPolicy -- and tailnet traffic is
-        # already SNATed by the proxy pod. Same tradeoff, same reasoning, as the AdGuard
-        # Services.
+        # already SNATed by the proxy pod.
         externalTrafficPolicy: Cluster
         annotations:
           kube-vip.io/loadbalancerIPs: "${LAN_PREFIX}.5"

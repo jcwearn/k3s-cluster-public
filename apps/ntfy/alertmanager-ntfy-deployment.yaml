@@ -28,7 +28,7 @@ spec:
       initContainers:
         - name: move-config
           # nginx purely for the envsubst binary it ships for its own template
-          # feature, the same trick apps/adguardhome uses. The previous alpine
+          # feature. The previous alpine
           # init ran `apk add gettext` on every boot -- a network dependency at
           # the worst moment -- and then chowned as root. The target is an
           # emptyDir, writable by any uid, so neither is needed.
