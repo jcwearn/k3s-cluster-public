@@ -63,8 +63,8 @@ kubectl -n ansible logs -f job/configure-k3s-server-<ts>
 
 For each node in turn it gates on every node Ready and etcd healthy on all three, writes the
 drop-ins, and — only where a file actually changed — restarts k3s, waits for the node to come
-back and etcd to answer on all three, then takes a snapshot named `configure-check` and waits
-for its `ETCDSnapshotFile` to show up with `spec.s3` and `readyToUse: true`. A node that will
+back and etcd to answer on all three, then takes a snapshot named `configure-check`, waits
+for its `ETCDSnapshotFile` to show up with `spec.s3` and `readyToUse: true`, and deletes it again. A node that will
 not come back stops the play there, with the other two holding quorum; `journalctl -u k3s` on
 that node is the first look.
 

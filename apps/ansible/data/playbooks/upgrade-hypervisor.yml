@@ -305,11 +305,32 @@
         - name: Reboot what needs it
           when: (host_reboot | bool or guest_reboot | bool) and not dry_run | bool
           block:
-            - name: Snapshot etcd on {{ guest }} and prune old pre-upgrade snapshots
-              ansible.builtin.shell: |
-                set -e
-                k3s etcd-snapshot save --name pre-upgrade
-                k3s etcd-snapshot prune --name pre-upgrade --snapshot-retention 3
+            - name: Snapshot etcd on {{ guest }}
+              ansible.builtin.command: k3s etcd-snapshot save --name pre-upgrade
+              delegate_to: "{{ guest }}"
+              become: true
+              changed_when: true
+
+            # Not `k3s etcd-snapshot prune --snapshot-retention 3`: that
+            # subcommand reads /etc/rancher/k3s/config.yaml too, where
+            # configure-k3s-server.yml sets etcd-snapshot-retention for the
+            # schedule, and k3s refuses "two forms of the same flag". The
+            # ETCDSnapshotFile objects are the same list the CLI would read;
+            # keep the newest three by name (the suffix is a timestamp) and
+            # delete the rest, which removes the local file and the S3 copy.
+            - name: Find pre-upgrade snapshots on {{ k3s_node }} older than the newest three
+              ansible.builtin.command: "{{ kubectl }} get etcdsnapshotfile -o json"
+              register: snapshot_files
+              changed_when: false
+
+            - name: Prune them
+              ansible.builtin.command: "k3s etcd-snapshot delete {{ item }}"
+              loop: >-
+                {{ ((snapshot_files.stdout | from_json)['items']
+                    | selectattr('spec.nodeName', 'equalto', k3s_node)
+                    | map(attribute='spec.snapshotName')
+                    | select('search', '^pre-upgrade-')
+                    | unique | sort | list)[:-3] }}
               delegate_to: "{{ guest }}"
               become: true
               changed_when: true

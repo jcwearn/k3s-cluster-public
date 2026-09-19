@@ -147,15 +147,12 @@
           delegate_to: localhost
           become: false
 
-        # The proof that the drop-in works is an upload, not a log line. A
-        # named snapshot is taken through the same path the schedule uses,
-        # then pruned back to one so these do not accumulate across runs
-        # (retention only counts the scheduled ones).
+        # The proof that the drop-in works is an upload, not a log line: a
+        # named snapshot through the same path the schedule uses. Not pruned
+        # with `k3s etcd-snapshot prune`, which reads the drop-in's retention
+        # and refuses a second value; it is deleted by name once confirmed.
         - name: Snapshot etcd on {{ inventory_hostname }} through the new configuration
-          ansible.builtin.shell: |
-            set -e
-            k3s etcd-snapshot save --name configure-check
-            k3s etcd-snapshot prune --name configure-check --snapshot-retention 1
+          ansible.builtin.command: k3s etcd-snapshot save --name configure-check
           changed_when: true
 
         - name: Confirm the snapshot from {{ inventory_hostname }} reached the bucket
@@ -175,3 +172,13 @@
                 | list | length > 0
           delegate_to: localhost
           become: false
+
+        - name: Delete the check snapshots again, local and S3
+          ansible.builtin.command: "k3s etcd-snapshot delete {{ item }}"
+          loop: >-
+            {{ (snapshot_files.stdout | from_json)['items']
+               | selectattr('spec.nodeName', 'equalto', inventory_hostname)
+               | map(attribute='spec.snapshotName')
+               | select('search', '^configure-check')
+               | unique | list }}
+          changed_when: true
