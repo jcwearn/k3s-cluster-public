@@ -23,7 +23,6 @@ data:
     rewrite name pdf.${DOMAIN} envoy-proxy.envoy-gateway-system.svc.cluster.local
     rewrite name shelfmark.${DOMAIN} envoy-proxy.envoy-gateway-system.svc.cluster.local
     rewrite name tools.${DOMAIN} envoy-proxy.envoy-gateway-system.svc.cluster.local
-    rewrite name uptime.${DOMAIN} envoy-proxy.envoy-gateway-system.svc.cluster.local
     rewrite name ${DOMAIN} envoy-proxy.envoy-gateway-system.svc.cluster.local
     rewrite name withjoy-exporter.${DOMAIN} envoy-proxy.envoy-gateway-system.svc.cluster.local
     # Infrastructure

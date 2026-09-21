@@ -166,7 +166,6 @@ kubectl -n ntfy scale deploy/ntfy-deployment deploy/alertmanager-ntfy-deployment
 kubectl -n open-webui scale deploy/open-webui-redis sts/open-webui --replicas=0
 kubectl -n paperless-ngx scale deploy/paperless-ngx --replicas=0
 kubectl -n prometheus scale deploy/kube-prometheus-stack-grafana --replicas=0
-kubectl -n uptime-kuma scale sts/uptime-kuma --replicas=0
 
 # Prometheus and Alertmanager are operator-managed -- patch the CR
 kubectl -n prometheus patch prometheus kube-prometheus-stack-prometheus --type=merge -p '{"spec":{"replicas":0}}'
@@ -183,7 +182,7 @@ Confirm nothing is left holding a mount before you reboot the NAS:
 
 ```bash
 kubectl get pods -A -o wide | grep -vE 'Running|Completed' ; echo '--- still up on NFS namespaces ---'
-for ns in ebooks immich jellyfin llama-cpp n8n ntfy open-webui paperless-ngx prometheus uptime-kuma; do
+for ns in ebooks immich jellyfin llama-cpp n8n ntfy open-webui paperless-ngx prometheus; do
   kubectl -n $ns get pods --no-headers 2>/dev/null | grep -v Completed
 done
 ```

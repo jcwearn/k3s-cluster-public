@@ -67,7 +67,6 @@ of the cluster.
 │   ├── open-webui/         # Chat UI for LLMs
 │   ├── renovate/           # Dependency update bot (CronJob)
 │   ├── stirling-pdf/       # PDF tools
-│   ├── uptime-kuma/        # Uptime monitoring
 │   ├── withjoy-exporter/   # WithJoy guest list → Google Sheets (CronJob + web trigger)
 │   └── external/
 │       ├── homeassistant/  # Home automation
@@ -142,7 +141,6 @@ FluxCD watches `clusters/prod/` and recursively applies everything under `apps/`
 | **Open WebUI** | Helm | Chat UI for LLMs (backed by llama.cpp) |
 | **Renovate** | CronJob | Automated dependency updates |
 | **Stirling PDF** | Deployment | PDF tools |
-| **Uptime Kuma** | Deployment + PVC | Uptime monitoring |
 | **WithJoy Exporter** | CronJob + Deployment | Daily WithJoy guest-list export to Google Sheets, with a manual-trigger web UI |
 | **Home Assistant** | ExternalService | Runs on a separate host, exposed through cluster ingress |
 | **Proxmox** | ExternalService | Hypervisor UI, exposed through cluster ingress |

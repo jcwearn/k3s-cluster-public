@@ -1,5 +1,5 @@
-# The cluster default. Nine claims omit storageClassName entirely and rely on
-# the annotation below -- four ebooks, immich-library, two ntfy, uptime-kuma,
+# The cluster default. Eight claims omit storageClassName entirely and rely on
+# the annotation below -- four ebooks, immich-library, two ntfy,
 # and Jellyfin's chart-generated config claim -- so it is load-bearing, not
 # decorative.
 #

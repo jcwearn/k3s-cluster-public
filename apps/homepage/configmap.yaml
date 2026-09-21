@@ -170,10 +170,6 @@ data:
             href: https://grafana.${DOMAIN}/
             description: A multi-platform open source analytics and interactive visualization web application
             icon: sh-grafana-light.webp
-        - Uptime Kuma:
-            href: https://uptime.${DOMAIN}/
-            description: Uptime Kuma is a self-hosted status monitoring solution
-            icon: sh-uptime-kuma-light.webp
   widgets.yaml: |
     - kubernetes:
         cluster:

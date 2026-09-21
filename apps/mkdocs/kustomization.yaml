@@ -31,7 +31,6 @@ configMapGenerator:
       - data/docs/apps/renovate.md
       - data/docs/apps/stirling-pdf.md
       - data/docs/apps/unifi.md
-      - data/docs/apps/uptime-kuma.md
       - data/docs/apps/ebooks.md
       - data/docs/apps/withjoy-exporter.md
       - data/docs/apps/hivemind.md

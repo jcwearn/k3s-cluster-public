@@ -49,7 +49,6 @@ apps/                    # User-facing applications
   ├── open-webui/        # Chat UI for LLMs
   ├── renovate/          # Dependency update bot (CronJob)
   ├── stirling-pdf/      # PDF tools
-  ├── uptime-kuma/       # Uptime monitoring
   ├── withjoy-exporter/  # WithJoy guest list → Google Sheets (CronJob + web trigger)
   └── external/          # Ingress for non-K8s services
       ├── homeassistant/ # Home automation
