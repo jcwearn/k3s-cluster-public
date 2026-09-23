@@ -25,3 +25,15 @@ spec:
       limits:
         cpu: 500m
         memory: 512Mi
+    # flux_resource_info is the only Flux readiness metric Prometheus gets --
+    # the controllers stopped exporting gotk_reconcile_condition in Flux 2.1.
+    # The operator refreshes it when it rebuilds the FluxReport, every 5m by
+    # default. At 5m a one-minute fetch blip caught in one snapshot would sit
+    # in the metric for the full interval and trip a 5m `for:`. At 1m the
+    # metric tracks the GitRepository's own 1m poll.
+    reporting:
+      interval: 1m
+    serviceMonitor:
+      create: true
+      labels:
+        release: kube-prometheus-stack

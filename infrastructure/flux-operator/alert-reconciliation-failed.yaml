@@ -2,12 +2,16 @@
 # `flux get kustomizations` and nowhere else, and a broken merge could sit
 # unapplied for as long as nobody happened to look.
 #
-# Two sources cover everything. Every Kustomization here sets `wait: true`,
-# so a HelmRelease that fails to install or a Deployment that never becomes
-# Ready surfaces as the parent Kustomization's error -- there is no need to
-# enumerate HelmReleases across namespaces. The GitRepository covers the
-# case where Flux cannot fetch at all: an expired GitHub App key, a bad
-# rewrite of main.
+# Kustomizations only. Every Kustomization here sets `wait: true`, so a
+# HelmRelease that fails to install or a Deployment that never becomes Ready
+# surfaces as the parent Kustomization's error -- there is no need to
+# enumerate HelmReleases across namespaces.
+#
+# Not the GitRepository. An event alert cannot wait for a failure to persist,
+# and a fetch fails on its own now and then -- one TLS error against github.com
+# paged even though the next 1m poll succeeded. FluxSourceFailure in
+# infrastructure/prometheus covers the real case (an expired GitHub App key,
+# a bad rewrite of main) after 5m of consecutive failure.
 #
 # Error events only. Info events (every successful apply) would be a push
 # per reconcile per Kustomization, which is how a channel gets muted.
@@ -26,7 +30,5 @@ spec:
   eventSeverity: error
   eventSources:
     - kind: Kustomization
-      name: "*"
-    - kind: GitRepository
       name: "*"
   summary: "Flux reconciliation failed"

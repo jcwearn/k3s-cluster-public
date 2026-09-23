@@ -1530,37 +1530,51 @@ spec:
                   description: "Read the most recent ansible-upgrade-hypervisor Job logs and the system-upgrade Plan status before clearing it. Once the hypervisor and VM are confirmed healthy: kubectl uncordon {{ $labels.node }}."
       flux-reconciliation:
         groups:
+          # flux_resource_info comes from flux-operator, refreshed every minute
+          # (reporting.interval in infrastructure/flux-operator). Its reason and
+          # revision labels change while a failure lasts, and a new series would
+          # restart `for:`, so every rule collapses to one series per object.
+          #
+          # `for:` starts when Prometheus first sees the condition. A fetch blip
+          # clears on the next 1m poll; 5m is five failed polls in a row. Add
+          # about 2m end to end for scrape, evaluation and group_wait.
+          #
+          # A failed Kustomization also pages at once through the Flux event
+          # Alert in infrastructure/flux-operator; the rule here is the backstop
+          # and the only watch on HelmReleases and Helm/OCI sources.
           - name: flux-reconciliation-group
             rules:
+              # 10m rather than 5m: a Kustomization with `wait: true` can report
+              # a health-check failure while a slow rollout is still settling.
               - alert: FluxReconciliationFailure
-                expr: gotk_reconcile_condition{type="Ready", status="False", kind=~"Kustomization|HelmRelease"} == 1
-                for: 15m
+                expr: max by (kind, exported_namespace, name) (flux_resource_info{kind=~"Kustomization|HelmRelease", ready="False", suspended="false"}) == 1
+                for: 10m
                 labels:
                   severity: critical
                 annotations:
-                  summary: "Flux {{ $labels.kind }} {{ $labels.namespace }}/{{ $labels.name }} reconciliation failing"
-                  description: "{{ $labels.kind }} {{ $labels.name }} in namespace {{ $labels.namespace }} has not reconciled successfully for more than 15 minutes."
+                  summary: "Flux {{ $labels.kind }} {{ $labels.exported_namespace }}/{{ $labels.name }} reconciliation failing"
+                  description: "{{ $labels.kind }} {{ $labels.name }} in namespace {{ $labels.exported_namespace }} has not reconciled successfully for more than 10 minutes."
               - alert: FluxReconciliationStalled
-                expr: gotk_reconcile_condition{type="Ready", status="Unknown", kind=~"Kustomization|HelmRelease"} == 1
+                expr: max by (kind, exported_namespace, name) (flux_resource_info{kind=~"Kustomization|HelmRelease", ready="Unknown", suspended="false"}) == 1
                 for: 30m
                 labels:
                   severity: warning
                 annotations:
-                  summary: "Flux {{ $labels.kind }} {{ $labels.namespace }}/{{ $labels.name }} reconciliation stalled"
-                  description: "{{ $labels.kind }} {{ $labels.name }} in namespace {{ $labels.namespace }} has been in Unknown state for more than 30 minutes."
+                  summary: "Flux {{ $labels.kind }} {{ $labels.exported_namespace }}/{{ $labels.name }} reconciliation stalled"
+                  description: "{{ $labels.kind }} {{ $labels.name }} in namespace {{ $labels.exported_namespace }} has been in Unknown state for more than 30 minutes."
               - alert: FluxSourceFailure
-                expr: gotk_reconcile_condition{type="Ready", status="False", kind=~"GitRepository|HelmRepository|OCIRepository|Bucket"} == 1
-                for: 15m
+                expr: max by (kind, exported_namespace, name) (flux_resource_info{kind=~"GitRepository|HelmRepository|OCIRepository|Bucket", ready="False", suspended="false"}) == 1
+                for: 5m
                 labels:
                   severity: critical
                 annotations:
-                  summary: "Flux source {{ $labels.namespace }}/{{ $labels.name }} failing"
-                  description: "{{ $labels.kind }} {{ $labels.name }} in namespace {{ $labels.namespace }} has failed to fetch for more than 15 minutes."
+                  summary: "Flux source {{ $labels.exported_namespace }}/{{ $labels.name }} failing"
+                  description: "{{ $labels.kind }} {{ $labels.name }} in namespace {{ $labels.exported_namespace }} has failed to fetch for more than 5 minutes."
               - alert: FluxSuspendedTooLong
-                expr: gotk_suspend_status == 1
+                expr: max by (kind, exported_namespace, name) (flux_resource_info{suspended="true"}) == 1
                 for: 24h
                 labels:
                   severity: warning
                 annotations:
-                  summary: "Flux {{ $labels.kind }} {{ $labels.namespace }}/{{ $labels.name }} suspended for >24h"
-                  description: "{{ $labels.kind }} {{ $labels.name }} in namespace {{ $labels.namespace }} has been suspended for more than 24 hours. This may be intentional, but verify it wasn't forgotten."
+                  summary: "Flux {{ $labels.kind }} {{ $labels.exported_namespace }}/{{ $labels.name }} suspended for >24h"
+                  description: "{{ $labels.kind }} {{ $labels.name }} in namespace {{ $labels.exported_namespace }} has been suspended for more than 24 hours. This may be intentional, but verify it wasn't forgotten."
