@@ -30,7 +30,7 @@ spec:
               type: RuntimeDefault
           initContainers:
             - name: github-app-installation-token
-              image: ghcr.io/mshekow/github-app-installation-token:2026.09.10@sha256:ce05179657bd6eccb0745cfd0b48a339e63076299055b6e64f22cc824883e323
+              image: ghcr.io/mshekow/github-app-installation-token:2026.09.21@sha256:76f2842b6746fec26d40d9aed2edcc76b923d14c4091f385839f44df59ca6da2
               imagePullPolicy: IfNotPresent
               command: ["/bin/sh", "-c"]
               args:
@@ -59,7 +59,7 @@ spec:
                     - ALL
           containers:
             - name: renovate-bot
-              image: renovate/renovate:44.103.6-full@sha256:305980672bec54a6b276b83407c80836c1d6f19b4d7a3c3cb162eef06eff630a
+              image: renovate/renovate:44.115.2-full@sha256:471d343bb957983de962e032cbfff6d6a78b1f974772785c5b34d43d264f8a9d
               command: ["/bin/sh", "-c"]
               args:
                 - >
