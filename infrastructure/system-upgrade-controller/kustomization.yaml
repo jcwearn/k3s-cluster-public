@@ -3,7 +3,7 @@ kind: Kustomization
 # crd.yaml and controller.yaml are vendored verbatim from the upstream release
 # assets so that re-vendoring is a clean overwrite rather than a merge:
 #
-#   V=v0.20.1
+#   V=v0.20.2
 #   curl -sfL https://github.com/rancher/system-upgrade-controller/releases/download/$V/crd.yaml \
 #     -o infrastructure/system-upgrade-controller/crd.yaml
 #   curl -sfL https://github.com/rancher/system-upgrade-controller/releases/download/$V/system-upgrade-controller.yaml \
