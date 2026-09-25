@@ -13,7 +13,8 @@
 # volumes[].image.reference form the ansible CronJobs use.
 #
 # The allowlist exists so that this can be turned on before every image is
-# pinned. Each line is one exact image reference. Emptying the file is a goal
+# pinned. Each line is one exact image reference, or `repo:*` for any tag of
+# that repo. Emptying the file is a goal
 # of docs/plans/cluster-hardening, not a permanent state.
 #
 set -euo pipefail
@@ -43,6 +44,7 @@ while read -r ref; do
   esac
   for a in "${allowed[@]:-}"; do
     [ "$ref" = "$a" ] && continue 2
+    [[ "$a" == *':*' && "$ref" == "${a%\*}"* ]] && continue 2
   done
   echo "unpinned image: $ref" >&2
   fail=1
