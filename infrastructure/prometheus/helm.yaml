@@ -269,6 +269,13 @@ spec:
         # ntfy message, and either replica can send it alone.
         replicas: 2
         podAntiAffinity: hard
+        # The notification log is how Alertmanager knows an alert was already
+        # sent. It has to outlive the longest repeat_interval (168h on the
+        # Release/Eol route); with the chart's default 120h, the entry expired
+        # first and those alerts re-sent about every five days instead of
+        # weekly. 192h leaves a day of margin rather than expiring at the same
+        # moment the repeat is due.
+        retention: 192h
         # Max working set over 27 days was 25 MiB.
         resources:
           requests:
