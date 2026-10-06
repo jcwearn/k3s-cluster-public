@@ -1,0 +1,41 @@
+---
+# Playbook to load kvm_amd at boot on the Proxmox hosts.
+#
+# Nothing on these hosts asks for kvm_amd by name; the kernel autoloads it from
+# the CPU's svm modalias, and on 2026-10-06 that did not happen. All three hosts
+# cold-booted after a power cut, and pve-03 came up with SVM enabled in firmware
+# (VM_CR.SVMDIS=0), the module on disk, and no kvm_amd loaded and no error
+# logged. onboot then failed to start VM 301 with "KVM virtualisation
+# configured, but not available. Either disable in VM configuration or enable
+# in BIOS", and k3s-03 stayed down until a hand-run modprobe. Listing the module
+# in modules-load.d makes systemd-modules-load load it on every boot, before
+# pve-guests runs, whether or not the autoload fires.
+#
+# Run manually:
+#   kubectl create job -n ansible \
+#     --from=cronjob/ansible-configure-proxmox-kvm \
+#     ansible-configure-proxmox-kvm-$(date +%s)
+
+- name: Load kvm_amd at boot on the Proxmox hosts
+  hosts: proxmox
+  become: true
+  gather_facts: false
+
+  tasks:
+    - name: List kvm_amd in modules-load.d
+      ansible.builtin.copy:
+        dest: /etc/modules-load.d/kvm.conf
+        mode: "0644"
+        content: |
+          # Managed by Ansible (configure-proxmox-kvm.yml)
+          kvm_amd
+
+    - name: Load it now
+      ansible.builtin.command: modprobe kvm_amd
+      changed_when: false
+
+    - name: Check /dev/kvm exists
+      ansible.builtin.stat:
+        path: /dev/kvm
+      register: dev_kvm
+      failed_when: not dev_kvm.stat.exists or not dev_kvm.stat.ischr

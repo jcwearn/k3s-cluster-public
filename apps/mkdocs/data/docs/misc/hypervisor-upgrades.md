@@ -130,10 +130,16 @@ show three appear at the start and vanish at the end.
    (`qm status <vmid>` on the host), that k3s is up on it, that `/healthz/etcd` answers `ok` on all
    three node IPs, and only then `kubectl uncordon k3s-0N`. Drain is idempotent; re-running the Job
    is safe once the cause is understood.
-4. **Failed with the VM stopped and the host unreachable** — the host did not come back from its
+4. **VM stopped, host up, and the start task says "KVM virtualisation configured, but not
+   available. Either disable in VM configuration or enable in BIOS"** — ignore the BIOS part.
+   Check `lsmod | grep kvm_amd` on the host; if it is missing, `modprobe kvm_amd && qm start
+   <vmid>`. pve-03 came up this way after the 2026-10-06 power cut, with SVM enabled in firmware.
+   `configure-proxmox-kvm.yml` now loads the module from `/etc/modules-load.d/kvm.conf`, so
+   seeing this again means that file is missing.
+5. **Failed with the VM stopped and the host unreachable** — the host did not come back from its
    reboot. There is no IPMI; this is a trip to the machine. The other two hosts hold quorum and
    the cluster is running on two nodes until it returns.
-5. **Silences**: expire on their own at two hours. If the run died hard and you are working on the
+6. **Silences**: expire on their own at two hours. If the run died hard and you are working on the
    host for longer, extend one in the Alertmanager UI rather than living with the pages.
 
 ## What it will not do

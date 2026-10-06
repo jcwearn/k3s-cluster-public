@@ -11,6 +11,7 @@ resources:
   - cronjob-configure-k3s-shutdown.yaml
   - cronjob-configure-node-sysctl.yaml
   - cronjob-configure-lvm-thin-metrics.yaml
+  - cronjob-configure-proxmox-kvm.yaml
   - cronjob-configure-k3s-server.yaml
   - cronjob-enable-secrets-encryption.yaml
   - secrets.sops.yaml
@@ -26,6 +27,7 @@ configMapGenerator:
       - data/playbooks/configure-k3s-shutdown.yml
       - data/playbooks/configure-node-sysctl.yml
       - data/playbooks/configure-lvm-thin-metrics.yml
+      - data/playbooks/configure-proxmox-kvm.yml
       - data/playbooks/configure-k3s-server.yml
       - data/playbooks/enable-secrets-encryption.yml
       - data/tasks/restart-k3s.yml
