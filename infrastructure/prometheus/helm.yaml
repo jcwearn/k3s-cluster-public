@@ -51,6 +51,22 @@ spec:
   values:
     prometheus:
       prometheusSpec:
+        # Two replicas on two different nodes, so losing a node can never take
+        # down every copy of the alerting path. On 2026-10-06 the single
+        # Prometheus and the single Alertmanager were both on k3s-03 when it
+        # lost power. Nothing evaluated or sent for 25 minutes, and only the
+        # external Watchdog paged. Each replica scrapes and evaluates on its
+        # own, and the operator drops the prometheus_replica label from alerts
+        # so Alertmanager deduplicates them. Each one gets its own PVC from
+        # storageSpec below, so the second replica starts with empty history
+        # and catches up over the 30-day retention.
+        #
+        # The chart's default "soft" anti-affinity only spreads replicas of
+        # the same component, which is how both singletons ended up on one
+        # node. "hard" is safe with two replicas on three nodes: a drained
+        # node's pod always has a free node to move to.
+        replicas: 2
+        podAntiAffinity: hard
         # Until 2026-08-20 the TSDB was on an emptyDir, so every pod restart
         # took the history with it -- which is how a capacity question went
         # unanswerable during the follow-up #3 investigation.
@@ -172,6 +188,13 @@ spec:
           tailscale.com/expose: "true"
           tailscale.com/hostname: "prometheus"
           kube-vip.io/loadbalancerIPs: "${LAN_PREFIX}.3"
+        # The two replicas hold different histories: different gaps, and a
+        # younger second replica for its first 30 days. Pinning each client to
+        # one replica stops Grafana panels from changing between refreshes.
+        # This covers Grafana's datasource and the LoadBalancer. Envoy routes
+        # to endpoints directly and ignores it; backend-traffic-policy.yaml
+        # does the same job for prometheus.${DOMAIN}.
+        sessionAffinity: ClientIP
       ingress:
         enabled: false
     alertmanager:
@@ -240,6 +263,12 @@ spec:
               - url: "https://hc-ping.com/placeholder"
                 send_resolved: false
       alertmanagerSpec:
+        # Two replicas on two different nodes; see prometheusSpec for the
+        # reason. The operator configures them as a cluster: they share
+        # silences and the notification log, so one alert still sends one
+        # ntfy message, and either replica can send it alone.
+        replicas: 2
+        podAntiAffinity: hard
         # Max working set over 27 days was 25 MiB.
         resources:
           requests:

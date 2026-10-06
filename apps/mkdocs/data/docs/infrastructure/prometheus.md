@@ -61,8 +61,29 @@ spec:
 * **Ingress** - `prometheus.${DOMAIN}`, `alerts.${DOMAIN}` and `grafana.${DOMAIN}` are served by
   **Envoy Gateway** via `infrastructure/prometheus/httproute.yaml`. Every `ingress:` block in the
   HelmRelease is `enabled: false`; the chart's own Ingress support is not used.
-* **Retention & storage** - 30 days, on a 60 GiB PVC from the `truenas-nfs-monitoring` StorageClass.
-  See [Storage](#storage) below.
+* **Retention & storage** - 30 days, on a 60 GiB PVC per replica from the `truenas-nfs-monitoring`
+  StorageClass. See [Storage](#storage) below.
+* **Replicas** - two, required to run on different nodes. See [Availability](#availability).
+
+### Availability
+
+Prometheus and Alertmanager each run two replicas with `podAntiAffinity: hard`, so losing any one
+node leaves at least one of each running. Until 2026-10-06 each was a single pod, and both were on
+k3s-03 when a power cut kept that node down for 25 minutes. Nothing evaluated or sent an alert in that
+time; only the external [dead man's switch](#dead-mans-switch) paged.
+
+* **Alerts** - each Prometheus replica evaluates rules and sends alerts to both Alertmanagers. The
+  operator drops the `prometheus_replica` label from alerts, so the duplicates are identical. The
+  Alertmanagers form a cluster that shares silences and the notification log, so you get one ntfy
+  message per alert.
+* **Queries** - each replica keeps its own TSDB, so their histories differ: each has its own gaps, and
+  a newly created replica starts empty and fills over the 30-day retention. To stop panels changing
+  between refreshes, each client sticks to one replica. The Service has `sessionAffinity: ClientIP`,
+  which covers Grafana and the LoadBalancer. `backend-traffic-policy.yaml` hashes on source IP for
+  `prometheus.${DOMAIN}`. If a dashboard looks short on history, the other replica may have it:
+  `prometheus_tsdb_lowest_timestamp_seconds` shows how far back each one goes.
+* **Pods on a dead node** stay `Terminating` and are not replaced until the node returns. The other
+  replica carries on without them; this is the reason for running two.
 
 ### Key annotations
 
@@ -170,9 +191,9 @@ All three stateful components claim from `truenas-nfs-monitoring`, a dedicated N
 
 | Component | Size | Holds |
 |---|---|---|
-| Prometheus | 60 GiB | the TSDB |
+| Prometheus | 60 GiB × 2 replicas | the TSDB, one per replica |
 | Grafana | 5 GiB | SQLite — preferences, annotations, API keys (dashboards come from ConfigMaps) |
-| Alertmanager | 2 GiB | silences and the notification log |
+| Alertmanager | 2 GiB × 2 replicas | silences and the notification log |
 
 Until 2026-08-20 all three ran on `emptyDir`. Alerts were unaffected, since they evaluate over recent
 windows, but everything cumulative was lost on each pod restart — which is how a capacity question

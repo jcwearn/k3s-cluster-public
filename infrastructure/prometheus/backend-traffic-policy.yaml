@@ -1,0 +1,17 @@
+apiVersion: gateway.envoyproxy.io/v1alpha1
+kind: BackendTrafficPolicy
+metadata:
+  name: prometheus
+  namespace: prometheus
+# Envoy picks endpoints itself, so the Service's sessionAffinity doesn't reach
+# prometheus.${DOMAIN}. Without this, consecutive queries in the UI alternate
+# between two replicas with different histories; see helm.yaml.
+spec:
+  targetRefs:
+    - group: gateway.networking.k8s.io
+      kind: HTTPRoute
+      name: prometheus
+  loadBalancer:
+    type: ConsistentHash
+    consistentHash:
+      type: SourceIP
