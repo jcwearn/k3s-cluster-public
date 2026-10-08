@@ -4,6 +4,9 @@ metadata:
   name: withjoy-exporter-config
   namespace: withjoy-exporter
 data:
+  # Saved browser session, reused so most runs skip the Auth0 login. Lives on
+  # the withjoy-exporter-state PVC mounted into the CronJob.
+  SESSION_STATE_PATH: /state/storage-state.json
   # Pins which columns are taken from WithJoy's CSV, in this order, so a schema
   # change on their end can't shift them (they added "title"/"suffix" and then
   # removed them). A listed column missing from the CSV is written empty rather

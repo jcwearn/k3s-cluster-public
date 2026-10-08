@@ -1,0 +1,15 @@
+# Holds the exporter's saved browser session (SESSION_STATE_PATH) so runs can
+# skip the Auth0 login, which WithJoy throttles. Losing it is harmless: the
+# next run logs in fresh and writes a new one.
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: withjoy-exporter-state
+  namespace: withjoy-exporter
+spec:
+  accessModes:
+    - ReadWriteMany
+  storageClassName: truenas-nfs-rwx
+  resources:
+    requests:
+      storage: 16Mi
