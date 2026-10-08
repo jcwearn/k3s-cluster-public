@@ -28,7 +28,9 @@ A small always-on Deployment (`withjoy-exporter-web`, same image running
   schedule index.
 * **Run both** — runs the export, then dispatches the workflow only if the
   export succeeded. A failed export would otherwise republish the schedule
-  from a stale or half-written sheet.
+  from a stale or half-written sheet. It also skips the dispatch when the
+  export reports the sheet unchanged (read from the pod's termination
+  message, hence the Role's `pods` rule); use **Sync schedule** to force one.
 
 The chain runs on a background thread, so closing the browser tab doesn't
 abandon it; its state is in memory, so restarting the pod mid-chain loses it.

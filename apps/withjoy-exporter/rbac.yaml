@@ -16,6 +16,12 @@ rules:
   - apiGroups: ["batch"]
     resources: ["jobs"]
     verbs: ["get", "list", "create"]
+  # "Run both" reads the finished export pod's termination message (changed /
+  # unchanged) and skips the schedule sync when the sheet didn't change.
+  # Without this it falls back to always dispatching.
+  - apiGroups: [""]
+    resources: ["pods"]
+    verbs: ["get", "list"]
 ---
 apiVersion: rbac.authorization.k8s.io/v1
 kind: RoleBinding
