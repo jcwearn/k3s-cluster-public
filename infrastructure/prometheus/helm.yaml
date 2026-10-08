@@ -1583,7 +1583,7 @@ spec:
               # 10m rather than 5m: a Kustomization with `wait: true` can report
               # a health-check failure while a slow rollout is still settling.
               - alert: FluxReconciliationFailure
-                expr: max by (kind, exported_namespace, name) (flux_resource_info{kind=~"Kustomization|HelmRelease", ready="False", suspended="false"}) == 1
+                expr: max by (kind, exported_namespace, name) (flux_resource_info{kind=~"Kustomization|HelmRelease", ready="False", suspended="False"}) == 1
                 for: 10m
                 labels:
                   severity: critical
@@ -1591,7 +1591,7 @@ spec:
                   summary: "Flux {{ $labels.kind }} {{ $labels.exported_namespace }}/{{ $labels.name }} reconciliation failing"
                   description: "{{ $labels.kind }} {{ $labels.name }} in namespace {{ $labels.exported_namespace }} has not reconciled successfully for more than 10 minutes."
               - alert: FluxReconciliationStalled
-                expr: max by (kind, exported_namespace, name) (flux_resource_info{kind=~"Kustomization|HelmRelease", ready="Unknown", suspended="false"}) == 1
+                expr: max by (kind, exported_namespace, name) (flux_resource_info{kind=~"Kustomization|HelmRelease", ready="Unknown", suspended="False"}) == 1
                 for: 30m
                 labels:
                   severity: warning
@@ -1599,7 +1599,7 @@ spec:
                   summary: "Flux {{ $labels.kind }} {{ $labels.exported_namespace }}/{{ $labels.name }} reconciliation stalled"
                   description: "{{ $labels.kind }} {{ $labels.name }} in namespace {{ $labels.exported_namespace }} has been in Unknown state for more than 30 minutes."
               - alert: FluxSourceFailure
-                expr: max by (kind, exported_namespace, name) (flux_resource_info{kind=~"GitRepository|HelmRepository|OCIRepository|Bucket", ready="False", suspended="false"}) == 1
+                expr: max by (kind, exported_namespace, name) (flux_resource_info{kind=~"GitRepository|HelmRepository|OCIRepository|Bucket", ready="False", suspended="False"}) == 1
                 for: 5m
                 labels:
                   severity: critical
@@ -1607,7 +1607,7 @@ spec:
                   summary: "Flux source {{ $labels.exported_namespace }}/{{ $labels.name }} failing"
                   description: "{{ $labels.kind }} {{ $labels.name }} in namespace {{ $labels.exported_namespace }} has failed to fetch for more than 5 minutes."
               - alert: FluxSuspendedTooLong
-                expr: max by (kind, exported_namespace, name) (flux_resource_info{suspended="true"}) == 1
+                expr: max by (kind, exported_namespace, name) (flux_resource_info{suspended="True"}) == 1
                 for: 24h
                 labels:
                   severity: warning
