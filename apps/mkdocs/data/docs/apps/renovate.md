@@ -93,6 +93,10 @@ Note that `config:best-practices` already enables weekly lock file maintenance (
   repo has branch protection, so the `tofu plan` comment on each PR is the only review gate. On
   truenas-infra the `PjSalty/truenas` provider is pinned exactly on purpose — read the changelog
   and re-run the acceptance checks before merging a bump.
+* `allowedCommands` is granted per repo, inside its `repositories` entry, never globally. Only
+  `jcwearn/hivemind` has one: `go tool templ generate`, run by a `postUpgradeTasks` rule in its own
+  `renovate.json` so a templ bump commits regenerated `*_templ.go` files instead of failing that
+  repo's "templ output is current" check.
 
 ## Cache and job lifecycle
 

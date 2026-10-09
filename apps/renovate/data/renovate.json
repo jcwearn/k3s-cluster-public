@@ -6,7 +6,12 @@
         "jcwearn/cf-worker-email",
         "jcwearn/cloudflare-infra",
         "jcwearn/dotfiles-coder",
-        "jcwearn/hivemind",
+        {
+            "repository": "jcwearn/hivemind",
+            "allowedCommands": [
+                "^go tool templ generate$"
+            ]
+        },
         "jcwearn/homeassistant-config",
         "jcwearn/jackson-wearn",
         "jcwearn/k3s-cluster",
