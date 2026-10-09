@@ -24,7 +24,7 @@ spec:
           type: RuntimeDefault
       containers:
         - name: withjoy-exporter-web
-          image: ghcr.io/jcwearn/withjoy-exporter:v0.6.1@sha256:aacef95401761891462ee08e898bb8cdf822c924e49cc8a6421b263bbeca48bd
+          image: ghcr.io/jcwearn/withjoy-exporter:v0.6.2@sha256:5bf637826e12f712b1a46bf18040bd765d5b81701139e8c7300c252373febf80
           imagePullPolicy: IfNotPresent
           command: ["python", "web.py"]
           ports:
