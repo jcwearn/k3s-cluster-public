@@ -5,6 +5,17 @@ metadata:
 spec:
   statefulSet:
     pod:
+      # The Connector's two replicas must never share a node, or one node going
+      # down takes both and the HA is only on paper. Required, not preferred:
+      # with three nodes, a drained one still leaves room for both.
+      affinity:
+        podAntiAffinity:
+          requiredDuringSchedulingIgnoredDuringExecution:
+            - labelSelector:
+                matchLabels:
+                  tailscale.com/parent-resource: ts-pod-cidrs
+                  tailscale.com/parent-resource-type: connector
+              topologyKey: kubernetes.io/hostname
       dnsPolicy: "None"
       dnsConfig:
         # CoreDNS first, then public fallbacks. containerboot fetches its state Secret

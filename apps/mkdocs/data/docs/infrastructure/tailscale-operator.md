@@ -22,6 +22,16 @@ annotations:
 A Tailscale **Connector** advertises the cluster as an exit node so
 remote clients can route all traffic through the homelab.
 
+### High availability
+
+The Connector runs **two replicas** on different nodes (required pod
+anti-affinity in the ProxyClass), as tailnet devices `k3s-exit-node-0` and
+`k3s-exit-node-1`. Both advertise the same subnet routes, and Tailscale fails
+the routes over to the survivor when one goes offline. A single replica is not
+enough: a StatefulSet pod on an unreachable node is never replaced, so when a
+node dies the route blackholes until the node comes back -- ten hours on
+2026-10-10. Exit nodes do not fail over; a client selects one by name.
+
 ### DNS (ProxyClass `exit-node-dns`)
 
 The exit node pod uses a custom `ProxyClass` that gives it public resolvers
