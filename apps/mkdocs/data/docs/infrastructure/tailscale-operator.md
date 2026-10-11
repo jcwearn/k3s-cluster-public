@@ -46,7 +46,7 @@ The three ProxyClasses share their DNS settings through
 must be approved by hand in the Tailscale admin console; the tailnet has no
 `autoApprovers` for these.
 
-### DNS (ProxyClass `exit-node-dns`)
+### DNS (`proxyclass-dns-patch.yaml`)
 
 The exit node pod uses a custom `ProxyClass` that gives it public resolvers
 and nothing else. The pod resolves one name that matters,
