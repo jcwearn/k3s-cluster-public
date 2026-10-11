@@ -48,6 +48,10 @@ spec:
       name: prometheus-secrets
       valuesKey: HEALTHCHECK_PING_URL
       targetPath: alertmanager.config.receivers[2].webhook_configs[0].url
+    - kind: Secret
+      name: prometheus-secrets
+      valuesKey: SLACK_WEBHOOK_URL
+      targetPath: alertmanager.config.receivers[3].slack_configs[0].api_url
   values:
     prometheus:
       prometheusSpec:
@@ -242,11 +246,29 @@ spec:
             # This is a route, not a receiver. The receivers list below is
             # index-addressed by the valuesFrom block at the top of this file, so
             # inserting into it would silently misroute the ntfy credentials.
+            #
+            # Every alert that goes to ntfy also goes to Slack. On 2026-10-10
+            # ntfy.sh's anonymous quota began answering the self-hosted ntfy's
+            # iOS poll requests with 429 at 03:00, and nothing reached the phone
+            # for seven hours while Alertmanager reported every send a success.
+            # Slack is a second path that shares nothing with that one.
+            # `continue` lets each alert match the Slack sibling after the ntfy
+            # one; the Slack Release/Eol route ends the walk so those alerts
+            # keep the weekly repeat instead of falling through to the 12h one.
             - receiver: "ntfy"
               matchers:
                 - alertname =~ "Release.*|Eol.*"
               repeat_interval: 168h
+              continue: true
+            - receiver: "slack"
+              matchers:
+                - alertname =~ "Release.*|Eol.*"
+              repeat_interval: 168h
             - receiver: "ntfy"
+              matchers:
+                - alertname != "Watchdog"
+              continue: true
+            - receiver: "slack"
               matchers:
                 - alertname != "Watchdog"
         receivers:
@@ -262,6 +284,14 @@ spec:
             webhook_configs:
               - url: "https://hc-ping.com/placeholder"
                 send_resolved: false
+          - name: "slack"
+            slack_configs:
+              - api_url: "https://hooks.slack.com/placeholder"
+                send_resolved: true
+                title: '[{{ .Status | toUpper }}{{ if eq .Status "firing" }}:{{ .Alerts.Firing | len }}{{ end }}] {{ or .CommonLabels.namespace "cluster" }}'
+                text: |-
+                  {{ range .Alerts }}{{ if eq .Status "firing" }}:rotating_light:{{ else }}:white_check_mark:{{ end }} *{{ .Labels.alertname }}*: {{ .Annotations.summary }}
+                  {{ end }}
       alertmanagerSpec:
         # Two replicas on two different nodes; see prometheusSpec for the
         # reason. The operator configures them as a cluster: they share
