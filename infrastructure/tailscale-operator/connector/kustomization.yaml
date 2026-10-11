@@ -3,3 +3,10 @@ kind: Kustomization
 resources:
   - proxyclass.yaml
   - connector.yaml
+  - proxyclass-per-node.yaml
+  - connectors-per-node.yaml
+patches:
+  - path: proxyclass-dns-patch.yaml
+    target:
+      kind: ProxyClass
+      name: exit-node-k3s-0.*

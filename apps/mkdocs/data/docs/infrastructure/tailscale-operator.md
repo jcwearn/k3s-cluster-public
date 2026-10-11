@@ -24,13 +24,27 @@ remote clients can route all traffic through the homelab.
 
 ### High availability
 
-The Connector runs **two replicas** on different nodes (required pod
-anti-affinity in the ProxyClass), as tailnet devices `k3s-exit-node-0` and
-`k3s-exit-node-1`. Both advertise the same subnet routes, and Tailscale fails
-the routes over to the survivor when one goes offline. A single replica is not
-enough: a StatefulSet pod on an unreachable node is never replaced, so when a
-node dies the route blackholes until the node comes back -- ten hours on
-2026-10-10. Exit nodes do not fail over; a client selects one by name.
+There are **three Connectors, one pinned to each node** by its own ProxyClass
+`nodeSelector`, so a device's name says where it runs:
+
+| Tailnet device | Connector | Node |
+|---|---|---|
+| `k3s-exit-node-1` | `exit-node-k3s-01` | k3s-01 |
+| `k3s-exit-node-2` | `exit-node-k3s-02` | k3s-02 |
+| `k3s-exit-node-3` | `exit-node-k3s-03` | k3s-03 |
+
+All three advertise the same subnet routes, and Tailscale fails the routes over
+when the primary goes offline. A pinned pod never moves: while its node is down
+or drained, that router is offline and the other two carry the routes. One
+unpinned replica was not enough -- a StatefulSet pod on an unreachable node is
+never replaced, so when a node died the route blackholed until it came back
+(ten hours on 2026-10-10). Exit nodes do not fail over; a client selects one by
+name.
+
+The three ProxyClasses share their DNS settings through
+`proxyclass-dns-patch.yaml`. A new Connector device's routes and exit node
+must be approved by hand in the Tailscale admin console; the tailnet has no
+`autoApprovers` for these.
 
 ### DNS (ProxyClass `exit-node-dns`)
 

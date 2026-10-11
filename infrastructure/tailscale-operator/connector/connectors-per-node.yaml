@@ -1,0 +1,45 @@
+# Three subnet routers + exit nodes, one pinned to each node by its ProxyClass.
+# On 2026-10-10 the single Connector pod sat on a dead node for ten hours: a
+# StatefulSet pod is not replaced while its node is unreachable, so the subnet
+# route blackholed for every tailnet client on the LAN. All three advertise the
+# same routes and Tailscale fails over between them. Exit nodes do not fail
+# over -- a client picks one by name.
+---
+apiVersion: tailscale.com/v1alpha1
+kind: Connector
+metadata:
+  name: exit-node-k3s-01
+spec:
+  proxyClass: exit-node-k3s-01
+  hostname: k3s-exit-node-1
+  subnetRouter:
+    advertiseRoutes:
+      - "${MGMT_PREFIX}.0/24"
+      - "${LAN_PREFIX}.0/24"
+  exitNode: true
+---
+apiVersion: tailscale.com/v1alpha1
+kind: Connector
+metadata:
+  name: exit-node-k3s-02
+spec:
+  proxyClass: exit-node-k3s-02
+  hostname: k3s-exit-node-2
+  subnetRouter:
+    advertiseRoutes:
+      - "${MGMT_PREFIX}.0/24"
+      - "${LAN_PREFIX}.0/24"
+  exitNode: true
+---
+apiVersion: tailscale.com/v1alpha1
+kind: Connector
+metadata:
+  name: exit-node-k3s-03
+spec:
+  proxyClass: exit-node-k3s-03
+  hostname: k3s-exit-node-3
+  subnetRouter:
+    advertiseRoutes:
+      - "${MGMT_PREFIX}.0/24"
+      - "${LAN_PREFIX}.0/24"
+  exitNode: true

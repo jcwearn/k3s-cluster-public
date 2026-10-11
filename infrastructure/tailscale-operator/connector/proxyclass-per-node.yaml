@@ -1,0 +1,34 @@
+# One ProxyClass per node, each pinning its Connector there, so the device
+# name always says where it runs: k3s-exit-node-1 is on k3s-01, and so on.
+# A pinned pod never moves -- when its node is down or drained, that router
+# is simply offline and the other two carry the routes. DNS settings come from
+# proxyclass-dns-patch.yaml.
+apiVersion: tailscale.com/v1alpha1
+kind: ProxyClass
+metadata:
+  name: exit-node-k3s-01
+spec:
+  statefulSet:
+    pod:
+      nodeSelector:
+        kubernetes.io/hostname: k3s-01
+---
+apiVersion: tailscale.com/v1alpha1
+kind: ProxyClass
+metadata:
+  name: exit-node-k3s-02
+spec:
+  statefulSet:
+    pod:
+      nodeSelector:
+        kubernetes.io/hostname: k3s-02
+---
+apiVersion: tailscale.com/v1alpha1
+kind: ProxyClass
+metadata:
+  name: exit-node-k3s-03
+spec:
+  statefulSet:
+    pod:
+      nodeSelector:
+        kubernetes.io/hostname: k3s-03

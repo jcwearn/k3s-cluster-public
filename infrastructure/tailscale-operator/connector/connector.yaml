@@ -5,15 +5,12 @@ metadata:
   namespace: tailscale-operator
 spec:
   proxyClass: exit-node-dns
-  # Two devices on two nodes (anti-affinity is in the ProxyClass). On 2026-10-10
-  # the single replica sat on a dead node for ten hours: a StatefulSet pod is not
-  # replaced while its node is unreachable, so the subnet route blackholed for
-  # every tailnet client on the LAN. With two, Tailscale fails the routes over
-  # to the survivor. Exit nodes do not fail over -- a client picks one by name.
-  # A fixed hostname is only allowed with a single replica, so the devices are
-  # k3s-exit-node-0 and k3s-exit-node-1.
+  # Being replaced by the three pinned Connectors in connectors-per-node.yaml.
+  # Renamed out of the way first: its pod-1 held the name k3s-exit-node-1, which
+  # the new k3s-01 router needs. It keeps carrying the routes until the new
+  # devices are approved, then is deleted in a follow-up.
   replicas: 2
-  hostnamePrefix: k3s-exit-node
+  hostnamePrefix: k3s-exit-node-old
   subnetRouter:
     advertiseRoutes:
       - "${MGMT_PREFIX}.0/24"
