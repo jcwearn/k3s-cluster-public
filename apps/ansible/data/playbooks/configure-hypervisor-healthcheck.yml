@@ -1,0 +1,89 @@
+---
+# Playbook to make each Proxmox host ping its own healthchecks.io check.
+#
+# On 2026-10-09 a power cut took all three hosts down; pve-02 stayed off until
+# someone pressed its power button the next morning. Nothing said so directly:
+# the cluster's alerts are about pods and nodes, and they travel through the
+# cluster itself. This ping runs on the host, over the host's own network, to a
+# service outside the house, so it reports a dead host even when the cluster,
+# the tailnet and Alertmanager are all down with it. healthchecks.io notifies by
+# email and Slack on its own integrations.
+#
+# Each host has its own check (pve-01/02/03 in healthchecks.io), so the
+# notification names the host. The ping URL is the only credential: it is
+# written to a root-only curl config and passed with -K, never on the command
+# line, where it would show in ps.
+#
+# Run manually:
+#   kubectl create job -n ansible \
+#     --from=cronjob/ansible-configure-hypervisor-healthcheck \
+#     ansible-configure-hypervisor-healthcheck-manual
+
+- name: Ping healthchecks.io from each Proxmox host
+  hosts: proxmox
+  become: true
+  gather_facts: false
+
+  tasks:
+    - name: Install the ping URL as a root-only curl config
+      ansible.builtin.copy:
+        dest: /etc/hypervisor-healthcheck.curlrc
+        owner: root
+        group: root
+        mode: "0600"
+        content: |
+          url = "{{ lookup('ansible.builtin.file', '/secrets/healthcheck/' + inventory_hostname) }}"
+      no_log: true
+
+    - name: Install the systemd service
+      ansible.builtin.copy:
+        dest: /etc/systemd/system/hypervisor-healthcheck.service
+        mode: "0644"
+        content: |
+          [Unit]
+          Description=Ping this host's healthchecks.io check
+          Wants=network-online.target
+          After=network-online.target
+
+          [Service]
+          Type=oneshot
+          ExecStart=/usr/bin/curl -fsS -m 10 --retry 3 -o /dev/null -K /etc/hypervisor-healthcheck.curlrc
+      register: healthcheck_service
+
+    - name: Install the systemd timer
+      ansible.builtin.copy:
+        dest: /etc/systemd/system/hypervisor-healthcheck.timer
+        mode: "0644"
+        content: |
+          [Unit]
+          Description=Ping healthchecks.io every minute
+
+          [Timer]
+          # The check's period is 1 minute and its grace 3, so a host is
+          # reported about four minutes after its last ping. AccuracySec keeps
+          # systemd from coalescing the tick by up to its default minute.
+          OnBootSec=30s
+          OnUnitActiveSec=1min
+          AccuracySec=5s
+
+          [Install]
+          WantedBy=timers.target
+      register: healthcheck_timer
+
+    - name: Reload systemd
+      ansible.builtin.systemd_service:
+        daemon_reload: true
+      when: healthcheck_service.changed or healthcheck_timer.changed
+
+    - name: Enable and start the timer
+      ansible.builtin.systemd_service:
+        name: hypervisor-healthcheck.timer
+        enabled: true
+        state: started
+
+    # A oneshot started here fails the play if curl does, which is the point:
+    # a wrong URL or no route out shows up in this Job, not as a silent check.
+    - name: Ping once now
+      ansible.builtin.systemd_service:
+        name: hypervisor-healthcheck.service
+        state: started

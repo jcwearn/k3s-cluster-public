@@ -15,7 +15,7 @@ Automated server management via Kubernetes CronJobs running Ansible playbooks.
 - **Playbooks & inventory:** Mounted as a ConfigMap via `configMapGenerator`.
 - **kubectl:** The upgrade Jobs mount `rancher/kubectl` as an [image volume](https://kubernetes.io/docs/tasks/configure-pod-container/image-volumes/) at `/opt/kubectl` — the image is a single static binary with no shell, so there is nothing to copy it out with, and the runner image is not rebuilt for it. The tag is pinned alongside the system-upgrade-controller's drain kubectl and moves with it.
 - **RBAC:** `rbac.yaml` grants the `ansible-runner` ServiceAccount exactly what a cordon/drain/uncordon needs plus `/healthz/etcd`; every other playbook is SSH-only.
-- **Secrets:** SOPS-encrypted SSH private key and an ntfy access token.
+- **Secrets:** SOPS-encrypted SSH private key, an ntfy access token, and one healthchecks.io ping URL per hypervisor.
 
 ## CronJobs
 
@@ -25,6 +25,7 @@ Automated server management via Kubernetes CronJobs running Ansible playbooks.
 | `ansible-upgrade-hypervisor-02` | Saturday 5:40 AM | `upgrade-hypervisor.yml -e target=proxmox-02` |
 | `ansible-upgrade-hypervisor-01` | Saturday 8:10 AM | `upgrade-hypervisor.yml -e target=proxmox-01` |
 | `ansible-configure-lvm-thin-metrics` | Sunday 4:00 AM | `configure-lvm-thin-metrics.yml` |
+| `ansible-configure-hypervisor-healthcheck` | Sunday 4:15 AM | `configure-hypervisor-healthcheck.yml` |
 | `ansible-configure-node-sysctl` | suspended | `configure-node-sysctl.yml` |
 | `ansible-configure-image-gc` | suspended | `configure-image-gc.yml` |
 | `ansible-configure-k3s-shutdown` | suspended | `configure-k3s-shutdown.yml` |
@@ -198,6 +199,7 @@ apps/ansible/
   cronjob-upgrade-hypervisor-02.yaml
   cronjob-upgrade-hypervisor-03.yaml
   cronjob-configure-lvm-thin-metrics.yaml
+  cronjob-configure-hypervisor-healthcheck.yaml
   cronjob-configure-node-sysctl.yaml
   cronjob-configure-k3s-shutdown.yaml
   cronjob-configure-image-gc.yaml
@@ -212,6 +214,7 @@ apps/ansible/
       upgrade-hypervisor.yml
       onboard-host.yml
       configure-lvm-thin-metrics.yml
+      configure-hypervisor-healthcheck.yml
       configure-node-sysctl.yml
       configure-k3s-shutdown.yml
       configure-image-gc.yml

@@ -1,0 +1,83 @@
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: ansible-configure-hypervisor-healthcheck
+  namespace: ansible
+  annotations:
+    # A Job runs to completion; a probe would only ever restart it mid-run.
+    ignore-check.kube-linter.io/no-liveness-probe: "run-to-completion Job"
+    ignore-check.kube-linter.io/no-readiness-probe: "run-to-completion Job"
+    # The SSH key Secret is mounted 0400 and owned by root; only root can read
+    # it. Dropping root here means fsGroup plus a 0440 mode on that mount,
+    # which is a change to the automation that reboots the hypervisors and
+    # gets a supervised run of its own.
+    ignore-check.kube-linter.io/run-as-non-root: "reads a root-owned 0400 SSH key; see comment"
+spec:
+  # Not suspended, for the same reason as configure-lvm-thin-metrics: re-asserting
+  # the timer weekly means a rebuilt or reimaged host starts pinging again without
+  # anyone remembering to run a playbook. Idempotent; a run that finds everything
+  # in place changes nothing. Fifteen minutes after that job, not alongside it.
+  schedule: "15 4 * * 0"
+  timeZone: America/New_York
+  concurrencyPolicy: Forbid
+  successfulJobsHistoryLimit: 3
+  failedJobsHistoryLimit: 3
+  jobTemplate:
+    spec:
+      backoffLimit: 0
+      template:
+        spec:
+          serviceAccountName: ansible-runner
+          containers:
+            - name: ansible
+              image: ghcr.io/jcwearn/ansible-runner:0.1.60@sha256:89c5c2a48231cb1b0443d4151236ec0e1b2721483a1d3482865c84a0f83b2af4
+              imagePullPolicy: IfNotPresent
+              securityContext:
+                runAsUser: 0
+              command: ["ansible-playbook"]
+              args: ["/ansible/playbooks/configure-hypervisor-healthcheck.yml"]
+              env:
+                - name: ANSIBLE_CONFIG
+                  value: /ansible/ansible.cfg
+              volumeMounts:
+                - name: ansible-data
+                  mountPath: /ansible
+                - name: ssh-key
+                  mountPath: /secrets
+                  readOnly: true
+              resources:
+                requests:
+                  cpu: 100m
+                  memory: 128Mi
+                limits:
+                  cpu: 500m
+                  memory: 256Mi
+          restartPolicy: Never
+          volumes:
+            - name: ansible-data
+              configMap:
+                name: ansible-data
+                items:
+                  - key: ansible.cfg
+                    path: ansible.cfg
+                  - key: inventory.yml
+                    path: inventory.yml
+                  - key: configure-hypervisor-healthcheck.yml
+                    path: playbooks/configure-hypervisor-healthcheck.yml
+            - name: ssh-key
+              secret:
+                secretName: ansible-secrets
+                defaultMode: 0400
+                items:
+                  - key: ssh-private-key
+                    path: ssh-private-key
+                  - key: ssh-public-key
+                    path: ssh-public-key
+                  # One healthchecks.io ping URL per host, named for its
+                  # inventory_hostname so the playbook can look its own up.
+                  - key: healthcheck-url-proxmox-01
+                    path: healthcheck/proxmox-01
+                  - key: healthcheck-url-proxmox-02
+                    path: healthcheck/proxmox-02
+                  - key: healthcheck-url-proxmox-03
+                    path: healthcheck/proxmox-03

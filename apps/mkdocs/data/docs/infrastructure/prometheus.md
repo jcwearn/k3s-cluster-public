@@ -106,7 +106,7 @@ ingress:
 | ---------------- | ------------------------------------------------------- |
 | **Ingress host** | `alerts.${DOMAIN}`                                      |
 | **LB VIP**       | `${LAN_PREFIX}.18` (hostname `alertmanager`)              |
-| **Receivers**    | `null`, `ntfy` (all alerts), `healthcheck` (Watchdog → Healthchecks.io) |
+| **Receivers**    | `null`, `ntfy` (all alerts), `slack` (all alerts), `healthcheck` (Watchdog → Healthchecks.io) |
 
 The **ntfy** receiver posts to the side-car service `alertmanager-ntfy-svc` (port 4081). Credentials are injected via **SOPS-encrypted** secret `prometheus-secrets`:
 
