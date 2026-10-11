@@ -27,6 +27,8 @@ spec:
     crds: Create
     timeout: 10m
   upgrade:
+    strategy:
+      name: RetryOnFailure
     crds: CreateReplace
     timeout: 10m
   values:

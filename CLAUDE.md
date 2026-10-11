@@ -78,6 +78,8 @@ Components in `infrastructure/` typically include:
 
 Every HelmRelease **must** include a `resources:` block in its values. The correct key path varies by chart (check `helm show values`) — common patterns are top-level `resources:`, `controller.resources:`, or `operatorConfig.resources:`.
 
+Every HelmRelease also sets `upgrade.strategy.name: RetryOnFailure`. Without it, one failed upgrade -- say a DaemonSet rollout that times out because a node is down -- leaves the release `Stalled` until someone runs `flux reconcile helmrelease --force`, and every Kustomization that depends on it stalls with it. With it, helm-controller retries the upgrade every 5m (`retryInterval`) without rolling back, so the release converges once the node returns. A genuinely broken chart stays failed and `FluxReconciliationFailure` keeps reporting it. Do not use `upgrade.remediation.retries` for this: it rolls back between attempts, which churns pods and runs older operators against CRDs a rollback never reverts.
+
 ### Applications (Kustomize-based)
 Apps in `apps/` typically include standard K8s manifests:
 - `namespace.yaml`, `deployment.yaml` or `statefulset.yaml`

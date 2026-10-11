@@ -16,6 +16,8 @@ spec:
   install:
     crds: Create
   upgrade:
+    strategy:
+      name: RetryOnFailure
     crds: CreateReplace
   values:
     resources:

@@ -31,6 +31,9 @@ spec:
         kind: HelmRepository
         name: cloudnative-pg
         namespace: flux-system
+  upgrade:
+    strategy:
+      name: RetryOnFailure
   values:
     resources:
       requests:

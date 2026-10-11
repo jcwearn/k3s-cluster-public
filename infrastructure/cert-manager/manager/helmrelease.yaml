@@ -17,6 +17,8 @@ spec:
     createNamespace: true
     crds: Create
   upgrade:
+    strategy:
+      name: RetryOnFailure
     crds: CreateReplace
   values:
     crds:
