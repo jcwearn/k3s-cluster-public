@@ -289,8 +289,11 @@ spec:
               - api_url: "https://hooks.slack.com/placeholder"
                 send_resolved: true
                 title: '[{{ .Status | toUpper }}{{ if eq .Status "firing" }}:{{ .Alerts.Firing | len }}{{ end }}] {{ or .CommonLabels.namespace "cluster" }}'
+                # A phone's push preview shows this text, not the title, so the
+                # status leads every line. No *bold*: the preview shows the
+                # asterisks literally.
                 text: |-
-                  {{ range .Alerts }}{{ if eq .Status "firing" }}:rotating_light:{{ else }}:white_check_mark:{{ end }} *{{ .Labels.alertname }}*: {{ .Annotations.summary }}
+                  {{ range .Alerts }}{{ if eq .Status "firing" }}:rotating_light: Firing{{ else }}:+1: Resolved{{ end }}: {{ .Annotations.summary }} ({{ .Labels.alertname }})
                   {{ end }}
       alertmanagerSpec:
         # Two replicas on two different nodes; see prometheusSpec for the
