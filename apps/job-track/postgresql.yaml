@@ -4,11 +4,17 @@ metadata:
   name: job-track-database
   namespace: job-track
 spec:
-  instances: 1
-  # A single-instance cluster has no replica to protect, but CNPG still generates
-  # a PDB with minAvailable: 1, which reports 0 allowed disruptions. Any drain of
-  # this pod's node then hangs rather than failing, so it has to be relaxed by
-  # hand every time. See the same note on apps/n8n/postgresql.yaml.
+  # A primary and one streaming replica, never on the same node. With a single
+  # instance, a dead node took the database down until the node came back: the
+  # pod sat Terminating and nothing replaced it (node-outage drill, 2026-10-13).
+  # Now the operator promotes the replica instead, with no one at the keyboard.
+  instances: 2
+  affinity:
+    podAntiAffinityType: required
+  # CNPG's generated PDB keeps the primary at minAvailable: 1, which reports 0
+  # allowed disruptions, so a drain of the primary's node hangs rather than
+  # failing. Without it, the drain evicts the primary and the operator fails
+  # over to the replica. See the same note on apps/n8n/postgresql.yaml.
   enablePDB: false
   imageName: ghcr.io/cloudnative-pg/postgresql:16
   # Backups and WAL archiving, via the barman-cloud CNPG-I plugin installed in
