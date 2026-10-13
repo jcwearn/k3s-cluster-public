@@ -11,6 +11,12 @@ spec:
   instances: 2
   affinity:
     podAntiAffinityType: required
+  # On a spec change that needs new pods (image, affinity, resources), update
+  # the replica, switch over to it, then update the old primary. The default,
+  # restart, recreates the primary in place: when the replica was added, that
+  # took the database down for 3m20s, most of it the smart-shutdown wait for the
+  # app's connections to close.
+  primaryUpdateMethod: switchover
   # CNPG's generated PDB keeps the primary at minAvailable: 1, which reports 0
   # allowed disruptions, so a drain of the primary's node hangs rather than
   # failing. Without it, the drain evicts the primary and the operator fails
