@@ -85,6 +85,41 @@ time; only the external [dead man's switch](#dead-mans-switch) paged.
 * **Pods on a dead node** stay `Terminating` and are not replaced until the node returns. The other
   replica carries on without them; this is the reason for running two.
 
+### What a node outage looks like
+
+Measured in a drill on 2026-10-13: the k3s-02 VM was shut down cleanly with `qm shutdown 201` and
+pve-02's healthcheck timer stopped, then both were started again 20 minutes later. Times are from
+the shutdown.
+
+| After | Signal | Path |
+| --- | --- | --- |
+| 0:40 | k3s-02 `NotReady` | — |
+| ~3:30 | "pve-02 is DOWN" (the timer, standing in for a dead host) | healthchecks.io → Slack (and email) |
+| 5:40 | Pods on k3s-02 marked `Terminating`; Deployments replaced within 20 s | — |
+| 6:00 | `ProxmoxVMDown` qemu/201, `AlertmanagerClusterDown` | Alertmanager → Slack + ntfy |
+| 10:45 | `TargetDown` per namespace, `KubernetesDaemonsetRolloutStuck` | Alertmanager → Slack + ntfy |
+| 16:00 | `KubeletInstanceUnreachable`, `KubeNodeNotReady`, `KubeNodeUnreachable` | Alertmanager → Slack + ntfy |
+| 19:40 | k3s-02 `Ready` again after `qm start 201`; every pod `Running` by 24:30 | — |
+
+`ProxmoxVMDown` is the earliest in-cluster signal that names the cause. `AlertmanagerClusterDown`
+resolves on its own once the surviving Alertmanager drops its dead peer. `TargetDown` for an app
+namespace means its database is on the dead node (below).
+
+What did **not** survive the node, until it came back:
+
+* **The CloudNativePG databases.** Each is a single instance, and all four were on k3s-02, so
+  immich, job-track, n8n and paperless-ngx lost their database for the whole outage. paperless
+  crash-loops after 60 s of no database.
+* **StatefulSet pods**, `open-webui-0` among them (chat timed out), and the per-service Tailscale
+  proxies. `*.${DOMAIN}` hostnames go through Envoy's own proxy and kept working; only a service's
+  direct tailnet name was lost.
+* **Flux health checks.** The `apps` Kustomization waits on paperless and times out after 5
+  minutes, which pends `FluxReconciliationStalled`. Run `flux reconcile kustomization apps -n
+  flux-system` once the node is back rather than waiting for the interval.
+
+The NAS subnet route stayed up throughout, but k3s-02's Connector was a standby at the time; the
+drill did not exercise failover of the primary.
+
 ### Key annotations
 
 ```yaml
