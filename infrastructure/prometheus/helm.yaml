@@ -1657,3 +1657,58 @@ spec:
                 annotations:
                   summary: "Flux {{ $labels.kind }} {{ $labels.exported_namespace }}/{{ $labels.name }} suspended for >24h"
                   description: "{{ $labels.kind }} {{ $labels.name }} in namespace {{ $labels.exported_namespace }} has been suspended for more than 24 hours. This may be intentional, but verify it wasn't forgotten."
+      logging:
+        groups:
+          # The log pipeline: Alloy (infrastructure/alloy) pushing to Loki
+          # (infrastructure/loki). A collector pod that is down, crash-looping
+          # or unscheduled is already KubeDaemonSetRolloutStuck,
+          # KubePodCrashLooping or TargetDown; these cover the failures those
+          # cannot see, where everything is Running and logs still go nowhere.
+          - name: logging-group
+            rules:
+              # One collector pushes one batch at a time, so a batch Loki keeps
+              # refusing blocks every line behind it -- the signature is errors
+              # with no successes at all. Errors alone are not enough: a Loki
+              # restart gives every collector ~15m of failed pushes while the
+              # next batch already succeeds. Measured on the 2026-10-14
+              # first-day incident (a 500 on lines older than the schema start),
+              # this fires for the stuck collector and for neither healthy one.
+              - alert: LogShippingStuck
+                expr: >-
+                  (sum by (pod) (increase(loki_write_request_duration_seconds_count{namespace="alloy", status_code!~"2.."}[10m])) > 0)
+                  unless
+                  (sum by (pod) (increase(loki_write_request_duration_seconds_count{namespace="alloy", status_code=~"2.."}[10m])) > 0)
+                for: 5m
+                labels:
+                  severity: warning
+                annotations:
+                  summary: "{{ $labels.pod }} has not delivered a log batch to Loki in 15 minutes"
+                  description: "Every push from {{ $labels.pod }} is failing and nothing behind the failing batch is moving. Alloy drops the batch after its retries run out (LogEntriesDropped follows). Loki's own log names the reason: kubectl -n loki logs loki-0 | grep 'push (5'."
+              # Dropped lines are gone for good, so this fires on the first one
+              # and clears an hour later rather than waiting.
+              - alert: LogEntriesDropped
+                expr: sum by (pod, reason) (increase(loki_write_dropped_entries_total{namespace="alloy"}[1h])) > 0
+                labels:
+                  severity: warning
+                annotations:
+                  summary: "{{ $labels.pod }} dropped log lines ({{ $labels.reason }})"
+                  description: "{{ $value | humanize }} entries dropped in the last hour. They are not in Loki and will not be resent."
+              - alert: LokiIngestionStopped
+                expr: (sum(rate(loki_distributor_lines_received_total[15m])) or vector(0)) == 0
+                for: 15m
+                labels:
+                  severity: warning
+                annotations:
+                  summary: Loki has received no log lines for 30 minutes
+                  description: "The cluster writes ~1000 lines/s at backfill and dozens per second at rest, so zero means either every collector is down or Loki is not accepting pushes."
+              # Retention is what keeps Loki inside its 20 GiB refquota; the
+              # compactor applies it every 10 minutes. The gauge reads 0 after
+              # a restart until the first run, which the `for:` absorbs.
+              - alert: LokiRetentionNotRunning
+                expr: time() - max by (pod) (loki_compactor_apply_retention_last_successful_run_timestamp_seconds) > 6 * 3600
+                for: 1h
+                labels:
+                  severity: warning
+                annotations:
+                  summary: Loki's compactor has not applied retention in over 6 hours
+                  description: "Logs older than 30 days are not being deleted, so pool/k8s-nfs-logs will keep growing toward its refquota (TrueNASDatasetNearRefquota pages at 80%). Check the compactor lines in kubectl -n loki logs loki-0."

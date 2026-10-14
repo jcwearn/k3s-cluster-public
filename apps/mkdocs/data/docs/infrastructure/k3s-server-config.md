@@ -73,7 +73,8 @@ Every request the apiserver on that node handles is written, one JSON line each,
 | `Request` | Every `create`, `update`, `patch`, `delete` and `deletecollection`: the body that was sent |
 | `Metadata` | Everything else, which is reads |
 
-**The log stays on the node.** Nothing ships it to a log store — there is no Loki here — so the
+**The log stays on the node.** Loki does not collect it — the Alloy collectors read
+`/var/log/pods` and the journal, not this path (see [Logging](loki.md)) — so the
 forensic question "who deleted that" is answered with `ssh` and `grep` on each of the three
 servers, because a request lands on whichever apiserver the VIP or the client's connection reached.
 It is not in `journalctl`. The apiserver rotates it at 100 MB, keeps ten files and drops anything

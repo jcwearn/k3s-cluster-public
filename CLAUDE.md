@@ -16,6 +16,7 @@ clusters/prod/           # Flux entrypoint - defines what gets deployed
   └── apps.yaml          # Apps Kustomization (depends on all infrastructure)
 
 infrastructure/          # Cluster infrastructure components
+  ├── alloy/             # Log collectors (pod logs, node journals, events → Loki)
   ├── cert-manager/      # TLS certificate automation (Let's Encrypt + Cloudflare)
   ├── cloudnative-pg/    # PostgreSQL operator
   ├── coredns/           # DNS server configuration
@@ -26,6 +27,7 @@ infrastructure/          # Cluster infrastructure components
   ├── flux-operator/     # Flux Operator + FluxInstance + webhook receiver
   ├── kube-vip/          # HA virtual IP for control plane + LoadBalancer
   ├── llama-cpp/         # Local LLM inference server (Qwen3, CPU)
+  ├── loki/              # Log store (single-binary Loki, 30-day retention)
   ├── prometheus/        # Monitoring stack (kube-prometheus-stack + TrueNAS/Proxmox monitoring)
   ├── reloader/          # Auto-restart on ConfigMap/Secret changes
   ├── system-upgrade-controller/ # Declarative k3s node upgrades
@@ -107,7 +109,7 @@ Current external services: homeassistant, proxmox, truenas, unifi.
 Defined in `clusters/prod/infrastructure.yaml` and `clusters/prod/apps.yaml`:
 
 1. cert-manager → cert-manager-issuer
-2. external-dns, envoy-gateway → envoy-gateway-config, kube-vip, prometheus, reloader, csi-driver-nfs, cloudnative-pg, coredns, llama-cpp, flux-operator, system-upgrade-controller
+2. external-dns, envoy-gateway → envoy-gateway-config, kube-vip, prometheus, reloader, csi-driver-nfs, cloudnative-pg, coredns, llama-cpp, flux-operator, system-upgrade-controller, loki → alloy
 3. tailscale-operator → tailscale-connector
 4. **apps** (depends on: cert-manager-issuer, external-dns, envoy-gateway-config, prometheus, tailscale-connector, csi-driver-nfs, cloudnative-pg, llama-cpp)
 

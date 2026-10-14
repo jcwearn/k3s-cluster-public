@@ -76,6 +76,7 @@ of the cluster.
 ├── clusters/
 │   └── prod/
 ├── infrastructure/
+│   ├── alloy/              # Log collectors (pod logs, node journals, events)
 │   ├── cert-manager/       # TLS certificate automation
 │   ├── cloudnative-pg/     # PostgreSQL operator
 │   ├── coredns/            # DNS server configuration
@@ -85,6 +86,7 @@ of the cluster.
 │   ├── flux-operator/      # Flux Operator + FluxInstance + webhook receiver
 │   ├── kube-vip/           # HA virtual IP for control plane + LoadBalancer
 │   ├── llama-cpp/          # Local LLM inference server (Qwen3, CPU)
+│   ├── loki/               # Log store (30-day retention)
 │   ├── prometheus/         # Monitoring stack (kube-prometheus-stack + TrueNAS/Proxmox monitoring)
 │   ├── reloader/           # Auto-restart on ConfigMap/Secret changes
 │   ├── system-upgrade-controller/ # Declarative k3s node upgrades
@@ -114,6 +116,7 @@ FluxCD watches `clusters/prod/` and recursively applies everything under `apps/`
 | **Monitoring** | **Prometheus** (kube-prometheus-stack) | Metrics, alerting, and Grafana dashboards |
 | | **TrueNAS Monitoring** | Graphite exporter + Prometheus alerts + Grafana dashboard for TrueNAS |
 | | **Proxmox Monitoring** | PVE exporter + node_exporter + Prometheus alerts + Grafana dashboards for Proxmox |
+| **Logging** | **Loki** + **Alloy** | Pod logs, node journals and Kubernetes events, kept 30 days |
 | **AI/ML** | **llama.cpp** | Local LLM inference server (Qwen3, OpenAI-compatible API) |
 | **Automation** | **Reloader** | Restarts workloads on ConfigMap/Secret changes |
 | | **System Upgrade Controller** | Upgrades k3s on the nodes from a pinned Plan in Git |

@@ -16,6 +16,7 @@ Helm values, and any cluster-specific tweaks.
 | **reloader** | Restarts workloads when ConfigMaps/Secrets change. | [Read more](reloader.md) |
 | **Envoy Gateway** | Gateway API ingress controller (Envoy proxy) with wildcard TLS and Tailnet exposure. | [Read more](envoy-gateway.md) |
 | **Prometheus** | Comprehensive monitoring, alerting, and visualization for Kubernetes | [Read more](prometheus.md) |
+| **Logging (Loki + Alloy)** | Pod logs, node journals and Kubernetes events, kept 30 days and queried in Grafana. | [Read more](loki.md) |
 | **Tailscale Operator** | Publishes any Service onto the Tailnet with a single annotation. | [Read more](tailscale-operator.md) |
 | **TrueNAS** | External NAS system providing network storage and data management services. | [Read more](truenas.md) |
 | **TrueNAS Monitoring** | Prometheus metrics, Grafana dashboards, and alerts for TrueNAS via Graphite exporter. | [Read more](truenas-monitoring.md) |
