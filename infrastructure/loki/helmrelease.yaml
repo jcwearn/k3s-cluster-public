@@ -25,6 +25,13 @@ spec:
   values:
     deploymentMode: SingleBinary
     loki:
+      # The chart's pod securityContext is already non-root with an fsGroup,
+      # but sets no seccomp profile, and the namespace enforces restricted --
+      # without this the StatefulSet cannot create its pod at all. Helm merges
+      # this map into the chart's, so only the missing key is stated.
+      podSecurityContext:
+        seccompProfile:
+          type: RuntimeDefault
       # One tenant. With auth on, every client would have to send an
       # X-Scope-OrgID header for no isolation anybody needs.
       auth_enabled: false
