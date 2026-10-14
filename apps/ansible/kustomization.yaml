@@ -13,6 +13,7 @@ resources:
   - cronjob-configure-lvm-thin-metrics.yaml
   - cronjob-configure-hypervisor-healthcheck.yaml
   - cronjob-configure-proxmox-kvm.yaml
+  - cronjob-configure-proxmox-alloy.yaml
   - cronjob-configure-k3s-server.yaml
   - cronjob-enable-secrets-encryption.yaml
   - cronjob-configure-tailscale.yaml
@@ -31,6 +32,7 @@ configMapGenerator:
       - data/playbooks/configure-lvm-thin-metrics.yml
       - data/playbooks/configure-hypervisor-healthcheck.yml
       - data/playbooks/configure-proxmox-kvm.yml
+      - data/playbooks/configure-proxmox-alloy.yml
       - data/playbooks/configure-k3s-server.yml
       - data/playbooks/enable-secrets-encryption.yml
       - data/playbooks/configure-tailscale.yml
@@ -39,3 +41,4 @@ configMapGenerator:
       - data/scripts/pve-reboot-required.sh
       - data/k3s/audit-policy.yaml
       - data/k3s/psa.yaml
+      - data/alloy/host-journal.alloy.j2

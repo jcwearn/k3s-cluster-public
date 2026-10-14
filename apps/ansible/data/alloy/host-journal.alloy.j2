@@ -1,0 +1,41 @@
+// Managed by Ansible (configure-proxmox-alloy.yml); edits here are overwritten.
+//
+// Ships this host's systemd journal to Loki through the cluster's push-only
+// receiver, loki-push, over the tailnet. Labels match the k3s nodes' journal
+// (infrastructure/alloy/data/config.alloy), so one query covers all six hosts.
+
+loki.relabel "journal" {
+	forward_to = []
+
+	rule {
+		source_labels = ["__journal__systemd_unit"]
+		target_label  = "unit"
+	}
+
+	rule {
+		source_labels = ["__journal_priority_keyword"]
+		target_label  = "level"
+	}
+
+	rule {
+		source_labels = ["__journal__transport"]
+		target_label  = "transport"
+	}
+}
+
+loki.source.journal "host" {
+	path          = "/var/log/journal"
+	max_age       = "12h"
+	relabel_rules = loki.relabel.journal.rules
+	labels        = {
+		job  = "node-journal",
+		node = "{{ alloy_node }}",
+	}
+	forward_to = [loki.write.receiver.receiver]
+}
+
+loki.write "receiver" {
+	endpoint {
+		url = "http://{{ alloy_receiver_ip }}:3500/loki/api/v1/push"
+	}
+}

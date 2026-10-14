@@ -1,0 +1,125 @@
+---
+# Playbook to ship each Proxmox host's systemd journal to Loki.
+#
+# Installs Grafana Alloy from Grafana's apt repo and points it at loki-push,
+# the cluster's push-only receiver (infrastructure/alloy/helmrelease-receiver.yaml),
+# over the tailnet. Loki's own port is never exposed; the tailnet ACL lets
+# tag:host reach only tag:log-ingest on tcp:3500.
+#
+# The receiver's address is looked up on every run with `tailscale ip -4`,
+# which reads the host's own netmap. MagicDNS is not available here --
+# configure-tailscale.yml joins with --accept-dns=false so the hosts keep
+# their own resolver -- and writing the 100.x address into the repo would put
+# it on the public mirror. A recreated proxy with a new address is picked up
+# by the next weekly run.
+#
+# Alloy listens only on 127.0.0.1:12345, its packaged default; nothing about
+# it is reachable from the LAN. Package updates arrive with the weekly
+# upgrade-hypervisor dist-upgrade, the same channel as everything else here.
+#
+# Run manually:
+#   kubectl create job -n ansible \
+#     --from=cronjob/ansible-configure-proxmox-alloy \
+#     ansible-configure-proxmox-alloy-$(date +%s)
+
+- name: Ship the Proxmox hosts' journals to Loki
+  hosts: proxmox
+  become: true
+  gather_facts: true
+
+  vars:
+    alloy_receiver_name: loki-push
+    grafana_keyring: /etc/apt/keyrings/grafana.asc
+    grafana_sources: /etc/apt/sources.list.d/grafana.list
+
+  handlers:
+    - name: Restart alloy
+      ansible.builtin.systemd:
+        name: alloy
+        state: restarted
+
+  tasks:
+    - name: Look up loki-push in the tailnet netmap
+      ansible.builtin.command:
+        argv: [tailscale, ip, "-4", "{{ alloy_receiver_name }}"]
+      register: receiver_ip
+      changed_when: false
+      # Fails when the ACL grant is missing too: without it the receiver is
+      # not in this host's netmap and `tailscale ip` cannot name it.
+      failed_when: >-
+        receiver_ip.rc != 0
+        or not (receiver_ip.stdout | trim is match('^100\\.'))
+
+    - name: Record the receiver address and this host's label
+      ansible.builtin.set_fact:
+        alloy_receiver_ip: "{{ receiver_ip.stdout | trim }}"
+        alloy_node: "{{ ansible_facts['hostname'] }}"
+
+    - name: Create the apt keyrings directory
+      ansible.builtin.file:
+        path: /etc/apt/keyrings
+        state: directory
+        mode: "0755"
+
+    - name: Install the Grafana apt signing key
+      ansible.builtin.get_url:
+        url: https://apt.grafana.com/gpg.key
+        dest: "{{ grafana_keyring }}"
+        owner: root
+        group: root
+        mode: "0644"
+
+    - name: Add the Grafana apt repository
+      ansible.builtin.copy:
+        dest: "{{ grafana_sources }}"
+        content: "deb [signed-by={{ grafana_keyring }}] https://apt.grafana.com stable main\n"
+        owner: root
+        group: root
+        mode: "0644"
+      register: grafana_repo
+
+    - name: Install alloy
+      ansible.builtin.apt:
+        name: alloy
+        state: present
+        update_cache: true
+        cache_valid_time: "{{ 0 if grafana_repo.changed else 3600 }}"
+
+    # The journal is root:systemd-journal 0640; the alloy user needs the group
+    # to read it, and a running process only picks up a new group on restart.
+    - name: Let alloy read the journal
+      ansible.builtin.user:
+        name: alloy
+        groups: systemd-journal
+        append: true
+      notify: Restart alloy
+
+    - name: Write the Alloy config
+      ansible.builtin.template:
+        src: /ansible/alloy/host-journal.alloy.j2
+        dest: /etc/alloy/config.alloy
+        owner: root
+        group: alloy
+        mode: "0640"
+      notify: Restart alloy
+
+    - name: Enable and start alloy
+      ansible.builtin.systemd:
+        name: alloy
+        enabled: true
+        state: started
+
+    - name: Apply a pending restart before checking
+      ansible.builtin.meta: flush_handlers
+
+    - name: Wait for alloy to report ready
+      ansible.builtin.uri:
+        url: http://127.0.0.1:12345/-/ready
+      register: alloy_ready
+      retries: 12
+      delay: 5
+      until: alloy_ready.status == 200
+
+    - name: Show where this host ships to
+      ansible.builtin.debug:
+        msg: "{{ alloy_node }} -> {{ alloy_receiver_ip }}:3500"

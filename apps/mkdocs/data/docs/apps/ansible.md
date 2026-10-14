@@ -27,6 +27,7 @@ Automated server management via Kubernetes CronJobs running Ansible playbooks.
 | `ansible-upgrade-hypervisor-01` | Saturday 8:10 AM | `upgrade-hypervisor.yml -e target=proxmox-01` |
 | `ansible-configure-lvm-thin-metrics` | Sunday 4:00 AM | `configure-lvm-thin-metrics.yml` |
 | `ansible-configure-hypervisor-healthcheck` | Sunday 4:15 AM | `configure-hypervisor-healthcheck.yml` |
+| `ansible-configure-proxmox-alloy` | Sunday 4:30 AM | `configure-proxmox-alloy.yml` |
 | `ansible-configure-node-sysctl` | suspended | `configure-node-sysctl.yml` |
 | `ansible-configure-image-gc` | suspended | `configure-image-gc.yml` |
 | `ansible-configure-k3s-shutdown` | suspended | `configure-k3s-shutdown.yml` |
@@ -92,7 +93,9 @@ nothing. Package updates are left to the weekly `upgrade-hypervisor` apt run;
 `tailscale set --auto-update` is deliberately not turned on.
 
 It needs a pre-auth key in `ansible-secrets` as `tailscale-authkey` — reusable, pre-authorized,
-tagged, with an expiry — and fails on its first task with instructions if the key is absent.
+tagged, with an expiry — and fails on its first task with instructions if the key is absent. All six
+hosts joined on 2026-10-14 as `tag:host`, after which the key was revoked and removed from the
+secret; joining a new host means generating a fresh key and adding it back for that run.
 Rollback on a host is `tailscale logout` plus removing the machine in the admin console.
 
 To trigger it:
@@ -103,6 +106,18 @@ kubectl -n ansible create job ts-$(date +%s) --from=cronjob/ansible-configure-ta
 
 A Proxmox host could later advertise the LAN routes as a fallback subnet router for when the
 cluster's Connector is down; that is a separate change, not something this playbook does.
+
+`configure-proxmox-alloy` ships each hypervisor's systemd journal to Loki (see
+[Logging](../infrastructure/loki.md)). It installs Grafana Alloy from Grafana's apt repo, adds the
+`alloy` user to `systemd-journal`, and writes `/etc/alloy/config.alloy` from
+`data/alloy/host-journal.alloy.j2`, labelling streams `job="node-journal"`, `node="pve-0N"` like the
+k3s nodes' journals. Alloy pushes to `loki-push`, the cluster's push-only receiver, over the
+tailnet; the address comes from `tailscale ip -4 loki-push` on each run, because the hosts have
+MagicDNS off and the 100.x address must not be written into the public repo. That lookup is also
+the first thing to fail if the ACL grant (`tag:host` → `tag:log-ingest`, `tcp:3500`) is missing.
+Alloy itself listens only on `127.0.0.1:12345`. It runs weekly, not suspended, so a rebuilt host
+gets it back and a recreated receiver is followed; `HostJournalSilent` fires if a host stops
+shipping.
 
 ## Manual operations
 
@@ -213,7 +228,7 @@ Stored in `secrets.sops.yaml`:
 | `ssh-private-key` | SSH private key for the `ansible` user on managed hosts |
 | `ssh-public-key` | SSH public key deployed to new hosts during onboarding |
 | `ntfy-token` | Access token for a write-only ntfy user on the `hypervisor-upgrades` topic |
-| `tailscale-authkey` | Reusable, pre-authorized, tagged Tailscale pre-auth key used by `configure-tailscale.yml`; mounted at `/secrets-tailscale/authkey` |
+| `tailscale-authkey` | *Not present normally.* A reusable, tagged Tailscale pre-auth key, added only for a `configure-tailscale.yml` run and removed afterwards; mounted at `/secrets-tailscale/authkey` |
 
 Edit with: `sops apps/ansible/secrets.sops.yaml`
 
@@ -235,6 +250,7 @@ apps/ansible/
   cronjob-configure-k3s-server.yaml
   cronjob-enable-secrets-encryption.yaml
   cronjob-configure-tailscale.yaml
+  cronjob-configure-proxmox-alloy.yaml
   secrets.sops.yaml
   kustomization.yaml
   data/
@@ -251,11 +267,14 @@ apps/ansible/
       configure-k3s-server.yml
       enable-secrets-encryption.yml
       configure-tailscale.yml
+      configure-proxmox-alloy.yml
     tasks/
       restart-k3s.yml
     scripts/
       lvm-thin-metrics.sh
       pve-reboot-required.sh
+    alloy/
+      host-journal.alloy.j2
     k3s/
       audit-policy.yaml
       psa.yaml
