@@ -1719,7 +1719,9 @@ spec:
               # stopped. The counter's 24h idle window keeps a silent host's
               # series at a flat value instead of dropping it.
               - alert: HostJournalSilent
-                expr: sum by (node) (increase(loki_process_custom_host_log_lines_total[30m])) == 0
+                # job="node-journal" so a hand-pushed test line, whose series
+                # never moves again, cannot hold the alert open for a day.
+                expr: sum by (node) (increase(loki_process_custom_host_log_lines_total{job="node-journal"}[30m])) == 0
                 for: 15m
                 labels:
                   severity: warning

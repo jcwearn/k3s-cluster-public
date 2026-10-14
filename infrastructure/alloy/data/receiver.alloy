@@ -9,13 +9,20 @@ loki.source.api "hosts" {
 		listen_port    = 3500
 	}
 	use_incoming_timestamp = true
-	forward_to             = [loki.process.hosts.receiver]
+	forward_to             = [loki.write.default.receiver, loki.process.count.receiver]
 }
 
-// One counter per pushed stream, carrying the stream's labels, so Prometheus
-// can tell a host that went quiet from one that is fine. HostJournalSilent
-// alerts on it by node.
-loki.process "hosts" {
+// A side branch that only counts, so Prometheus can tell a host that went
+// quiet from one that is fine; HostJournalSilent alerts on it. It keeps job and
+// node and drops every other label first: counted with the stream's full label
+// set, each systemd unit -- including a new session-N.scope per SSH login --
+// was its own series. Nothing is forwarded from here; the lines themselves go
+// to Loki untouched from the source above.
+loki.process "count" {
+	stage.label_keep {
+		values = ["job", "node"]
+	}
+
 	stage.metrics {
 		metric.counter {
 			name        = "host_log_lines_total"
@@ -27,7 +34,7 @@ loki.process "hosts" {
 			max_idle_duration = "24h"
 		}
 	}
-	forward_to = [loki.write.default.receiver]
+	forward_to = []
 }
 
 loki.write "default" {
