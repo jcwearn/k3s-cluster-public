@@ -28,14 +28,18 @@ spec:
         key: config.alloy
       # Read positions live on the host, so a restarted pod resumes where the
       # last one stopped instead of re-sending every file from the start.
-      storagePath: /var/lib/alloy/data
+      #
+      # Not the chart's /var/lib/alloy/data: the image owns /var/lib/alloy as
+      # its alloy user, and root with every capability dropped cannot traverse
+      # a directory it does not own -- mkdir failed with permission denied.
+      storagePath: /alloy-data
       enableReporting: false
       mounts:
         # /var/log read-only: /var/log/pods and /var/log/journal.
         varlog: true
         extra:
           - name: data
-            mountPath: /var/lib/alloy/data
+            mountPath: /alloy-data
       extraEnv:
         # HOSTNAME in a pod is the pod's name. The config selects this node's
         # pods and labels the journal by it.
