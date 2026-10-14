@@ -381,6 +381,14 @@ spec:
           folderAnnotation: grafana_folder
       ingress:
         enabled: false
+      # Logs from infrastructure/loki. Grafana does not check the URL at
+      # startup, so this is harmless while Loki is down or not yet installed.
+      additionalDataSources:
+        - name: Loki
+          type: loki
+          uid: loki
+          url: http://loki.loki.svc.cluster.local:3100
+          access: proxy
       prune: true
     prometheusOperator:
       resources:

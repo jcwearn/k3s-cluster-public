@@ -1,0 +1,103 @@
+# The cluster's log store: one Loki process, every component in it, chunks and
+# index on the filesystem of an NFS volume. docs/plans/log-aggregation has the
+# reasoning; the short version is that ~470 MB/day of raw logs is nowhere near
+# what the scalable modes or object storage are for.
+apiVersion: helm.toolkit.fluxcd.io/v2
+kind: HelmRelease
+metadata:
+  name: loki
+  namespace: loki
+spec:
+  interval: 10m
+  chart:
+    spec:
+      chart: loki
+      version: 7.3.0
+      sourceRef:
+        kind: HelmRepository
+        name: grafana
+        namespace: flux-system
+  install:
+    createNamespace: true
+  upgrade:
+    strategy:
+      name: RetryOnFailure
+  values:
+    deploymentMode: SingleBinary
+    loki:
+      # One tenant. With auth on, every client would have to send an
+      # X-Scope-OrgID header for no isolation anybody needs.
+      auth_enabled: false
+      commonConfig:
+        replication_factor: 1
+      storage:
+        type: filesystem
+      schemaConfig:
+        configs:
+          - from: "2026-10-13"
+            store: tsdb
+            object_store: filesystem
+            schema: v13
+            index:
+              prefix: index_
+              period: 24h
+      # 30 days. The compactor is what enforces it; without
+      # retention_enabled the period is recorded and nothing is ever deleted.
+      limits_config:
+        retention_period: 720h
+      compactor:
+        retention_enabled: true
+        delete_request_store: filesystem
+      pattern_ingester:
+        enabled: false
+      analytics:
+        reporting_enabled: false
+    singleBinary:
+      replicas: 1
+      persistence:
+        enabled: true
+        storageClass: truenas-nfs-logs
+        size: 20Gi
+      resources:
+        requests:
+          cpu: 100m
+          memory: 512Mi
+        limits:
+          cpu: "1"
+          memory: 1536Mi
+    # SingleBinary runs everything above; the scalable targets must be zeroed
+    # explicitly or the chart renders them alongside it.
+    write:
+      replicas: 0
+    read:
+      replicas: 0
+    backend:
+      replicas: 0
+    # The gateway is an nginx in front of a single process that needs none.
+    gateway:
+      enabled: false
+    # Caches are memcached StatefulSets sized for distributed Loki: the chunks
+    # cache alone requests several GiB.
+    chunksCache:
+      enabled: false
+    resultsCache:
+      enabled: false
+    lokiCanary:
+      enabled: false
+    test:
+      enabled: false
+    # Log-based alert rules are not used yet; the sidecar would only watch
+    # for ConfigMaps nobody writes.
+    sidecar:
+      rules:
+        enabled: false
+    monitoring:
+      serviceMonitor:
+        enabled: true
+        # Prometheus selects ServiceMonitors on this label and no other.
+        labels:
+          release: kube-prometheus-stack
+        # Wants the Grafana Agent operator's CRDs, which this cluster does not
+        # have.
+        metricsInstance:
+          enabled: false

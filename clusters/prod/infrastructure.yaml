@@ -160,6 +160,28 @@ spec:
 apiVersion: kustomize.toolkit.fluxcd.io/v1
 kind: Kustomization
 metadata:
+  name: loki
+  namespace: flux-system
+spec:
+  interval: 10m
+  retryInterval: 1m
+  timeout: 5m
+  path: ./infrastructure/loki
+  prune: true
+  sourceRef:
+    kind: GitRepository
+    name: flux-system
+  # prometheus for the ServiceMonitor CRD, csi-driver-nfs for the
+  # truenas-nfs-logs StorageClass. Nothing depends on this in turn: apps must
+  # keep deploying when the log store is down.
+  dependsOn:
+    - name: prometheus
+    - name: csi-driver-nfs
+  wait: true
+---
+apiVersion: kustomize.toolkit.fluxcd.io/v1
+kind: Kustomization
+metadata:
   name: tailscale-operator
   namespace: flux-system
 spec:
