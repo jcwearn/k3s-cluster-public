@@ -1,0 +1,28 @@
+# The receiver's tailnet entry point, loki-push. Only the push port: the
+# chart's own Service also carries Alloy's UI and debug port, which the tailnet
+# has no business reaching.
+#
+# Tagged tag:log-ingest rather than the operator's default tag:k8s, so the ACL
+# can grant tag:host exactly this device on tcp:3500 and nothing else in the
+# cluster. tagOwners must list tag:k8s-operator for the tag, or the operator
+# cannot create the device.
+apiVersion: v1
+kind: Service
+metadata:
+  name: loki-push
+  namespace: alloy
+  annotations:
+    ignore-check.kube-linter.io/dangling-service: "pods come from the alloy-receiver HelmRelease, which CI does not expand"
+    tailscale.com/expose: "true"
+    tailscale.com/hostname: "loki-push"
+    tailscale.com/tags: "tag:log-ingest"
+spec:
+  type: ClusterIP
+  ports:
+    - name: push
+      port: 3500
+      targetPort: 3500
+      protocol: TCP
+  selector:
+    app.kubernetes.io/name: alloy
+    app.kubernetes.io/instance: alloy-receiver

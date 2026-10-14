@@ -1,0 +1,37 @@
+// Push-only entry point for machines outside the cluster -- today the three
+// Proxmox hosts -- reached over the tailnet as loki-push. It accepts the Loki
+// push API and nothing else, so Loki's query API is never exposed: a host can
+// write log lines here but read nothing back.
+
+loki.source.api "hosts" {
+	http {
+		listen_address = "0.0.0.0"
+		listen_port    = 3500
+	}
+	use_incoming_timestamp = true
+	forward_to             = [loki.process.hosts.receiver]
+}
+
+// One counter per pushed stream, carrying the stream's labels, so Prometheus
+// can tell a host that went quiet from one that is fine. HostJournalSilent
+// alerts on it by node.
+loki.process "hosts" {
+	stage.metrics {
+		metric.counter {
+			name        = "host_log_lines_total"
+			description = "Log lines received from hosts outside the cluster."
+			match_all   = true
+			action      = "inc"
+			// The default drops a series after 5 idle minutes, which would
+			// make a silent host vanish instead of reading zero.
+			max_idle_duration = "24h"
+		}
+	}
+	forward_to = [loki.write.default.receiver]
+}
+
+loki.write "default" {
+	endpoint {
+		url = "http://loki.loki.svc.cluster.local:3100/loki/api/v1/push"
+	}
+}

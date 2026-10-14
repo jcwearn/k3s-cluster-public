@@ -1,0 +1,84 @@
+# Push-only receiver for hosts outside the cluster, reached over the tailnet
+# through service-receiver.yaml. A release of its own rather than a port on
+# alloy-events: that pod holds the chart's cluster-wide read RBAC (Secrets
+# included), and this one is the pod the tailnet can reach, so it gets no
+# Kubernetes access at all. The pipeline is data/receiver.alloy.
+apiVersion: helm.toolkit.fluxcd.io/v2
+kind: HelmRelease
+metadata:
+  name: alloy-receiver
+  namespace: alloy
+spec:
+  interval: 10m
+  chart:
+    spec:
+      chart: alloy
+      version: 1.13.1
+      sourceRef:
+        kind: HelmRepository
+        name: grafana
+        namespace: flux-system
+  install:
+    createNamespace: true
+  upgrade:
+    strategy:
+      name: RetryOnFailure
+  values:
+    alloy:
+      configMap:
+        create: false
+        name: alloy-receiver-config
+        key: receiver.alloy
+      storagePath: /alloy-data
+      enableReporting: false
+      extraPorts:
+        - name: push
+          port: 3500
+          targetPort: 3500
+          protocol: TCP
+      mounts:
+        extra:
+          - name: data
+            mountPath: /alloy-data
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 473
+        runAsGroup: 473
+        allowPrivilegeEscalation: false
+        readOnlyRootFilesystem: true
+        capabilities:
+          drop:
+            - ALL
+        seccompProfile:
+          type: RuntimeDefault
+      resources:
+        requests:
+          cpu: 10m
+          memory: 64Mi
+        limits:
+          cpu: 200m
+          memory: 256Mi
+    rbac:
+      create: false
+    serviceAccount:
+      automountServiceAccountToken: false
+    configReloader:
+      resources:
+        requests:
+          cpu: 10m
+          memory: 50Mi
+        limits:
+          cpu: 100m
+          memory: 64Mi
+    controller:
+      type: deployment
+      replicas: 1
+      volumes:
+        extra:
+          - name: data
+            emptyDir: {}
+    serviceMonitor:
+      enabled: true
+      # Prometheus selects ServiceMonitors on this label and no other.
+      additionalLabels:
+        release: kube-prometheus-stack

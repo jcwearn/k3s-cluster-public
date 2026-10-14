@@ -1712,3 +1712,17 @@ spec:
                 annotations:
                   summary: Loki's compactor has not applied retention in over 6 hours
                   description: "Logs older than 30 days are not being deleted, so pool/k8s-nfs-logs will keep growing toward its refquota (TrueNASDatasetNearRefquota pages at 80%). Check the compactor lines in kubectl -n loki logs loki-0."
+              # Hosts outside the cluster push their journal to alloy-receiver,
+              # which counts lines per stream (data/receiver.alloy). A Proxmox
+              # host logs something every few minutes, so half an hour of
+              # nothing means its Alloy, its tailnet path or the receiver has
+              # stopped. The counter's 24h idle window keeps a silent host's
+              # series at a flat value instead of dropping it.
+              - alert: HostJournalSilent
+                expr: sum by (node) (increase(loki_process_custom_host_log_lines_total[30m])) == 0
+                for: 15m
+                labels:
+                  severity: warning
+                annotations:
+                  summary: "No journal lines from {{ $labels.node }} in 45 minutes"
+                  description: "{{ $labels.node }} has stopped shipping its journal to Loki. On the host: systemctl status alloy; journalctl -u alloy -n 50; tailscale status. In the cluster: kubectl -n alloy logs deploy/alloy-receiver -c alloy."

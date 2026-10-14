@@ -21,14 +21,18 @@ logs at all.
 | Pod logs | `alloy` DaemonSet, tailing `/var/log/pods` on each node | `namespace`, `pod`, `container`, `app`, `node` | `{namespace="renovate"}` |
 | Node journal | `alloy` DaemonSet, reading `/var/log/journal` | `job="node-journal"`, `unit`, `level`, `transport`, `node` | `{job="node-journal", unit="k3s.service", node="k3s-02"}` |
 | Kubernetes events | `alloy-events`, one replica, watching the API | `job="kubernetes-events"`, `namespace` | `{job="kubernetes-events", namespace="ansible"}` |
+| Proxmox host journals | Alloy on each hypervisor → `alloy-receiver` over the tailnet | `job="node-journal"`, `unit`, `level`, `node` | `{job="node-journal", node="pve-01"}` |
 
 Pod logs are read from the files kubelet writes rather than through the API on purpose: a file
 outlives its pod, so a Job that is cleaned up or a pod evicted from a failing node still has its
 last lines read. Events are a separate single-replica release because a DaemonSet would send each
 one three times.
 
-Proxmox host journals are planned but waiting on the hypervisors joining the tailnet, so they can
-push without Loki being exposed on the LAN.
+The Proxmox hosts run their own Alloy (installed by the `configure-proxmox-alloy` Ansible job) and push
+their journals, labelled like the k3s nodes', to **`alloy-receiver`** over the tailnet as `loki-push`.
+The receiver accepts the Loki push API and nothing else -- Loki's query API is never exposed -- and the
+tailnet ACL lets `tag:host` reach only that device (`tag:log-ingest`) on `tcp:3500`. It runs with no
+Kubernetes RBAC and no service-account token, since it is the one log pod the tailnet can reach.
 
 ## Storage and retention
 
@@ -61,6 +65,7 @@ or crash-looping is already covered by the upstream `KubeDaemonSetRolloutStuck`,
 | `LogEntriesDropped` | A collector gave up on a batch; those lines are lost |
 | `LokiIngestionStopped` | Loki received no lines at all for 30 minutes |
 | `LokiRetentionNotRunning` | The compactor has not applied retention for over 6 hours |
+| `HostJournalSilent` | A Proxmox host has pushed no journal lines for 45 minutes |
 
 ## Gotchas
 
