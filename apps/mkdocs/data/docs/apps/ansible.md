@@ -8,6 +8,7 @@ Automated server management via Kubernetes CronJobs running Ansible playbooks.
 - **LVM thin-pool metrics:** Re-asserts a node_exporter textfile collector on the Proxmox hosts weekly so metadata fullness is graphed and alerted.
 - **Host onboarding:** One-shot playbook to create an `ansible` user, configure sudo, and deploy SSH keys on new hosts.
 - **Node configuration:** On-demand playbooks for kernel sysctls, clean-shutdown ordering, and bounding the containerd image store by age.
+- **Tailnet membership:** On-demand playbook that installs Tailscale on the hypervisors and the k3s guests and joins them as plain machines, so `ssh pve-01` resolves through MagicDNS from anywhere.
 
 ## Architecture
 
@@ -31,6 +32,7 @@ Automated server management via Kubernetes CronJobs running Ansible playbooks.
 | `ansible-configure-k3s-shutdown` | suspended | `configure-k3s-shutdown.yml` |
 | `ansible-configure-k3s-server` | suspended | `configure-k3s-server.yml` |
 | `ansible-enable-secrets-encryption` | suspended | `enable-secrets-encryption.yml` |
+| `ansible-configure-tailscale` | suspended | `configure-tailscale.yml` |
 
 The three upgrade Jobs are one per hypervisor rather than one loop, because the runner is a pod
 inside the cluster it reboots — each is pinned by node affinity *off* the k3s node whose VM it will
@@ -75,6 +77,32 @@ procedure rather than a configuration: k3s's documented steps for turning on enc
 at rest on a cluster that was started without it, in the order k3s says will not corrupt the
 cluster. It was run once; every step is guarded by `k3s secrets-encrypt status`, so a second run
 finds the work done and restarts nothing. The same page describes it.
+
+`configure-tailscale` joins all six hosts to the tailnet. It installs Tailscale from the official
+apt repo for the host's release (Debian on the hypervisors, Ubuntu on the guests), enables
+`tailscaled`, and runs `tailscale up` only on a node whose `tailscale status --json` does not
+already say `Running`, with every widening option pinned off: `--ssh=false`, no advertised routes,
+`--advertise-exit-node=false`, `--accept-routes=false` and `--accept-dns=false` (the hosts keep
+their own `resolv.conf`; on the k3s nodes that is what CoreDNS forwards to). The machine name is
+Tailscale's default, the OS hostname — `pve-0N` for the hypervisors, `k3s-0N` for the guests — so
+nothing about SSH changes except that the name now also resolves over the tailnet. If
+`tailscale up` fails, the play reports its exit code and stderr; the auth key itself is never
+logged. It prints `tailscale status` per host at the end. A second run on a joined host changes
+nothing. Package updates are left to the weekly `upgrade-hypervisor` apt run;
+`tailscale set --auto-update` is deliberately not turned on.
+
+It needs a pre-auth key in `ansible-secrets` as `tailscale-authkey` — reusable, pre-authorized,
+tagged, with an expiry — and fails on its first task with instructions if the key is absent.
+Rollback on a host is `tailscale logout` plus removing the machine in the admin console.
+
+To trigger it:
+
+```bash
+kubectl -n ansible create job ts-$(date +%s) --from=cronjob/ansible-configure-tailscale
+```
+
+A Proxmox host could later advertise the LAN routes as a fallback subnet router for when the
+cluster's Connector is down; that is a separate change, not something this playbook does.
 
 ## Manual operations
 
@@ -185,6 +213,7 @@ Stored in `secrets.sops.yaml`:
 | `ssh-private-key` | SSH private key for the `ansible` user on managed hosts |
 | `ssh-public-key` | SSH public key deployed to new hosts during onboarding |
 | `ntfy-token` | Access token for a write-only ntfy user on the `hypervisor-upgrades` topic |
+| `tailscale-authkey` | Reusable, pre-authorized, tagged Tailscale pre-auth key used by `configure-tailscale.yml`; mounted at `/secrets-tailscale/authkey` |
 
 Edit with: `sops apps/ansible/secrets.sops.yaml`
 
@@ -205,6 +234,7 @@ apps/ansible/
   cronjob-configure-image-gc.yaml
   cronjob-configure-k3s-server.yaml
   cronjob-enable-secrets-encryption.yaml
+  cronjob-configure-tailscale.yaml
   secrets.sops.yaml
   kustomization.yaml
   data/
@@ -220,6 +250,7 @@ apps/ansible/
       configure-image-gc.yml
       configure-k3s-server.yml
       enable-secrets-encryption.yml
+      configure-tailscale.yml
     tasks/
       restart-k3s.yml
     scripts/

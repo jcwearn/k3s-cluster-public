@@ -1,0 +1,88 @@
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: ansible-configure-tailscale
+  namespace: ansible
+  annotations:
+    # A Job runs to completion; a probe would only ever restart it mid-run.
+    ignore-check.kube-linter.io/no-liveness-probe: "run-to-completion Job"
+    ignore-check.kube-linter.io/no-readiness-probe: "run-to-completion Job"
+    # The SSH key Secret is mounted 0400 and owned by root; only root can read
+    # it. Dropping root here means fsGroup plus a 0440 mode on that mount,
+    # which is a change to the automation that reboots the hypervisors and
+    # gets a supervised run of its own.
+    ignore-check.kube-linter.io/run-as-non-root: "reads a root-owned 0400 SSH key; see comment"
+spec:
+  schedule: "0 0 1 1 *"
+  suspend: true
+  timeZone: America/New_York
+  concurrencyPolicy: Forbid
+  successfulJobsHistoryLimit: 3
+  failedJobsHistoryLimit: 3
+  jobTemplate:
+    spec:
+      backoffLimit: 0
+      template:
+        spec:
+          serviceAccountName: ansible-runner
+          containers:
+            - name: ansible
+              image: ghcr.io/jcwearn/ansible-runner:0.1.60@sha256:89c5c2a48231cb1b0443d4151236ec0e1b2721483a1d3482865c84a0f83b2af4
+              imagePullPolicy: IfNotPresent
+              securityContext:
+                runAsUser: 0
+              command: ["ansible-playbook"]
+              args: ["/ansible/playbooks/configure-tailscale.yml"]
+              env:
+                - name: ANSIBLE_CONFIG
+                  value: /ansible/ansible.cfg
+              volumeMounts:
+                - name: ansible-data
+                  mountPath: /ansible
+                - name: ssh-key
+                  mountPath: /secrets
+                  readOnly: true
+                - name: tailscale-authkey
+                  mountPath: /secrets-tailscale
+                  readOnly: true
+              resources:
+                requests:
+                  cpu: 100m
+                  memory: 128Mi
+                limits:
+                  cpu: 500m
+                  memory: 256Mi
+          restartPolicy: Never
+          volumes:
+            - name: ansible-data
+              configMap:
+                name: ansible-data
+                items:
+                  - key: ansible.cfg
+                    path: ansible.cfg
+                  - key: inventory.yml
+                    path: inventory.yml
+                  - key: configure-tailscale.yml
+                    path: playbooks/configure-tailscale.yml
+            - name: ssh-key
+              secret:
+                secretName: ansible-secrets
+                defaultMode: 0400
+                items:
+                  - key: ssh-private-key
+                    path: ssh-private-key
+                  - key: ssh-public-key
+                    path: ssh-public-key
+            # The pre-auth key the captain adds to ansible-secrets by hand as
+            # `tailscale-authkey`. Its own volume, and optional, so that a
+            # Secret still without the key produces a Job that fails on the
+            # playbook's first task with the instruction to add it, rather
+            # than a pod stuck in ContainerCreating on a mount error.
+            - name: tailscale-authkey
+              secret:
+                secretName: ansible-secrets
+                defaultMode: 0400
+                optional: true
+                items:
+                  - key: tailscale-authkey
+                    path: authkey

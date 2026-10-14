@@ -1,0 +1,151 @@
+---
+# Playbook to join every managed host -- the three Proxmox hypervisors and the
+# three k3s guests -- to the tailnet as plain machines.
+#
+# Why: the Mac keeps Tailscale's "Override local DNS" on so NextDNS applies on
+# cellular, which means LAN names never reach it; MagicDNS names do, anywhere.
+# Tailscale on the hypervisors is also a way back into the LAN that does not
+# pass through the cluster, which docs/plans/dns-remote-access-resilience.md
+# asks for.
+#
+# What it sets: nothing beyond membership. No Tailscale SSH, no advertised
+# routes, no exit node, no accepted routes, and no accepted DNS -- the hosts
+# keep their own resolv.conf, which on the k3s nodes is what CoreDNS forwards
+# to. SSH keeps working exactly as today; the only new thing is that the
+# machine's own hostname now resolves through MagicDNS.
+#
+# Idempotent: the apt repo, the keyring, the package and the service are all
+# declarative, and `tailscale up` only runs when `tailscale status --json`
+# reports the node is not already logged in. A second run on a joined host
+# changes nothing.
+#
+# The pre-auth key is read from /secrets-tailscale/authkey, mounted from the
+# `tailscale-authkey` key of the ansible-secrets Secret. The mount is optional
+# so that a missing key fails this play with a message rather than leaving the
+# pod stuck in ContainerCreating. The key never appears on the command line
+# in the logs: the task that uses it runs with no_log.
+#
+# Package updates: not managed here. upgrade-hypervisor.yml dist-upgrades every
+# host weekly, so a Tailscale update arrives with the rest of apt; tailscaled's
+# own updater (`tailscale set --auto-update`) is left off to keep one channel.
+#
+# Run manually:
+#   kubectl create job -n ansible --from=cronjob/ansible-configure-tailscale \
+#     ansible-configure-tailscale-$(date +%s)
+
+- name: Check the pre-auth key was supplied
+  hosts: localhost
+  connection: local
+  gather_facts: false
+
+  vars:
+    tailscale_authkey_file: /secrets-tailscale/authkey
+
+  tasks:
+    - name: Stat the pre-auth key file
+      ansible.builtin.stat:
+        path: "{{ tailscale_authkey_file }}"
+      register: authkey_stat
+
+    - name: Refuse to run without a pre-auth key
+      ansible.builtin.assert:
+        that:
+          - authkey_stat.stat.exists
+          - authkey_stat.stat.size > 0
+        fail_msg: >-
+          {{ tailscale_authkey_file }} is missing or empty. Add a
+          `tailscale-authkey` entry under stringData in
+          apps/ansible/secrets.sops.yaml (sops apps/ansible/secrets.sops.yaml),
+          push, let Flux reconcile, and trigger the Job again.
+
+- name: Join the hosts to the tailnet
+  hosts: linux_servers
+  become: true
+  gather_facts: true
+
+  vars:
+    tailscale_authkey_file: /secrets-tailscale/authkey
+    tailscale_keyring: /usr/share/keyrings/tailscale-archive-keyring.gpg
+    tailscale_sources: /etc/apt/sources.list.d/tailscale.list
+    # pkgs.tailscale.com publishes one repo per distro codename; the
+    # hypervisors are Debian, the guests Ubuntu, and facts tell them apart.
+    tailscale_repo_base: "https://pkgs.tailscale.com/stable/{{ ansible_distribution | lower }}"
+
+  tasks:
+    - name: Refuse a host that is not Debian or Ubuntu
+      ansible.builtin.assert:
+        that: ansible_distribution in ['Debian', 'Ubuntu']
+        fail_msg: "{{ inventory_hostname }} runs {{ ansible_distribution }}; this play only knows the Debian and Ubuntu repos."
+
+    - name: Install the Tailscale apt signing key
+      ansible.builtin.get_url:
+        url: "{{ tailscale_repo_base }}/{{ ansible_distribution_release }}.noarmor.gpg"
+        dest: "{{ tailscale_keyring }}"
+        owner: root
+        group: root
+        mode: "0644"
+
+    - name: Add the Tailscale apt repository
+      ansible.builtin.copy:
+        dest: "{{ tailscale_sources }}"
+        content: "deb [signed-by={{ tailscale_keyring }}] {{ tailscale_repo_base }} {{ ansible_distribution_release }} main\n"
+        owner: root
+        group: root
+        mode: "0644"
+      register: tailscale_repo
+
+    - name: Install tailscale
+      ansible.builtin.apt:
+        name: tailscale
+        state: present
+        update_cache: true
+        cache_valid_time: "{{ 0 if tailscale_repo.changed else 3600 }}"
+
+    - name: Enable and start tailscaled
+      ansible.builtin.systemd:
+        name: tailscaled
+        enabled: true
+        state: started
+
+    - name: Read the node's login state
+      ansible.builtin.command: tailscale status --json
+      register: tailscale_status_raw
+      changed_when: false
+
+    - name: Decide whether the node still needs to join
+      ansible.builtin.set_fact:
+        tailscale_needs_up: "{{ (tailscale_status_raw.stdout | from_json).BackendState != 'Running' }}"
+
+    # Every knob that could widen what the node does on the tailnet is pinned
+    # off by name, so a future default change upstream cannot turn one on.
+    # The machine name is tailscale's default, the OS hostname.
+    - name: Join the tailnet
+      ansible.builtin.command:
+        argv:
+          - tailscale
+          - up
+          - "--auth-key={{ lookup('file', tailscale_authkey_file) | trim }}"
+          - --ssh=false
+          - --advertise-routes=
+          - --advertise-exit-node=false
+          - --accept-routes=false
+          - --accept-dns=false
+          - --timeout=2m
+      register: tailscale_up
+      failed_when: false
+      no_log: true
+      when: tailscale_needs_up
+
+    - name: Fail with the reason tailscale up gave
+      ansible.builtin.fail:
+        msg: "tailscale up exited {{ tailscale_up.rc }}: {{ tailscale_up.stderr }}"
+      when: tailscale_up is not skipped and tailscale_up.rc != 0
+
+    - name: Show the node as the tailnet sees it
+      ansible.builtin.command: tailscale status
+      register: tailscale_status
+      changed_when: false
+
+    - name: Print tailscale status
+      ansible.builtin.debug:
+        msg: "{{ tailscale_status.stdout_lines }}"

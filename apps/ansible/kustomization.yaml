@@ -15,6 +15,7 @@ resources:
   - cronjob-configure-proxmox-kvm.yaml
   - cronjob-configure-k3s-server.yaml
   - cronjob-enable-secrets-encryption.yaml
+  - cronjob-configure-tailscale.yaml
   - secrets.sops.yaml
 configMapGenerator:
   - name: ansible-data
@@ -32,6 +33,7 @@ configMapGenerator:
       - data/playbooks/configure-proxmox-kvm.yml
       - data/playbooks/configure-k3s-server.yml
       - data/playbooks/enable-secrets-encryption.yml
+      - data/playbooks/configure-tailscale.yml
       - data/tasks/restart-k3s.yml
       - data/scripts/lvm-thin-metrics.sh
       - data/scripts/pve-reboot-required.sh
