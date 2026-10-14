@@ -1,0 +1,11 @@
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: alloy
+  labels:
+    # The collector reads /var/log on the host -- pod log files are root 0640
+    # under a 0750 directory, the journal is root:systemd-journal -- and keeps
+    # its read positions in a hostPath. hostPath is refused below privileged.
+    pod-security.kubernetes.io/enforce: privileged
+    pod-security.kubernetes.io/warn: restricted
+    pod-security.kubernetes.io/audit: restricted

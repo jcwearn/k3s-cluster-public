@@ -182,6 +182,27 @@ spec:
 apiVersion: kustomize.toolkit.fluxcd.io/v1
 kind: Kustomization
 metadata:
+  name: alloy
+  namespace: flux-system
+spec:
+  interval: 10m
+  retryInterval: 1m
+  timeout: 5m
+  path: ./infrastructure/alloy
+  prune: true
+  sourceRef:
+    kind: GitRepository
+    name: flux-system
+  # loki for the HelmRepository it shares and the endpoint it pushes to.
+  # Alloy would only buffer and retry without it, but a cold bootstrap reads
+  # better in order.
+  dependsOn:
+    - name: loki
+  wait: true
+---
+apiVersion: kustomize.toolkit.fluxcd.io/v1
+kind: Kustomization
+metadata:
   name: tailscale-operator
   namespace: flux-system
 spec:

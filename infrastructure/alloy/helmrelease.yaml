@@ -1,0 +1,90 @@
+# Log collector: one Alloy per node, shipping that node's pod logs and
+# journal to Loki. The pipeline itself is data/config.alloy.
+apiVersion: helm.toolkit.fluxcd.io/v2
+kind: HelmRelease
+metadata:
+  name: alloy
+  namespace: alloy
+spec:
+  interval: 10m
+  chart:
+    spec:
+      chart: alloy
+      version: 1.13.1
+      sourceRef:
+        kind: HelmRepository
+        name: grafana
+        namespace: flux-system
+  install:
+    createNamespace: true
+  upgrade:
+    strategy:
+      name: RetryOnFailure
+  values:
+    alloy:
+      configMap:
+        create: false
+        name: alloy-config
+        key: config.alloy
+      # Read positions live on the host, so a restarted pod resumes where the
+      # last one stopped instead of re-sending every file from the start.
+      storagePath: /var/lib/alloy/data
+      enableReporting: false
+      mounts:
+        # /var/log read-only: /var/log/pods and /var/log/journal.
+        varlog: true
+        extra:
+          - name: data
+            mountPath: /var/lib/alloy/data
+      extraEnv:
+        # HOSTNAME in a pod is the pod's name. The config selects this node's
+        # pods and labels the journal by it.
+        - name: NODE_NAME
+          valueFrom:
+            fieldRef:
+              fieldPath: spec.nodeName
+      # Root because the files are root-owned (see namespace.yaml), but
+      # nothing beyond that: no capabilities, so no DAC override either --
+      # it reads as the owner.
+      securityContext:
+        runAsUser: 0
+        runAsGroup: 0
+        allowPrivilegeEscalation: false
+        readOnlyRootFilesystem: true
+        capabilities:
+          drop:
+            - ALL
+        seccompProfile:
+          type: RuntimeDefault
+      resources:
+        requests:
+          cpu: 50m
+          memory: 128Mi
+        limits:
+          cpu: 500m
+          memory: 512Mi
+    configReloader:
+      resources:
+        requests:
+          cpu: 10m
+          memory: 50Mi
+        limits:
+          cpu: 100m
+          memory: 64Mi
+    controller:
+      type: daemonset
+      # Every node, including a cordoned or tainted one: a node in trouble is
+      # the one whose logs are wanted.
+      tolerations:
+        - operator: Exists
+      volumes:
+        extra:
+          - name: data
+            hostPath:
+              path: /var/lib/alloy/data
+              type: DirectoryOrCreate
+    serviceMonitor:
+      enabled: true
+      # Prometheus selects ServiceMonitors on this label and no other.
+      additionalLabels:
+        release: kube-prometheus-stack

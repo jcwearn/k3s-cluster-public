@@ -1,0 +1,115 @@
+// Ships this node's pod logs and systemd journal to Loki. One instance per
+// node (a DaemonSet); each reads only its own node's files, so nothing is
+// sent twice. Kubernetes events are not collected here -- a DaemonSet would
+// send each one three times.
+
+// ---- Pod logs ----------------------------------------------------------------
+// Tailed from the files kubelet writes, not through the API: a file outlives
+// the pod, so a Job that is TTL'd, or a pod evicted from a dying node, still has
+// its last lines read before the file is gone.
+
+discovery.kubernetes "pods" {
+	role = "pod"
+
+	selectors {
+		role  = "pod"
+		field = "spec.nodeName=" + sys.env("NODE_NAME")
+	}
+}
+
+discovery.relabel "pods" {
+	targets = discovery.kubernetes.pods.targets
+
+	rule {
+		source_labels = ["__meta_kubernetes_namespace"]
+		target_label  = "namespace"
+	}
+
+	rule {
+		source_labels = ["__meta_kubernetes_pod_name"]
+		target_label  = "pod"
+	}
+
+	rule {
+		source_labels = ["__meta_kubernetes_pod_container_name"]
+		target_label  = "container"
+	}
+
+	rule {
+		source_labels = ["__meta_kubernetes_pod_node_name"]
+		target_label  = "node"
+	}
+	// app.kubernetes.io/name where a workload sets it, else the bare app label.
+	rule {
+		source_labels = ["__meta_kubernetes_pod_label_app_kubernetes_io_name", "__meta_kubernetes_pod_label_app"]
+		separator     = ";"
+		regex         = "^;*([^;]+);*.*$"
+		target_label  = "app"
+	}
+
+	rule {
+		source_labels = ["__meta_kubernetes_pod_uid", "__meta_kubernetes_pod_container_name"]
+		separator     = "/"
+		target_label  = "__path__"
+		replacement   = "/var/log/pods/*$1/*.log"
+	}
+}
+
+local.file_match "pods" {
+	path_targets = discovery.relabel.pods.output
+}
+
+loki.source.file "pods" {
+	targets    = local.file_match.pods.targets
+	forward_to = [loki.process.pods.receiver]
+}
+
+// Strips the CRI prefix (timestamp, stream, partial flag) and uses its
+// timestamp, so a line is stamped when the container wrote it rather than when
+// it was read.
+loki.process "pods" {
+	stage.cri { }
+	forward_to = [loki.write.default.receiver]
+}
+
+// ---- Node journal ------------------------------------------------------------
+// k3s, containerd and the kernel: what explains a node going NotReady, which
+// pod logs cannot.
+
+loki.relabel "journal" {
+	forward_to = []
+
+	rule {
+		source_labels = ["__journal__systemd_unit"]
+		target_label  = "unit"
+	}
+
+	rule {
+		source_labels = ["__journal_priority_keyword"]
+		target_label  = "level"
+	}
+
+	rule {
+		source_labels = ["__journal__transport"]
+		target_label  = "transport"
+	}
+}
+
+loki.source.journal "node" {
+	path          = "/var/log/journal"
+	max_age       = "12h"
+	relabel_rules = loki.relabel.journal.rules
+	labels        = {
+		job  = "node-journal",
+		node = sys.env("NODE_NAME"),
+	}
+	forward_to = [loki.write.default.receiver]
+}
+
+// ---- Sink --------------------------------------------------------------------
+
+loki.write "default" {
+	endpoint {
+		url = "http://loki.loki.svc.cluster.local:3100/loki/api/v1/push"
+	}
+}
