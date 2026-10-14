@@ -1,0 +1,78 @@
+# Kubernetes events to Loki: a second release of the same chart, one replica,
+# because the DaemonSet in helmrelease.yaml would send every event three
+# times. The pipeline is data/events.alloy.
+apiVersion: helm.toolkit.fluxcd.io/v2
+kind: HelmRelease
+metadata:
+  name: alloy-events
+  namespace: alloy
+spec:
+  interval: 10m
+  chart:
+    spec:
+      chart: alloy
+      version: 1.13.1
+      sourceRef:
+        kind: HelmRepository
+        name: grafana
+        namespace: flux-system
+  install:
+    createNamespace: true
+  upgrade:
+    strategy:
+      name: RetryOnFailure
+  values:
+    alloy:
+      configMap:
+        create: false
+        name: alloy-events-config
+        key: events.alloy
+      # Holds the last event seen, so a restart resumes rather than resending
+      # the hour the API server still has. An emptyDir is enough: losing it
+      # means duplicates, which Loki drops when the line and timestamp match.
+      storagePath: /alloy-data
+      enableReporting: false
+      mounts:
+        extra:
+          - name: data
+            mountPath: /alloy-data
+      # Unlike the DaemonSet this reads nothing from the host, so it runs as
+      # the image's own alloy user and meets restricted.
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 473
+        runAsGroup: 473
+        allowPrivilegeEscalation: false
+        readOnlyRootFilesystem: true
+        capabilities:
+          drop:
+            - ALL
+        seccompProfile:
+          type: RuntimeDefault
+      resources:
+        requests:
+          cpu: 10m
+          memory: 64Mi
+        limits:
+          cpu: 200m
+          memory: 256Mi
+    configReloader:
+      resources:
+        requests:
+          cpu: 10m
+          memory: 50Mi
+        limits:
+          cpu: 100m
+          memory: 64Mi
+    controller:
+      type: deployment
+      replicas: 1
+      volumes:
+        extra:
+          - name: data
+            emptyDir: {}
+    serviceMonitor:
+      enabled: true
+      # Prometheus selects ServiceMonitors on this label and no other.
+      additionalLabels:
+        release: kube-prometheus-stack

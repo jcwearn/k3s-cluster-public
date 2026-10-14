@@ -1,0 +1,15 @@
+// Kubernetes events, which the API server keeps for an hour and then forgets.
+// One replica on purpose: every instance would receive every event, so the
+// DaemonSet in config.alloy is the wrong place for this.
+
+loki.source.kubernetes_events "cluster" {
+	job_name   = "kubernetes-events"
+	log_format = "logfmt"
+	forward_to = [loki.write.default.receiver]
+}
+
+loki.write "default" {
+	endpoint {
+		url = "http://loki.loki.svc.cluster.local:3100/loki/api/v1/push"
+	}
+}
