@@ -1,0 +1,32 @@
+# Loki's chunks, TSDB index and compactor state.
+#
+# Its own share for the quota, not the mount options: k8s-nfs-logs carries a
+# 20 GiB refquota in truenas-infra, which is the only ceiling on log growth --
+# kubelet cannot see per-PVC usage on NFS. The 4.1 mount is copied from
+# storageclass-monitoring.yaml for the same reason Prometheus has it: Loki's
+# TSDB index wants file locking that only NFSv4.1 integrates.
+#
+# onDelete is delete, not archive like every other class. Logs are disposable,
+# and an archived directory would still count against the 20 GiB refquota, so a
+# reinstalled Loki would start out short by whatever the old one held.
+#
+# See storageclass-rwx.yaml for why subDir is written with $$.
+apiVersion: storage.k8s.io/v1
+kind: StorageClass
+metadata:
+  name: truenas-nfs-logs
+  annotations:
+    kustomize.toolkit.fluxcd.io/force: "Enabled"
+provisioner: nfs.csi.k8s.io
+parameters:
+  server: ${LAN_PREFIX}.200
+  share: /mnt/pool/k8s-nfs-logs
+  subDir: $${pvc.metadata.namespace}-$${pvc.metadata.name}-$${pv.metadata.name}
+  mountPermissions: "0777"
+  onDelete: delete
+mountOptions:
+  - nfsvers=4.1
+  - hard
+reclaimPolicy: Delete
+volumeBindingMode: Immediate
+allowVolumeExpansion: true
