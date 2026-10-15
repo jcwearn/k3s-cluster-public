@@ -1,6 +1,8 @@
-# Who may open a connection to the database pod. Three callers, nothing else:
+# Who may open a connection to the database pod. Four callers, nothing else:
 #
 #   5432  the app itself
+#   5432  the cluster's other instance and its join Job, for streaming
+#         replication and the initial pg_basebackup
 #   9187  Prometheus, for the PodMonitor
 #   8000  the CloudNativePG operator, for the instance manager's status API
 #
@@ -19,7 +21,7 @@ metadata:
   namespace: immich
   annotations:
     ignore-check.kube-linter.io/dangling-networkpolicy: "selects pods the CNPG operator creates from the Cluster object"
-    ignore-check.kube-linter.io/dangling-networkpolicypeer-podselector: "the server pods are created by the immich Helm chart"
+    ignore-check.kube-linter.io/dangling-networkpolicypeer-podselector: "the server pods are created by the immich Helm chart, and the replication peer is the CNPG operator's own instance pods"
 spec:
   podSelector:
     matchLabels:
@@ -32,6 +34,13 @@ spec:
             matchLabels:
               app.kubernetes.io/instance: immich
               app.kubernetes.io/name: server
+      ports:
+        - port: 5432
+          protocol: TCP
+    - from:
+        - podSelector:
+            matchLabels:
+              cnpg.io/cluster: immich-database
       ports:
         - port: 5432
           protocol: TCP

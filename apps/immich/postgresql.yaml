@@ -4,12 +4,24 @@ metadata:
   name: immich-database
   namespace: immich
 spec:
-  instances: 1
-  # A single-instance cluster has no replica to protect, but CNPG still generates
-  # a PDB with minAvailable: 1, which reports 0 allowed disruptions. Any drain of
-  # this pod's node then hangs rather than failing, so it has to be relaxed by
-  # hand every time -- it blocked the Proxmox 8->9 window, and an unattended
+  # A primary and one streaming replica, never on the same node. With a single
+  # instance, a dead node took the database down until the node came back: the
+  # pod sat Terminating and nothing replaced it (node-outage drill, 2026-10-13).
+  # Now the operator promotes the replica instead, with no one at the keyboard.
+  instances: 2
+  affinity:
+    podAntiAffinityType: required
+  # On a spec change that needs new pods (image, affinity, resources), update
+  # the replica, switch over to it, then update the old primary. The default,
+  # restart, recreates the primary in place, which took job-track's database
+  # down for 3m20s when its replica was added.
+  primaryUpdateMethod: switchover
+  # CNPG generates a PDB that keeps the primary at minAvailable: 1, which reports
+  # 0 allowed disruptions. Any drain of the primary's node then hangs rather than
+  # failing -- it blocked the Proxmox 8->9 window, and an unattended
   # system-upgrade-controller Job would simply sit there until its deadline.
+  # Without it, the drain evicts the primary and the operator fails over to the
+  # replica.
   enablePDB: false
   imageName: ghcr.io/tensorchord/cloudnative-vectorchord:16.9-0.4.3
   # Restoring this cluster means pinning the SAME image. A recovery bootstrap
