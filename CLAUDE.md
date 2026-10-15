@@ -26,7 +26,6 @@ infrastructure/          # Cluster infrastructure components
   ├── external-dns/      # DNS record sync to Cloudflare
   ├── flux-operator/     # Flux Operator + FluxInstance + webhook receiver
   ├── kube-vip/          # HA virtual IP for control plane + LoadBalancer
-  ├── llama-cpp/         # Local LLM inference server (Qwen3, CPU)
   ├── loki/              # Log store (single-binary Loki, 30-day retention)
   ├── prometheus/        # Monitoring stack (kube-prometheus-stack + TrueNAS/Proxmox monitoring)
   ├── reloader/          # Auto-restart on ConfigMap/Secret changes
@@ -48,7 +47,6 @@ apps/                    # User-facing applications
   ├── n8n/               # Workflow automation
   ├── ntfy/              # Push notifications
   ├── paperless-ngx/     # Document management
-  ├── open-webui/        # Chat UI for LLMs
   ├── renovate/          # Dependency update bot (CronJob)
   ├── stirling-pdf/      # PDF tools
   ├── withjoy-exporter/  # WithJoy guest list → Google Sheets (CronJob + web trigger)
@@ -91,7 +89,7 @@ Apps in `apps/` typically include standard K8s manifests:
 Every container and initContainer in a Deployment/StatefulSet/CronJob **must** include a `resources:` block with both `requests` and `limits`.
 
 ### Applications (Helm-based)
-Some apps (immich, open-webui) use Helm instead of raw manifests. These combine HelmRepository + HelmRelease into a single `helm.yaml` file alongside `namespace.yaml` and `kustomization.yaml`.
+Some apps (immich) use Helm instead of raw manifests. These combine HelmRepository + HelmRelease into a single `helm.yaml` file alongside `namespace.yaml` and `kustomization.yaml`.
 
 Every `helm.yaml` HelmRelease **must** include a `resources:` block in its values (same rules as infrastructure above).
 
@@ -109,9 +107,9 @@ Current external services: homeassistant, proxmox, truenas, unifi.
 Defined in `clusters/prod/infrastructure.yaml` and `clusters/prod/apps.yaml`:
 
 1. cert-manager → cert-manager-issuer
-2. external-dns, envoy-gateway → envoy-gateway-config, kube-vip, prometheus, reloader, csi-driver-nfs, cloudnative-pg, coredns, llama-cpp, flux-operator, system-upgrade-controller, loki → alloy
+2. external-dns, envoy-gateway → envoy-gateway-config, kube-vip, prometheus, reloader, csi-driver-nfs, cloudnative-pg, coredns, flux-operator, system-upgrade-controller, loki → alloy
 3. tailscale-operator → tailscale-connector
-4. **apps** (depends on: cert-manager-issuer, external-dns, envoy-gateway-config, prometheus, tailscale-connector, csi-driver-nfs, cloudnative-pg, llama-cpp)
+4. **apps** (depends on: cert-manager-issuer, external-dns, envoy-gateway-config, prometheus, tailscale-connector, csi-driver-nfs, cloudnative-pg)
 
 ## Working with Secrets
 

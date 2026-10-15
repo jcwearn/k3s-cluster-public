@@ -114,10 +114,6 @@ data:
             description: Job search tracker - pipeline, leads and what is due next
             icon: sh-planka-light.webp
     - Development & AI:
-        - Open Web UI:
-            href: https://chat.${DOMAIN}/
-            description: Open Web UI is a user-friendly web interface for interacting with large language models
-            icon: sh-open-webui-light.webp
         - Mkdocs:
             href: https://docs.${DOMAIN}/
             description: MkDocs is a fast, simple static site generator that’s geared towards building project documentation

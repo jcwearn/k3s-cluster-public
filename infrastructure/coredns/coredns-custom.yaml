@@ -8,7 +8,6 @@ data:
     # Route all ${DOMAIN} subdomains through Envoy Gateway for TLS termination
     # Apps
     rewrite name books.${DOMAIN} envoy-proxy.envoy-gateway-system.svc.cluster.local
-    rewrite name chat.${DOMAIN} envoy-proxy.envoy-gateway-system.svc.cluster.local
     rewrite name clock.${DOMAIN} envoy-proxy.envoy-gateway-system.svc.cluster.local
     rewrite name dash.${DOMAIN} envoy-proxy.envoy-gateway-system.svc.cluster.local
     rewrite name docs.${DOMAIN} envoy-proxy.envoy-gateway-system.svc.cluster.local

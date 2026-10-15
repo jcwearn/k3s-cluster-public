@@ -64,7 +64,6 @@ of the cluster.
 │   ├── n8n/                # Workflow automation
 │   ├── ntfy/               # Push notifications
 │   ├── paperless-ngx/      # Document management
-│   ├── open-webui/         # Chat UI for LLMs
 │   ├── renovate/           # Dependency update bot (CronJob)
 │   ├── stirling-pdf/       # PDF tools
 │   ├── withjoy-exporter/   # WithJoy guest list → Google Sheets (CronJob + web trigger)
@@ -85,7 +84,6 @@ of the cluster.
 │   ├── external-dns/       # DNS record sync to Cloudflare
 │   ├── flux-operator/      # Flux Operator + FluxInstance + webhook receiver
 │   ├── kube-vip/           # HA virtual IP for control plane + LoadBalancer
-│   ├── llama-cpp/          # Local LLM inference server (Qwen3, CPU)
 │   ├── loki/               # Log store (30-day retention)
 │   ├── prometheus/         # Monitoring stack (kube-prometheus-stack + TrueNAS/Proxmox monitoring)
 │   ├── reloader/           # Auto-restart on ConfigMap/Secret changes
@@ -117,7 +115,6 @@ FluxCD watches `clusters/prod/` and recursively applies everything under `apps/`
 | | **TrueNAS Monitoring** | Graphite exporter + Prometheus alerts + Grafana dashboard for TrueNAS |
 | | **Proxmox Monitoring** | PVE exporter + node_exporter + Prometheus alerts + Grafana dashboards for Proxmox |
 | **Logging** | **Loki** + **Alloy** | Pod logs, node journals and Kubernetes events, kept 30 days |
-| **AI/ML** | **llama.cpp** | Local LLM inference server (Qwen3, OpenAI-compatible API) |
 | **Automation** | **Reloader** | Restarts workloads on ConfigMap/Secret changes |
 | | **System Upgrade Controller** | Upgrades k3s on the nodes from a pinned Plan in Git |
 
@@ -141,7 +138,6 @@ FluxCD watches `clusters/prod/` and recursively applies everything under `apps/`
 | **n8n** | Deployment + PVC | Workflow automation |
 | **ntfy** | Deployment + PVC | Push notifications broker |
 | **Paperless-ngx** | Deployment + PVC | Document management with OCR |
-| **Open WebUI** | Helm | Chat UI for LLMs (backed by llama.cpp) |
 | **Renovate** | CronJob | Automated dependency updates |
 | **Stirling PDF** | Deployment | PDF tools |
 | **WithJoy Exporter** | CronJob + Deployment | Daily WithJoy guest-list export to Google Sheets, with a manual-trigger web UI |

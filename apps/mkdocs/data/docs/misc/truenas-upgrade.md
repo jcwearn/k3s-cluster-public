@@ -126,7 +126,7 @@ without this comes straight back up in the middle of the window.
 > **Warning**
 > Resuming Flux does **not** restore every replica count, and assuming it does will leave workloads
 > down after the window. Flux applies server-side, so it only resets `replicas` on workloads whose
-> manifests actually declare it. `immich`, `jellyfin` and `open-webui` declare no `replicas` field at
+> manifests actually declare it. `immich` and `jellyfin` declare no `replicas` field at
 > all — they rely on the Kubernetes default of 1 at creation — so once scaled to zero there is
 > nothing in git for Flux to put back. In `prometheus`, only the four exporters declare it. Check
 > before you rely on it:
@@ -138,8 +138,8 @@ without this comes straight back up in the middle of the window.
 > Step 6 scales the undeclared ones back explicitly.
 
 ```bash
-flux suspend kustomization apps prometheus llama-cpp
-flux get kustomizations | grep -E 'apps|prometheus|llama-cpp'   # SUSPENDED must be True
+flux suspend kustomization apps prometheus
+flux get kustomizations | grep -E 'apps|prometheus'   # SUSPENDED must be True
 ```
 
 Leave `cloudnative-pg` running. The operator has to be up to act on the hibernation below.
@@ -160,10 +160,8 @@ Deployment.
 kubectl -n ebooks scale deploy/calibre-web deploy/shelfmark --replicas=0
 kubectl -n immich scale deploy/immich-server deploy/immich-machine-learning deploy/immich-valkey --replicas=0
 kubectl -n jellyfin scale deploy/jellyfin --replicas=0
-kubectl -n llama-cpp scale deploy/llama-cpp-1-7b deploy/llama-cpp-4b deploy/llama-cpp-8b --replicas=0
 kubectl -n n8n scale deploy/n8n --replicas=0
 kubectl -n ntfy scale deploy/ntfy-deployment deploy/alertmanager-ntfy-deployment --replicas=0
-kubectl -n open-webui scale deploy/open-webui-redis sts/open-webui --replicas=0
 kubectl -n paperless-ngx scale deploy/paperless-ngx --replicas=0
 kubectl -n prometheus scale deploy/kube-prometheus-stack-grafana --replicas=0
 
@@ -182,7 +180,7 @@ Confirm nothing is left holding a mount before you reboot the NAS:
 
 ```bash
 kubectl get pods -A -o wide | grep -vE 'Running|Completed' ; echo '--- still up on NFS namespaces ---'
-for ns in ebooks immich jellyfin llama-cpp n8n ntfy open-webui paperless-ngx prometheus; do
+for ns in ebooks immich jellyfin n8n ntfy paperless-ngx prometheus; do
   kubectl -n $ns get pods --no-headers 2>/dev/null | grep -v Completed
 done
 ```
@@ -284,7 +282,7 @@ Then, in the UI and the cluster:
 
   # Then resume Flux. This restores every workload whose manifest declares
   # `replicas`, and un-suspends the CronJob
-  flux resume kustomization apps prometheus llama-cpp
+  flux resume kustomization apps prometheus
   flux reconcile kustomization apps --with-source
 
   # Then scale back the ones Flux cannot restore, because their manifests never
@@ -292,7 +290,6 @@ Then, in the UI and the cluster:
   # trusting it -- it is a property of the manifests, not of the workloads
   kubectl -n immich scale deploy/immich-server deploy/immich-machine-learning deploy/immich-valkey --replicas=1
   kubectl -n jellyfin scale deploy/jellyfin --replicas=1
-  kubectl -n open-webui scale deploy/open-webui-redis sts/open-webui --replicas=1
   kubectl -n prometheus scale deploy/kube-prometheus-stack-grafana --replicas=1
   kubectl -n prometheus patch prometheus kube-prometheus-stack-prometheus --type=merge -p '{"spec":{"replicas":1}}'
   kubectl -n prometheus patch alertmanager kube-prometheus-stack-alertmanager --type=merge -p '{"spec":{"replicas":1}}'

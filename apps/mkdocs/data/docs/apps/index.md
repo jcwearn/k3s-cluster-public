@@ -19,7 +19,6 @@ of the stack.
 | **n8n** | Workflow automation platform for connecting apps and services. | [Read more](n8n.md) |
 | **ntfy** | Lightweight push-notification broker (Web + WebSocket). | [Read more](ntfy.md) |
 | **Paperless-ngx** | Document management system with OCR, tagging, and full-text search. | [Read more](paperless-ngx.md) |
-| **Open WebUI** | Web interface for LLM interactions via OpenAI-compatible API | [Read more](open-webui.md) |
 | **Renovate** | Cron-driven bot that keeps Helm charts & images up to date. | [Read more](renovate.md) |
 | **Stirling Pdf** | A privacy-first, self-hosted PDF toolbox | [Read more](stirling-pdf.md) |
 | **Ebooks** | Self-hosted ebook management stack (Shelfmark + Calibre-Web + VPN). | [Read more](ebooks.md) |

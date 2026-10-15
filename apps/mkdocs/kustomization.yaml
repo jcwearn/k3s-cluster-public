@@ -27,7 +27,6 @@ configMapGenerator:
       - data/docs/apps/n8n.md
       - data/docs/apps/ntfy.md
       - data/docs/apps/paperless-ngx.md
-      - data/docs/apps/open-webui.md
       - data/docs/apps/renovate.md
       - data/docs/apps/stirling-pdf.md
       - data/docs/apps/unifi.md
@@ -55,7 +54,6 @@ configMapGenerator:
       - data/docs/infrastructure/truenas.md
       - data/docs/infrastructure/proxmox-monitoring.md
       - data/docs/infrastructure/truenas-monitoring.md
-      - data/docs/infrastructure/llama-cpp.md
       - data/docs/infrastructure/loki.md
       - data/docs/infrastructure/postgres-backups.md
       - data/docs/infrastructure/system-upgrade-controller.md

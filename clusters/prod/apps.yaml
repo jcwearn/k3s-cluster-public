@@ -32,6 +32,5 @@ spec:
     - name: tailscale-operator
     - name: csi-driver-nfs
     - name: cloudnative-pg
-    - name: llama-cpp
   wait: true
   timeout: 5m
