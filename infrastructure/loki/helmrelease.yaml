@@ -76,9 +76,11 @@ spec:
         storageClass: truenas-nfs-logs
         size: 20Gi
       resources:
+        # Measured over the first day at ~100 MiB/day of ingest: 117 MiB
+        # working set, 141 MiB peak. The limit keeps headroom for big queries.
         requests:
           cpu: 100m
-          memory: 512Mi
+          memory: 256Mi
         limits:
           cpu: "1"
           memory: 1536Mi
