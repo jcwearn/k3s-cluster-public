@@ -34,7 +34,10 @@ spec:
     policy: sync
     txtPrefix: "_edns."
     txtOwnerId: "k3s-cluster"
-    logLevel: debug
+    # debug logs every endpoint of every source on every one-minute sync --
+    # about 19 MiB/day into Loki, nearly as much as Envoy. info still logs
+    # each record it changes.
+    logLevel: info
     labelFilter: "external-dns/exclude!=true"
     sources:
       - crd
