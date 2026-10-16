@@ -17,7 +17,12 @@
         "jcwearn/k3s-cluster",
         "jcwearn/priceatronic2",
         "jcwearn/resume",
-        "jcwearn/truenas-infra",
+        {
+            "repository": "jcwearn/truenas-infra",
+            "allowedCommands": [
+                "^tofu init -backend=false -upgrade -input=false$"
+            ]
+        },
         "jcwearn/udm-pro",
         "jcwearn/unifi-infra",
         "jcwearn/wedding-hq",

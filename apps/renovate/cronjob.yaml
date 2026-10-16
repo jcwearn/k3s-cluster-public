@@ -57,6 +57,34 @@ spec:
                 capabilities:
                   drop:
                     - ALL
+            # The -full image has no tofu, and truenas-infra's postUpgradeTask
+            # runs `tofu init` to keep .terraform.lock.hcl in step with the
+            # provider pin. Copy the binary out of the official image rather
+            # than download it at run time. Not -minimal: that one is FROM
+            # scratch and has no cp.
+            - name: tofu
+              image: ghcr.io/opentofu/opentofu:1.13.1@sha256:1df996fca13806a20d5a3d3ad54acdcf76bcb1aa4ac30b5ba169b9e4cecdbcc8
+              imagePullPolicy: IfNotPresent
+              command: ["/bin/sh", "-c"]
+              args:
+                - >
+                  mkdir -p /shared/bin;
+                  cp /usr/local/bin/tofu /shared/bin/tofu;
+              volumeMounts:
+                - name: shared-volume
+                  mountPath: /shared
+              resources:
+                requests:
+                  cpu: 50m
+                  memory: 32Mi
+                limits:
+                  cpu: 100m
+                  memory: 64Mi
+              securityContext:
+                allowPrivilegeEscalation: false
+                capabilities:
+                  drop:
+                    - ALL
           containers:
             - name: renovate-bot
               image: renovate/renovate:44.164.10-full@sha256:a19d9f806c2300b06db72761681bb933a3e6b8a539b9f1bb07bd3004ec3de6f9
@@ -64,7 +92,7 @@ spec:
               args:
                 - >
                   export RENOVATE_TOKEN=$(cat /shared/token);
-                  export PATH="/tmp/renovate/go-bin:$PATH";
+                  export PATH="/tmp/renovate/go-bin:/shared/bin:$PATH";
                   exec renovate;
               volumeMounts:
                 - name: work-volume
