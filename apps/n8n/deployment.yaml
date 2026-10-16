@@ -25,7 +25,7 @@ spec:
           type: RuntimeDefault
       containers:
         - name: n8n
-          image: ghcr.io/n8n-io/n8n:2.43.3@sha256:d4eca183959b30fb1ba5ecda7e58363c5be49a7bcf8c0227a6384a47ce2f7a65
+          image: ghcr.io/n8n-io/n8n:2.44.2@sha256:b57e7a9c8e5ab1a8fe9b03fff3158052aec65f571ed1f759897a20f306ad329d
           imagePullPolicy: IfNotPresent
           ports:
             - name: http
