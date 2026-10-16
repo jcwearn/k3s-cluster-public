@@ -8,6 +8,9 @@ metadata:
     ignore-check.kube-linter.io/no-liveness-probe: "run-to-completion Job"
     ignore-check.kube-linter.io/no-readiness-probe: "run-to-completion Job"
 spec:
+  # Wedding HQ now runs the With Joy sync; this app is pending retirement
+  # (jcwearn/wedding-hq#34).
+  suspend: true
   schedule: "0 6 * * *"
   timeZone: America/New_York
   concurrencyPolicy: Forbid
