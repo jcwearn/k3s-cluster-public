@@ -63,7 +63,7 @@ spec:
             # than download it at run time. Not -minimal: that one is FROM
             # scratch and has no cp.
             - name: tofu
-              image: ghcr.io/opentofu/opentofu:1.13.1@sha256:1df996fca13806a20d5a3d3ad54acdcf76bcb1aa4ac30b5ba169b9e4cecdbcc8
+              image: ghcr.io/opentofu/opentofu:1.13.2@sha256:25bdfbe87000b8a88d44c7ef0cca53381da95f6203f7aed1e8cf5b81ecbe18eb
               imagePullPolicy: IfNotPresent
               command: ["/bin/sh", "-c"]
               args:
@@ -87,7 +87,7 @@ spec:
                     - ALL
           containers:
             - name: renovate-bot
-              image: renovate/renovate:44.167.1-full@sha256:3a57f01ed66c77421218ed7330667546aca07fa5a4da7b461a211fd8c20e114b
+              image: renovate/renovate:44.178.5-full@sha256:89cd61223a76721cefd83875b38a49cd674a7fe2aada699aeaed1d4c5e3d0ea0
               command: ["/bin/sh", "-c"]
               args:
                 - >

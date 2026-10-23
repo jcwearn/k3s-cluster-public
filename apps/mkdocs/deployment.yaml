@@ -67,7 +67,7 @@ spec:
         - name: mkdocs
           # The unprivileged variant: listens on 8080 as uid 101, writes its pid
           # and cache under /tmp. Nothing here needed root.
-          image: nginxinc/nginx-unprivileged:1.31.7-alpine-slim@sha256:b94a56c52fd315bbd8f1f4368d64c25983351c978313e02feff2c0b35e856f2d
+          image: nginxinc/nginx-unprivileged:1.31.7-alpine-slim@sha256:a8cb0f33d51fa107c96fd2bd3a71aaf564ec131e9d2bdf8700944f0ed8b170d7
           imagePullPolicy: IfNotPresent
           ports:
             - name: http
