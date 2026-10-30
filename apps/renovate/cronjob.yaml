@@ -30,7 +30,7 @@ spec:
               type: RuntimeDefault
           initContainers:
             - name: github-app-installation-token
-              image: ghcr.io/mshekow/github-app-installation-token:2026.10.15@sha256:3ee7d5b1eae1333aa457e90f3822edcb715ccb4a5536b544714186202a43f7a8
+              image: ghcr.io/mshekow/github-app-installation-token:2026.10.29@sha256:0144479ef76e19dafdc64247bbfaa94f0c1f8c79205d2c6c91300dbcc00a3769
               imagePullPolicy: IfNotPresent
               command: ["/bin/sh", "-c"]
               args:
@@ -63,7 +63,7 @@ spec:
             # than download it at run time. Not -minimal: that one is FROM
             # scratch and has no cp.
             - name: tofu
-              image: ghcr.io/opentofu/opentofu:1.13.2@sha256:25bdfbe87000b8a88d44c7ef0cca53381da95f6203f7aed1e8cf5b81ecbe18eb
+              image: ghcr.io/opentofu/opentofu:1.13.5@sha256:5e6046cd8d1e2db82ce71fb56fe0a535b489b5493cfa0d5889ad5cffd2625ab6
               imagePullPolicy: IfNotPresent
               command: ["/bin/sh", "-c"]
               args:
@@ -87,7 +87,7 @@ spec:
                     - ALL
           containers:
             - name: renovate-bot
-              image: renovate/renovate:44.181.5-full@sha256:9dc90dea9a6fd0c6f0ee86a138817aa48fb01b9e57c321687e4ba35de64444f4
+              image: renovate/renovate:44.198.0-full@sha256:6aee05980b59b3b711fd4eedc220817b50355635736817b390124295a0a7a6ec
               command: ["/bin/sh", "-c"]
               args:
                 - >

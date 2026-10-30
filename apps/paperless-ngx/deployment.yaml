@@ -22,7 +22,7 @@ spec:
         fsGroup: 1000
       containers:
         - name: paperless-ngx
-          image: ghcr.io/paperless-ngx/paperless-ngx:3.3.4@sha256:9bc6e8248891bcfa6f52fffe8b81e4ea8cae75790c3ec1b9906961a7ba55c969
+          image: ghcr.io/paperless-ngx/paperless-ngx:3.4.0@sha256:7c1d98afd200def9e2bad3a377d30829e8d486554b3c818995af5860114ea17f
           imagePullPolicy: IfNotPresent
           ports:
             - name: http
@@ -93,7 +93,7 @@ spec:
             - name: consume
               mountPath: /usr/src/paperless/consume
         - name: redis
-          image: redis:8-alpine@sha256:0bf6577d7774e592b29d093e3ac9390eb91e13d72c21e506afce736de5e0eeb0
+          image: redis:8-alpine@sha256:21090af93f8324db2f0f0f4f38a7c60369d47d917e000c3423d89d2ae2883537
           imagePullPolicy: IfNotPresent
           ports:
             - name: redis
