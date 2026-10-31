@@ -35,7 +35,7 @@ spec:
           restartPolicy: Never
           containers:
             - name: withjoy-exporter
-              image: ghcr.io/jcwearn/withjoy-exporter:v0.6.14@sha256:eea50ba78282dd38a642e8e54181c232a108a35fec20eaaf8602316ee83d0307
+              image: ghcr.io/jcwearn/withjoy-exporter:v0.6.15@sha256:bab0d42d660330ef902fa6db7604cfce72779a15f341a711530f4b414f2cfb86
               imagePullPolicy: IfNotPresent
               envFrom:
                 - secretRef:
