@@ -60,7 +60,7 @@ jobs:
         run: yamllint --strict -f github .
 
       - name: zizmor
-        uses: zizmorcore/zizmor-action@53290badfa369cb0bf7ad16342cb62c2fa47ac7b # v0.8.0
+        uses: zizmorcore/zizmor-action@45d7276c9ca790aabd705e31ca99c6185c3e76dd # v0.8.1
         with:
           # SARIF upload needs code scanning, which a private repo on the
           # free plan does not have. Findings go to the log and fail the job.
@@ -85,7 +85,7 @@ jobs:
           # renovate: datasource=github-releases depName=kubernetes-sigs/kustomize extractVersion=^kustomize/v(?<version>.*)$
           KUSTOMIZE_VERSION: "5.8.3"
           # renovate: datasource=github-releases depName=mikefarah/yq extractVersion=^v(?<version>.*)$
-          YQ_VERSION: "4.54.1"
+          YQ_VERSION: "4.54.2"
           # renovate: datasource=github-releases depName=yannh/kubeconform extractVersion=^v(?<version>.*)$
           KUBECONFORM_VERSION: "0.8.0"
           # renovate: datasource=github-releases depName=stackrox/kube-linter extractVersion=^v(?<version>.*)$
