@@ -69,6 +69,17 @@ loki.source.file "pods" {
 // it was read.
 loki.process "pods" {
 	stage.cri { }
+
+	// After a node reboot Alloy can re-read a file from before the last reboot.
+	// Loki answers anything past reject_old_samples_max_age (168h) with a 400,
+	// which Alloy counts as dropped and LogEntriesDropped pages on, though those
+	// lines were delivered the first time. Discard them here instead. One hour
+	// under the limit, so a line cannot age out while a batch is retried.
+	stage.drop {
+		older_than          = "167h"
+		drop_counter_reason = "older_than_loki_accepts"
+	}
+
 	forward_to = [loki.write.default.receiver]
 }
 

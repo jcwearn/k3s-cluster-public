@@ -78,5 +78,11 @@ or crash-looping is already covered by the upstream `KubeDaemonSetRolloutStuck`,
   else can read them. Without `CAP_DAC_OVERRIDE`, root also cannot enter directories owned by
   another user, which is why the read positions live at `/alloy-data` rather than in the image's
   own `/var/lib/alloy`.
+* **A rebooted node can re-send lines from its previous reboot.** Why Alloy re-reads those files is
+  not established. The weekly upgrades run about 7 days apart, so those lines sit right at Loki's
+  168h limit, and the week DST ended stretched the gap by an hour and pushed them past it. Loki
+  answered with a 400, which fired `LogEntriesDropped` for lines it already held. The pod pipeline
+  now discards anything older than 167h, counted in `loki_process_dropped_lines_total` under
+  `older_than_loki_accepts`.
 * **Check a pipeline change with `alloy validate`** (from the release binary). It rejects unknown
   attributes; `alloy fmt` only checks syntax.
