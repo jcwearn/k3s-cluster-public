@@ -29,7 +29,7 @@ spec:
           type: RuntimeDefault
       containers:
         - name: world-clock
-          image: "ghcr.io/jcwearn/world-clock:v0.4.120@sha256:105b9302248d4988d0af704f4b1f4ebd81206f35831875047f0b37cbb1b27bd7"
+          image: "ghcr.io/jcwearn/world-clock:v0.4.121@sha256:9d9da1b49e2ad80dd1ff404215f436994aaa3c7b1fa9b93f9aec4f51a28d4751"
           imagePullPolicy: IfNotPresent
           ports:
             - name: http
