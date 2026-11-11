@@ -22,7 +22,6 @@ of the stack.
 | **Renovate** | Cron-driven bot that keeps Helm charts & images up to date. | [Read more](renovate.md) |
 | **Stirling Pdf** | A privacy-first, self-hosted PDF toolbox | [Read more](stirling-pdf.md) |
 | **Ebooks** | Self-hosted ebook management stack (Shelfmark + Calibre-Web + VPN). | [Read more](ebooks.md) |
-| **WithJoy Exporter** | Daily CronJob that exports the WithJoy guest list to a Google Sheet, plus a manual-trigger web UI. | [Read more](withjoy-exporter.md) |
 | **hivemind** | Party game: one snake steered by the whole room, over server-sent events. | [Read more](hivemind.md) |
 | **World Clock** | Multi-timezone clock dashboard with hypothetical-time conversion for wedding planning. | [Read more](world-clock.md) |
 

@@ -105,10 +105,6 @@ data:
             href: https://ntfy.${DOMAIN}/
             description: Ntfy is a simple HTTP-based pub-sub notification service
             icon: sh-ntfy-light.webp
-        - WithJoy Exporter:
-            href: https://withjoy-exporter.${DOMAIN}/
-            description: Manual trigger for the WithJoy guest list export to Google Sheets
-            icon: sh-google-sheets-light.webp
         - job-track:
             href: https://job-track.${DOMAIN}/
             description: Job search tracker - pipeline, leads and what is due next

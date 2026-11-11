@@ -31,7 +31,6 @@ configMapGenerator:
       - data/docs/apps/stirling-pdf.md
       - data/docs/apps/unifi.md
       - data/docs/apps/ebooks.md
-      - data/docs/apps/withjoy-exporter.md
       - data/docs/apps/hivemind.md
       - data/docs/apps/world-clock.md
   - name: mkdocs-infra

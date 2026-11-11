@@ -66,7 +66,6 @@ of the cluster.
 │   ├── paperless-ngx/      # Document management
 │   ├── renovate/           # Dependency update bot (CronJob)
 │   ├── stirling-pdf/       # PDF tools
-│   ├── withjoy-exporter/   # WithJoy guest list → Google Sheets (CronJob + web trigger)
 │   └── external/
 │       ├── homeassistant/  # Home automation
 │       ├── proxmox/        # Hypervisor UI
@@ -140,7 +139,6 @@ FluxCD watches `clusters/prod/` and recursively applies everything under `apps/`
 | **Paperless-ngx** | Deployment + PVC | Document management with OCR |
 | **Renovate** | CronJob | Automated dependency updates |
 | **Stirling PDF** | Deployment | PDF tools |
-| **WithJoy Exporter** | CronJob + Deployment | Daily WithJoy guest-list export to Google Sheets, with a manual-trigger web UI |
 | **Home Assistant** | ExternalService | Runs on a separate host, exposed through cluster ingress |
 | **Proxmox** | ExternalService | Hypervisor UI, exposed through cluster ingress |
 | **TrueNAS** | ExternalService | NAS management UI, exposed through cluster ingress |
