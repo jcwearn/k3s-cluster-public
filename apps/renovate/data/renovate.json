@@ -63,22 +63,13 @@
             "assignAutomerge": true
         },
         {
-            "description": "Lock file maintenance is its own update type, so the non-major rule above never matched it and every weekly lockfile PR waited for a hand merge. Sits before the tofu-repos rule so those still merge by hand.",
+            "description": "Lock file maintenance is its own update type, so the non-major rule above never matched it and every weekly lockfile PR waited for a hand merge.",
             "matchUpdateTypes": [
                 "lockFileMaintenance"
             ],
             "automerge": true,
             "autoApprove": true,
             "assignAutomerge": true
-        },
-        {
-            "matchRepositories": [
-                "jcwearn/cloudflare-infra",
-                "jcwearn/truenas-infra",
-                "jcwearn/unifi-infra"
-            ],
-            "automerge": false,
-            "description": "Merging to main runs tofu apply against live infrastructure, and none of these repos has branch protection. Read the plan comment, then merge by hand."
         }
     ],
     "vulnerabilityAlerts": {
