@@ -104,7 +104,7 @@
       "pinDigests": false
     },
     {
-      "description": "Merging a k3s bump rolls all three control-plane nodes unattended. The bot's global config automerges every non-major update for '*', so this must opt out explicitly or a patch release would restart the control plane with nobody watching. rancher/kubectl rides along so the drain kubectl and the Plan version land in one PR when both have a patch pending -- they are independent release streams, so grouping cannot guarantee they always move together, and it is the minor gate below that keeps the skew in policy. The tag lives in three places: the controller's ConfigMap and the three ansible hypervisor-upgrade CronJobs, each read by its own customManager below.",
+      "description": "Merging a k3s bump rolls all three control-plane nodes unattended. The bot's global config automerges every non-major update for '*', so this must opt out explicitly or a patch release would restart the control plane with nobody watching. rancher/kubectl rides along so the drain kubectl and the Plan version land in one PR when both have a patch pending -- they are independent release streams, so grouping cannot guarantee they always move together. Every update type, patch through major, opens a PR here and none automerge: read the release notes before merging, since k3s permits no minor skipping and each minor has its own removals. The tag lives in three places: the controller's ConfigMap and the three ansible hypervisor-upgrade CronJobs, each read by its own customManager below.",
       "matchPackageNames": [
         "k3s-io/k3s",
         "rancher/kubectl"
@@ -125,27 +125,15 @@
       "autoApprove": false
     },
     {
-      "description": "Minor upgrades of either are deliberate, one at a time, and gated on a runbook -- k3s because upstream permits no minor skipping and each minor has its own removals, Flux because each minor drops the APIs the last deprecated and carries its own Kubernetes floor. The EOL alerting is what should prompt them, not a PR. Patch updates stay in scope.",
-      "matchPackageNames": [
-        "k3s-io/k3s",
-        "fluxcd/flux2"
+      "description": "Flux CRD apiVersions are served by the FluxInstance version, not by what the kubernetes-api datasource knows exists. Grouped with fluxcd/flux2 so a bump lands in the same PR as the Flux release that serves it -- #1098 bumped Alert/Provider to v1 while the cluster ran 2.9.6, which serves only v1beta3. Must stay below the infrastructure/** group rule to override it.",
+      "matchDatasources": [
+        "kubernetes-api"
       ],
-      "matchUpdateTypes": [
-        "minor",
-        "major"
-      ],
-      "enabled": false
-    },
-    {
-      "description": "The drain kubectl must never run ahead of the k3s minor it drains for. k3s minors are gated above and move by runbook, so this one moves in that same PR -- if the bot could open a kubectl minor on its own it would break the skew policy in the one direction nothing else checks.",
-      "matchPackageNames": [
-        "rancher/kubectl"
-      ],
-      "matchUpdateTypes": [
-        "minor",
-        "major"
-      ],
-      "enabled": false
+      "matchCurrentValue": "/\\.toolkit\\.fluxcd\\.io\\//",
+      "groupName": "flux",
+      "groupSlug": "flux",
+      "automerge": false,
+      "autoApprove": false
     }
   ],
   "customManagers": [

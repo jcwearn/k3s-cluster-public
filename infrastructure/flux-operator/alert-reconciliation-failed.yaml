@@ -31,4 +31,5 @@ spec:
   eventSources:
     - kind: Kustomization
       name: "*"
-  summary: "Flux reconciliation failed"
+  eventMetadata:
+    summary: "Flux reconciliation failed"
