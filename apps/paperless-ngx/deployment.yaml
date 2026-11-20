@@ -70,12 +70,22 @@ spec:
             httpGet:
               path: /
               port: http
+              # 3.5 restricts ALLOWED_HOSTS to PAPERLESS_URL's host plus
+              # localhost; the kubelet's default Host is the pod IP.
+              httpHeaders:
+                - name: Host
+                  value: localhost
             initialDelaySeconds: 60
             periodSeconds: 10
           readinessProbe:
             httpGet:
               path: /
               port: http
+              # 3.5 restricts ALLOWED_HOSTS to PAPERLESS_URL's host plus
+              # localhost; the kubelet's default Host is the pod IP.
+              httpHeaders:
+                - name: Host
+                  value: localhost
             initialDelaySeconds: 30
             periodSeconds: 5
           resources:
