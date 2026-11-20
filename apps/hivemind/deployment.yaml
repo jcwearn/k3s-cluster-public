@@ -42,7 +42,7 @@ spec:
           type: RuntimeDefault
       containers:
         - name: hivemind
-          image: "ghcr.io/jcwearn/hivemind:0.4.68@sha256:fa1ced9fe17842a441b757434724b4d01835df7db7ed5cd18914499b43325788"
+          image: "ghcr.io/jcwearn/hivemind:0.4.70@sha256:ecd60b429a4d8f33f57fd9f8daac2f2698c176b02982595731ba0ec5362ad4c2"
           imagePullPolicy: IfNotPresent
           ports:
             - name: http
