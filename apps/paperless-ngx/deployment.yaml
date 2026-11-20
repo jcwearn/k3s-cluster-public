@@ -10,6 +10,10 @@ metadata:
     reloader.stakater.com/auto: "true"
 spec:
   replicas: 1
+  # Two pods on the same data PVC corrupt celerybeat-schedule.db (SQLite on
+  # NFS); a stuck 3.5.1 rollout left beat crash-looping. Never overlap them.
+  strategy:
+    type: Recreate
   selector:
     matchLabels:
       app: paperless-ngx
