@@ -18,6 +18,8 @@
 #   50-hardening.yaml protect-kernel-defaults: the kubelet refuses to start
 #                     unless the six sysctls configure-node-sysctl.yml sets
 #                     are in place, so that playbook runs first
+#   60-addons.yaml    bundled add-ons k3s must not install, on top of the
+#                     --disable flags in the unit: gateway-api-crd
 #
 # Not this playbook's: 40-secrets-encryption.yaml, written by
 # enable-secrets-encryption.yml, because turning encryption on has an order
@@ -224,11 +226,45 @@
         mode: "0600"
       register: hardening_dropin
 
+    # k3s 1.37 bundles the Gateway API CRDs as an add-on that is on by
+    # default, is not covered by --disable traefik, and takes ownership of
+    # existing CRDs. Envoy Gateway owns them here, from its own chart, at the
+    # version it supports. The disable must be in place before a node first
+    # starts 1.37: disabling an add-on that is already installed uninstalls
+    # it, and deleting a CRD deletes every object of that kind.
+    #
+    # k3s does not validate --disable values, so on 1.36 this is a no-op.
+    # A config-file list is passed ahead of the unit's flags and both
+    # accumulate, so the unit's --disable values still apply. `disable` is
+    # not a flag of the other subcommands; they log it as unknown and skip it.
+    - name: Write the bundled add-ons drop-in
+      ansible.builtin.copy:
+        dest: "{{ config_dir }}/60-addons.yaml"
+        content: |
+          # Bundled add-ons k3s must not install, on top of the --disable
+          # flags in the systemd unit. gateway-api-crd: Envoy Gateway owns the
+          # Gateway API CRDs; see configure-k3s-server.yml before removing.
+          disable:
+            - gateway-api-crd
+        mode: "0600"
+      register: addons_dropin
+
+    # A second, independent guard: the deploy controller ignores a manifest
+    # with a .skip file beside it, so even if the disable were lost the
+    # staged gateway-api-crd.yaml would never be applied. Read only by the
+    # running controller, so it needs no restart.
+    - name: Write the gateway-api-crd skip marker
+      ansible.builtin.copy:
+        dest: /var/lib/rancher/k3s/server/manifests/gateway-api-crd.yaml.skip
+        content: ""
+        mode: "0600"
+
     - name: Note whether anything k3s reads at start changed
       ansible.builtin.set_fact:
         k3s_config_changed: >-
           {{ etcd_s3_dropin.changed or audit_policy.changed or audit_dropin.changed
-             or psa_config.changed or psa_dropin.changed or hardening_dropin.changed }}
+             or psa_config.changed or psa_dropin.changed or hardening_dropin.changed
+             or addons_dropin.changed }}
 
     - name: Report what changed
       ansible.builtin.debug:
@@ -299,6 +335,25 @@
             or not ((kubelet_config.stdout | from_json).kubeletconfig.protectKernelDefaults | default(false) | bool)
           delegate_to: localhost
           become: false
+
+        # Meaningful from 1.37 on, when k3s carries the add-on: with the
+        # disable applied it is never staged and no HelmChart exists. On 1.36
+        # it passes trivially; the k3s 1.37 hop reruns this playbook's check
+        # by hand on the first upgraded node.
+        - name: Confirm k3s did not stage the gateway-api-crd add-on
+          ansible.builtin.stat:
+            path: /var/lib/rancher/k3s/server/manifests/gateway-api-crd.yaml
+          register: gateway_api_manifest
+          failed_when: gateway_api_manifest.stat.exists
+
+        # On the node, as the k3s admin: the runner's ServiceAccount has no
+        # business reading kube-system HelmCharts for one check.
+        - name: Confirm no gateway-api-crd HelmChart exists
+          ansible.builtin.command: >-
+            k3s kubectl -n kube-system get helmcharts.helm.cattle.io gateway-api-crd --ignore-not-found -o name
+          register: gateway_api_helmchart
+          changed_when: false
+          failed_when: gateway_api_helmchart.rc != 0 or gateway_api_helmchart.stdout | trim != ''
 
         # The file appears on the first request the policy records, which
         # the waits above have already made.
