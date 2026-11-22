@@ -34,6 +34,24 @@ spec:
     deploymentAnnotations:
       reloader.stakater.com/auto: "true"
     webhook:
+      # Two replicas, spread across nodes, with a PDB. The webhook's
+      # failurePolicy is Fail, so with one replica every node drain (k3s
+      # upgrades, hypervisor work) left it with no endpoints and any
+      # cert-manager object apply was rejected -- cert-manager-issuer
+      # paged on each one. ScheduleAnyway so a node outage never leaves a
+      # replica Pending; the PDB keeps a drain from taking both.
+      replicaCount: 2
+      podDisruptionBudget:
+        enabled: true
+        minAvailable: 1
+      topologySpreadConstraints:
+        - maxSkew: 1
+          topologyKey: kubernetes.io/hostname
+          whenUnsatisfiable: ScheduleAnyway
+          labelSelector:
+            matchLabels:
+              app.kubernetes.io/instance: cert-manager
+              app.kubernetes.io/component: webhook
       deploymentAnnotations:
         reloader.stakater.com/auto: "true"
       resources:
