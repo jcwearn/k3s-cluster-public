@@ -122,7 +122,7 @@
       ]
     },
     {
-      "description": "Same for Flux: merging it rolls the controllers that do the deploying. separateMultipleMinor opens one PR per pending minor, since each Flux minor drops the APIs the last one deprecated. prBodyNotes and the label mark these PRs as needing more than a skim.",
+      "description": "Same for Flux: merging it rolls the controllers that do the deploying. No separateMultipleMinor here, unlike k3s: it moves a Flux minor onto its own minor-X.Y-flux branch, while the apiVersion bumps below are typed as patch and stay on renovate/flux -- splitting a CRD promotion away from the release that serves it, which is the exact #1098 failure. prBodyNotes and the label mark these PRs as needing more than a skim.",
       "matchPackageNames": [
         "fluxcd/flux2"
       ],
@@ -130,7 +130,6 @@
       "groupSlug": "flux",
       "automerge": false,
       "autoApprove": false,
-      "separateMultipleMinor": true,
       "addLabels": [
         "needs-careful-review"
       ],
