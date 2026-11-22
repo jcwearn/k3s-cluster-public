@@ -416,6 +416,30 @@ spec:
       name: sops-age
   wait: true
 ---
+# The notification objects the FluxInstance's CRDs serve. They live apart from
+# flux-operator because a Flux release can promote their apiVersion: in one
+# Kustomization the new apiVersion fails the server-side dry-run against the
+# old CRDs, nothing applies, and the FluxInstance that would serve it never
+# upgrades. dependsOn holds this one until flux-operator is Ready at the same
+# revision, by which point the new CRDs are in place.
+apiVersion: kustomize.toolkit.fluxcd.io/v1
+kind: Kustomization
+metadata:
+  name: flux-notifications
+  namespace: flux-system
+spec:
+  interval: 10m
+  retryInterval: 1m
+  timeout: 5m
+  path: ./infrastructure/flux-operator/notifications
+  prune: true
+  sourceRef:
+    kind: GitRepository
+    name: flux-system
+  dependsOn:
+    - name: flux-operator
+  wait: true
+---
 apiVersion: kustomize.toolkit.fluxcd.io/v1
 kind: Kustomization
 metadata:

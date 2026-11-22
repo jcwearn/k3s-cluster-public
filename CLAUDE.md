@@ -106,7 +106,7 @@ Current external services: homeassistant, proxmox, truenas, unifi.
 Defined in `clusters/prod/infrastructure.yaml` and `clusters/prod/apps.yaml`:
 
 1. cert-manager → cert-manager-issuer
-2. external-dns, envoy-gateway → envoy-gateway-config, kube-vip, prometheus, reloader, csi-driver-nfs, cloudnative-pg, coredns, flux-operator, system-upgrade-controller, loki → alloy
+2. external-dns, envoy-gateway → envoy-gateway-config, kube-vip, prometheus, reloader, csi-driver-nfs, cloudnative-pg, coredns, flux-operator → flux-notifications, system-upgrade-controller, loki → alloy
 3. tailscale-operator → tailscale-connector
 4. **apps** (depends on: cert-manager-issuer, external-dns, envoy-gateway-config, prometheus, tailscale-connector, csi-driver-nfs, cloudnative-pg)
 

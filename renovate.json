@@ -104,7 +104,7 @@
       "pinDigests": false
     },
     {
-      "description": "Merging a k3s bump rolls all three control-plane nodes unattended. The bot's global config automerges every non-major update for '*', so this must opt out explicitly or a patch release would restart the control plane with nobody watching. rancher/kubectl rides along so the drain kubectl and the Plan version land in one PR when both have a patch pending -- they are independent release streams, so grouping cannot guarantee they always move together. Every update type, patch through major, opens a PR here and none automerge: read the release notes before merging, since k3s permits no minor skipping and each minor has its own removals. The tag lives in three places: the controller's ConfigMap and the three ansible hypervisor-upgrade CronJobs, each read by its own customManager below.",
+      "description": "Merging a k3s bump rolls all three control-plane nodes unattended. The bot's global config automerges every non-major update for '*', so this must opt out explicitly or a patch release would restart the control plane with nobody watching. rancher/kubectl rides along so the drain kubectl and the Plan version land in one PR when both have a patch pending -- they are independent release streams, so grouping cannot guarantee they always move together. Every update type, patch through major, opens a PR here and none automerge: read the release notes before merging, since k3s permits no minor skipping and each minor has its own removals. The tag lives in three places: the controller's ConfigMap and the three ansible hypervisor-upgrade CronJobs, each read by its own customManager below. separateMultipleMinor opens one PR per pending minor instead of one that jumps to the newest, so every PR is a legal hop. prBodyNotes and the label mark these PRs as needing more than a skim.",
       "matchPackageNames": [
         "k3s-io/k3s",
         "rancher/kubectl"
@@ -112,20 +112,34 @@
       "groupName": "k3s",
       "groupSlug": "k3s",
       "automerge": false,
-      "autoApprove": false
+      "autoApprove": false,
+      "separateMultipleMinor": true,
+      "addLabels": [
+        "needs-careful-review"
+      ],
+      "prBodyNotes": [
+        "> [!CAUTION]\n> **Not a routine bump.** Merging this rolls all three control-plane nodes, one at a time, and it never automerges.\n>\n> - On a minor bump, read the upstream Kubernetes \"Urgent Upgrade Notes\" for the target minor first.\n> - k3s permits no minor skipping. If more than one of these PRs is open, merge the oldest minor first.\n> - Work through the per-hop pre-checks in `docs/plans/k3s-eol-upgrade/plan.md`.\n> - Flux must already support the target Kubernetes version (see the compatibility table in its release notes)."
+      ]
     },
     {
-      "description": "Same for Flux: merging it rolls the controllers that do the deploying.",
+      "description": "Same for Flux: merging it rolls the controllers that do the deploying. separateMultipleMinor opens one PR per pending minor, since each Flux minor drops the APIs the last one deprecated. prBodyNotes and the label mark these PRs as needing more than a skim.",
       "matchPackageNames": [
         "fluxcd/flux2"
       ],
       "groupName": "flux",
       "groupSlug": "flux",
       "automerge": false,
-      "autoApprove": false
+      "autoApprove": false,
+      "separateMultipleMinor": true,
+      "addLabels": [
+        "needs-careful-review"
+      ],
+      "prBodyNotes": [
+        "> [!CAUTION]\n> **Not a routine bump.** Merging this rolls the Flux controllers that do the deploying, and it never automerges.\n>\n> - Read the release's breaking changes and its Kubernetes compatibility table.\n> - An apiVersion bump in this PR is only safe because the `flux-notifications` Kustomization depends on `flux-operator`. Any new `*.toolkit.fluxcd.io` object belongs there, never in `infrastructure/flux-operator/` itself.\n> - Minors are not skipped. If more than one of these PRs is open, merge the oldest minor first."
+      ]
     },
     {
-      "description": "Flux CRD apiVersions are served by the FluxInstance version, not by what the kubernetes-api datasource knows exists. Grouped with fluxcd/flux2 so a bump lands in the same PR as the Flux release that serves it -- #1098 bumped Alert/Provider to v1 while the cluster ran 2.9.6, which serves only v1beta3. Must stay below the infrastructure/** group rule to override it.",
+      "description": "Flux CRD apiVersions are served by the FluxInstance version, not by what the kubernetes-api datasource knows exists. Grouped with fluxcd/flux2 so a bump lands in the same PR as the Flux release that serves it -- #1098 bumped Alert/Provider to v1 while the cluster ran 2.9.6, which serves only v1beta3. Must stay below the infrastructure/** group rule to override it. Carries the same note and label as fluxcd/flux2, so an apiVersion-only PR is marked too; Renovate dedupes identical notes in a grouped PR.",
       "matchDatasources": [
         "kubernetes-api"
       ],
@@ -133,7 +147,13 @@
       "groupName": "flux",
       "groupSlug": "flux",
       "automerge": false,
-      "autoApprove": false
+      "autoApprove": false,
+      "addLabels": [
+        "needs-careful-review"
+      ],
+      "prBodyNotes": [
+        "> [!CAUTION]\n> **Not a routine bump.** Merging this rolls the Flux controllers that do the deploying, and it never automerges.\n>\n> - Read the release's breaking changes and its Kubernetes compatibility table.\n> - An apiVersion bump in this PR is only safe because the `flux-notifications` Kustomization depends on `flux-operator`. Any new `*.toolkit.fluxcd.io` object belongs there, never in `infrastructure/flux-operator/` itself.\n> - Minors are not skipped. If more than one of these PRs is open, merge the oldest minor first."
+      ]
     }
   ],
   "customManagers": [
