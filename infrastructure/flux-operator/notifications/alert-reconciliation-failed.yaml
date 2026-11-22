@@ -19,7 +19,7 @@
 # Flux resends the event on every retry (retryInterval 1m), so the alert
 # stays firing while the failure lasts and resolves on its own about five
 # minutes after the last one.
-apiVersion: notification.toolkit.fluxcd.io/v1beta3
+apiVersion: notification.toolkit.fluxcd.io/v1
 kind: Alert
 metadata:
   name: reconciliation-failed

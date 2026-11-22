@@ -9,7 +9,7 @@
 #
 # In-cluster and unauthenticated, so no secret. The Service is the one the
 # kube-prometheus-stack chart creates in the prometheus namespace.
-apiVersion: notification.toolkit.fluxcd.io/v1beta3
+apiVersion: notification.toolkit.fluxcd.io/v1
 kind: Provider
 metadata:
   name: alertmanager
