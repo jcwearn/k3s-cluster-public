@@ -162,6 +162,7 @@ Claude Code skills are available for common cluster operations. Use them by typi
 - `/reconcile-flux [name]` - Force Flux reconciliation
 - `/troubleshoot <resource-type> <namespace> [name]` - Diagnose cluster issues (pods, Flux, Helm, services, PVCs, certs, HTTPRoutes)
 - `/verify-deployment <pr-number | app-name>` - Verify a change is deployed through the GitOps pipeline
+- `/review-upgrade <pr-number>` - Review a k3s or Flux upgrade PR (`needs-careful-review`) before merging: pre-checks, ordering, verdict, post-merge watch
 
 ### Validating changes locally
 

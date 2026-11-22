@@ -118,7 +118,7 @@
         "needs-careful-review"
       ],
       "prBodyNotes": [
-        "> [!CAUTION]\n> **Not a routine bump.** Merging this rolls all three control-plane nodes, one at a time, and it never automerges.\n>\n> - On a minor bump, read the upstream Kubernetes \"Urgent Upgrade Notes\" for the target minor first.\n> - k3s permits no minor skipping. If more than one of these PRs is open, merge the oldest minor first.\n> - Work through the per-hop pre-checks in `docs/plans/k3s-eol-upgrade/plan.md`.\n> - Flux must already support the target Kubernetes version (see the compatibility table in its release notes)."
+        "> [!CAUTION]\n> **Not a routine bump.** Merging this rolls all three control-plane nodes, one at a time, and it never automerges.\n>\n> - On a minor bump, read the upstream Kubernetes \"Urgent Upgrade Notes\" for the target minor first.\n> - k3s permits no minor skipping. If more than one of these PRs is open, merge the oldest minor first.\n> - Work through the per-hop pre-checks in `docs/plans/k3s-eol-upgrade/plan.md`.\n> - Flux must already support the target Kubernetes version (see the compatibility table in its release notes).\n> - Agent review: run `/review-upgrade <PR number>` in Claude Code. The checklist is [`.claude/skills/review-upgrade/SKILL.md`](https://github.com/jcwearn/k3s-cluster/blob/main/.claude/skills/review-upgrade/SKILL.md)."
       ]
     },
     {
@@ -134,7 +134,7 @@
         "needs-careful-review"
       ],
       "prBodyNotes": [
-        "> [!CAUTION]\n> **Not a routine bump.** Merging this rolls the Flux controllers that do the deploying, and it never automerges.\n>\n> - Read the release's breaking changes and its Kubernetes compatibility table.\n> - An apiVersion bump in this PR is only safe because the `flux-notifications` Kustomization depends on `flux-operator`. Any new `*.toolkit.fluxcd.io` object belongs there, never in `infrastructure/flux-operator/` itself.\n> - Minors are not skipped. If more than one of these PRs is open, merge the oldest minor first."
+        "> [!CAUTION]\n> **Not a routine bump.** Merging this rolls the Flux controllers that do the deploying, and it never automerges.\n>\n> - Read the release's breaking changes and its Kubernetes compatibility table.\n> - An apiVersion bump in this PR is only safe because the `flux-notifications` Kustomization depends on `flux-operator`. Any new `*.toolkit.fluxcd.io` object belongs there, never in `infrastructure/flux-operator/` itself.\n> - Minors are not skipped. If more than one of these PRs is open, merge the oldest minor first.\n> - Agent review: run `/review-upgrade <PR number>` in Claude Code. The checklist is [`.claude/skills/review-upgrade/SKILL.md`](https://github.com/jcwearn/k3s-cluster/blob/main/.claude/skills/review-upgrade/SKILL.md)."
       ]
     },
     {
@@ -151,7 +151,7 @@
         "needs-careful-review"
       ],
       "prBodyNotes": [
-        "> [!CAUTION]\n> **Not a routine bump.** Merging this rolls the Flux controllers that do the deploying, and it never automerges.\n>\n> - Read the release's breaking changes and its Kubernetes compatibility table.\n> - An apiVersion bump in this PR is only safe because the `flux-notifications` Kustomization depends on `flux-operator`. Any new `*.toolkit.fluxcd.io` object belongs there, never in `infrastructure/flux-operator/` itself.\n> - Minors are not skipped. If more than one of these PRs is open, merge the oldest minor first."
+        "> [!CAUTION]\n> **Not a routine bump.** Merging this rolls the Flux controllers that do the deploying, and it never automerges.\n>\n> - Read the release's breaking changes and its Kubernetes compatibility table.\n> - An apiVersion bump in this PR is only safe because the `flux-notifications` Kustomization depends on `flux-operator`. Any new `*.toolkit.fluxcd.io` object belongs there, never in `infrastructure/flux-operator/` itself.\n> - Minors are not skipped. If more than one of these PRs is open, merge the oldest minor first.\n> - Agent review: run `/review-upgrade <PR number>` in Claude Code. The checklist is [`.claude/skills/review-upgrade/SKILL.md`](https://github.com/jcwearn/k3s-cluster/blob/main/.claude/skills/review-upgrade/SKILL.md)."
       ]
     }
   ],
