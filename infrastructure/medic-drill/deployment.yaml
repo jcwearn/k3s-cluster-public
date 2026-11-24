@@ -1,0 +1,56 @@
+# Warms a cache of about 200 MiB at startup and holds it in memory.
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: cache-warmer
+  namespace: medic-drill
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: cache-warmer
+  template:
+    metadata:
+      labels:
+        app: cache-warmer
+    spec:
+      automountServiceAccountToken: false
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 65534
+        runAsGroup: 65534
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+        - name: cache-warmer
+          image: python:3.15-alpine@sha256:0f9552bb28711333da16915ec146f5e6bb44a7fdac9ced15dc17c2e0206346dd
+          imagePullPolicy: IfNotPresent
+          command: ["python", "-u", "/app/warm.py"]
+          livenessProbe:
+            exec:
+              command: ["true"]
+            periodSeconds: 30
+          readinessProbe:
+            exec:
+              command: ["true"]
+            periodSeconds: 10
+          volumeMounts:
+            - name: app
+              mountPath: /app
+              readOnly: true
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop: ["ALL"]
+          resources:
+            requests:
+              cpu: 10m
+              memory: 64Mi
+            limits:
+              cpu: 100m
+              memory: 128Mi
+      volumes:
+        - name: app
+          configMap:
+            name: cache-warmer
