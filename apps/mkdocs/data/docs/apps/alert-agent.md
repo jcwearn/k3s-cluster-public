@@ -22,13 +22,16 @@ prefix with `alerts` (Alertmanager); the app, namespace and repo keep the
 
 ## Status
 
-Phase 2 is live: every new incident gets a **read-only diagnosis** by Claude
-(Opus, on the Claude subscription). The report goes to Slack and, with the
-full transcript, to the UI. **Nothing in the cluster is changed** in response
-to an alert yet.
+Phase 3 is live: every new incident gets a **diagnosis** by Claude (Opus, on
+the Claude subscription). The report goes to Slack and, with the full
+transcript, to the UI. When the fix is a manifest change, the agent can also
+**propose a pull request** against this repo for a human to review. **Nothing
+in the cluster is changed** in response to an alert, and the agent cannot
+merge.
 
 To stop runs without losing incidents, set `AGENT_ENABLED` to `"false"` in
-`apps/alert-agent/deployment.yaml`.
+`apps/alert-agent/deployment.yaml`. To keep diagnoses but stop PRs, set
+`PR_ENABLED` to `"false"`.
 
 ## Agent runs
 
@@ -66,6 +69,46 @@ To stop runs without losing incidents, set `AGENT_ENABLED` to `"false"` in
   classifies the fix as *autonomous*, *pr* or *human* for the phases that act
   on it.
 
+## Pull requests
+
+When the fix is a manifest change and the agent is reasonably confident, it
+proposes a PR. **Git writes never come from Claude**:
+
+1. The runner may edit its own checkout (`Edit(./**)`; edits to `scripts/`,
+   `.githooks/`, `.github/`, `clusters/`, `apps/alert-agent/` and
+   `*.sops.yaml` are denied). It takes the result from the read-only
+   `git_diff` tool and passes it to `propose_pr(title, body, patch)`.
+2. `propose_pr` is served by the **controller** over HTTP MCP on port `8082`,
+   behind the run's bearer token. Only the controller holds the GitHub App
+   key.
+3. The controller clones `main`, applies the patch with `--3way`, and refuses
+   anything that is not a regular file under `apps/` or `infrastructure/`:
+   encrypted secrets, the agent's own `apps/alert-agent/`, symlinks, mode
+   changes and binaries included.
+4. It commits through this repo's own **`.githooks`**: every touched overlay
+   must render, no plaintext Secret, no literal private address or tailnet
+   name in the files or the message. `PUBLIC_GATE` fills the hooks'
+   `.publicgate-local` with the real domain and tailnet (substituted by Flux).
+5. The commit message is written by the controller; only the title comes
+   from the agent, because commit messages are published on the public
+   mirror. The PR body, which links the UI, is not (squash merges use the
+   commit messages).
+6. It pushes `agent/<incident-id>` and opens the PR. Only `agent/*` refs are
+   ever pushed, nothing can merge, and each GitHub token is narrowed to one
+   purpose.
+
+Limits: one PR per incident and three `propose_pr` attempts per run. Every
+call is written to the `actions` table before it runs, with its result after.
+
+The controller polls open PRs every two minutes. The home page lists them
+under **Awaiting review** with their CI state. Each PR gets **one ntfy push**
+on the `medic` topic once its checks settle (or after 15 minutes), with the CI
+result; the Slack diagnosis links the PR too. ntfy is reserved for "needs your
+review", so diagnoses never push.
+
+Each run's Claude session file is stored (`run_sessions`) so a later phase can
+resume the conversation on a pending PR.
+
 ## How alerts arrive
 
 The `alert-agent` route is the last one in the Alertmanager config, after ntfy
@@ -102,7 +145,8 @@ receivers must be appended, never inserted.
 * **`secrets.sops.yaml`** holds the Claude subscription token (mounted by
   runner Jobs) and the GitHub App credentials (mounted only by the
   controller, which mints narrowed tokens from them).
-  `notify-secrets.sops.yaml` holds the Slack webhook for reports.
+  `notify-secrets.sops.yaml` holds the Slack webhook for reports and the ntfy
+  token for review pushes (a copy of the one in `apps/ntfy`).
 * **Runner image.** Runners use the controller pod's own image, which the
   controller looks up at startup. One Renovate bump moves both.
 * **Backups** run nightly at 02:15 UTC to R2, with continuous WAL archiving.
@@ -122,3 +166,4 @@ receivers must be appended, never inserted.
 | `alert_agent_webhooks_total{outcome}` | Deliveries by outcome: `ok`, `bad_request`, `error` |
 | `alert_agent_incidents_total{event}` | Incidents `opened` and `resolved` |
 | `alert_agent_runs_total{status}` | Runs `queued`, and finished `succeeded` or `failed` |
+| `alert_agent_pull_requests_total{event}` | `propose_pr` outcomes (`opened`, `rejected`, `failed`), and PRs later `merged` or `closed` |

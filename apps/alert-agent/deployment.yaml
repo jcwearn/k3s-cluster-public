@@ -37,7 +37,7 @@ spec:
         # Migrations run here rather than at controller startup, as in
         # job-track: same image, same embedded SQL, different subcommand.
         - name: migrate
-          image: ghcr.io/jcwearn/alert-agent:0.5.0@sha256:c0ab14b5bd1fc5a08b58df8982dae0696190a7f0afb6a8bddb755b3876761bfc
+          image: ghcr.io/jcwearn/alert-agent:0.6.0@sha256:8f775158df1e8995036313eee79d545b318bbec258ef3e13384595134e2e563d
           imagePullPolicy: IfNotPresent
           args: ["migrate"]
           env:
@@ -73,7 +73,7 @@ spec:
               memory: 128Mi
       containers:
         - name: controller
-          image: ghcr.io/jcwearn/alert-agent:0.5.0@sha256:c0ab14b5bd1fc5a08b58df8982dae0696190a7f0afb6a8bddb755b3876761bfc
+          image: ghcr.io/jcwearn/alert-agent:0.6.0@sha256:8f775158df1e8995036313eee79d545b318bbec258ef3e13384595134e2e563d
           imagePullPolicy: IfNotPresent
           args: ["controller"]
           ports:
@@ -114,6 +114,26 @@ spec:
               value: opus
             - name: RUN_MAX_PER_HOUR
               value: "6"
+            # Phase 3: runners may propose a PR with propose_pr. The controller
+            # applies the patch to main, runs the repo's .githooks on it and
+            # pushes agent/<incident-id>; it never merges.
+            - name: PR_ENABLED
+              value: "true"
+            # Exact strings the hooks must refuse in a proposed commit (their
+            # .publicgate-local). Flux substitutes them, so neither is written
+            # here.
+            - name: PUBLIC_GATE
+              value: ${DOMAIN},${TAILNET}
+            # "Needs your review" pushes; diagnoses stay on Slack.
+            - name: NTFY_URL
+              value: http://ntfy-svc.ntfy.svc.cluster.local:4080
+            - name: NTFY_TOPIC
+              value: medic
+            - name: NTFY_TOKEN
+              valueFrom:
+                secretKeyRef:
+                  name: alert-agent-notify
+                  key: NTFY_TOKEN
             # Runner Jobs use this pod's own controller image, which the
             # controller reads through the API by name -- so a Renovate bump of
             # the image above moves the runners too.
@@ -161,18 +181,26 @@ spec:
             - name: github-app
               mountPath: /etc/alert-agent/github
               readOnly: true
+            # Each proposal clones the repo here, commits through its hooks and
+            # removes the clone.
+            - name: work
+              mountPath: /work
+            - name: tmp
+              mountPath: /tmp
           securityContext:
             allowPrivilegeEscalation: false
             readOnlyRootFilesystem: true
             capabilities:
               drop: ["ALL"]
+          # Limits cover a proposal: a shallow clone of the repo and the hooks'
+          # kustomize renders, in bursts.
           resources:
             requests:
               cpu: 10m
-              memory: 32Mi
+              memory: 64Mi
             limits:
-              cpu: 500m
-              memory: 256Mi
+              cpu: "1"
+              memory: 512Mi
       volumes:
         # Only the private key, as a file: the App ID and installation ID
         # come in as env above. The runner Jobs never mount this Secret.
@@ -183,3 +211,9 @@ spec:
             items:
               - key: private-key
                 path: private-key
+        - name: work
+          emptyDir:
+            sizeLimit: 2Gi
+        - name: tmp
+          emptyDir:
+            sizeLimit: 512Mi
