@@ -458,26 +458,3 @@ spec:
   # vendored CRD is 1300 lines of upstream schema that would have to be audited
   # for braced references before substitution could be turned on safely.
   wait: true
----
-# Phase 3.5 acceptance drill for the alert triage agent. cache-warmer's memory
-# limit is too small for its working set, so it is OOMKilled and several
-# alerts fire for that one pod; report-sync fails for an unrelated reason in
-# the same namespace. The agent should fold the first into one incident and
-# keep the second apart. Its own Kustomization, without wait, because inside
-# `apps` (wait: true) a crashlooping Deployment would fail every reconcile.
-# Removed once the drill is done.
-apiVersion: kustomize.toolkit.fluxcd.io/v1
-kind: Kustomization
-metadata:
-  name: medic-drill
-  namespace: flux-system
-spec:
-  interval: 10m
-  retryInterval: 1m
-  timeout: 2m
-  path: ./infrastructure/medic-drill
-  prune: true
-  sourceRef:
-    kind: GitRepository
-    name: flux-system
-  wait: false
