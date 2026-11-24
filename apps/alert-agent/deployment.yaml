@@ -106,8 +106,13 @@ spec:
               value: America/New_York
             # Phase 2: every new incident gets a read-only diagnosis. Set to
             # "false" to stop starting runs; incidents are still recorded.
+            #
+            # Paused: CLAUDE_CODE_SUBPROCESS_ENV_SCRUB needs bubblewrap, which
+            # the restricted runner pod cannot run, so every run fails at
+            # start. Re-enabled when runners use MCP read tools instead of
+            # Bash (docs/plans/alert-agent).
             - name: AGENT_ENABLED
-              value: "true"
+              value: "false"
             - name: PUBLIC_URL
               value: https://alert-agent.${DOMAIN}
             - name: RUN_MODEL
