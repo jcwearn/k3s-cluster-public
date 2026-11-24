@@ -8,14 +8,17 @@ of reversible actions and opens a pull request for anything larger.
 
 | Setting            | Value                                     |
 |--------------------|-------------------------------------------|
-| **URL**            | `https://alert-agent.${DOMAIN}`           |
+| **URL**            | `https://medic.${DOMAIN}`           |
 | **Image**          | `ghcr.io/jcwearn/alert-agent`             |
 | **Database**       | PostgreSQL 16 (CloudNative-PG)            |
 | **Storage**        | None — all state is in Postgres           |
 | **Ingress**        | Envoy Gateway HTTPRoute (UI only)         |
 | **Namespace**      | `alert-agent`                             |
 
-The design and phase plan are in `docs/plans/alert-agent/` in this repo.
+The design and phase plan are in `docs/plans/alert-agent/` in this repo. The UI
+lives at `medic`, not `alert-agent`, so it doesn't share a browser-autocomplete
+prefix with `alerts` (Alertmanager); the app, namespace and repo keep the
+`alert-agent` name.
 
 ## Status
 

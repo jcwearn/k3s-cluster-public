@@ -9,7 +9,7 @@ spec:
       namespace: envoy-gateway-system
       sectionName: https
   hostnames:
-    - alert-agent.${DOMAIN}
+    - medic.${DOMAIN}
   rules:
     - matches:
         - path:

@@ -1,4 +1,4 @@
-# ClusterIP only. The UI is reached at alert-agent.${DOMAIN} through the
+# ClusterIP only. The UI is reached at medic.${DOMAIN} through the
 # gateway, which is tailnet-only (see apps/job-track/service.yaml). The webhook
 # port (Alertmanager) and the runner port (runner Jobs) are in-cluster only
 # and never routed.

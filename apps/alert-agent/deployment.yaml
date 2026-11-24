@@ -109,7 +109,7 @@ spec:
             - name: AGENT_ENABLED
               value: "true"
             - name: PUBLIC_URL
-              value: https://alert-agent.${DOMAIN}
+              value: https://medic.${DOMAIN}
             - name: RUN_MODEL
               value: opus
             - name: RUN_MAX_PER_HOUR
