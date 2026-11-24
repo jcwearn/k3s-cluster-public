@@ -274,6 +274,19 @@ spec:
             - receiver: "slack"
               matchers:
                 - alertname != "Watchdog"
+              continue: true
+            # The triage agent (apps/alert-agent) sees everything that reached
+            # the humans, after them, so it can never delay or swallow a page.
+            # Grouped per alertname and namespace rather than per namespace:
+            # one group is one incident and one agent run, and two unrelated
+            # alerts in the same namespace are two problems. Its own namespace
+            # is excluded so the agent never triages itself. Release/Eol never
+            # reach here -- their Slack route above ends the walk.
+            - receiver: "alert-agent"
+              group_by: ["alertname", "namespace"]
+              matchers:
+                - alertname != "Watchdog"
+                - namespace != "alert-agent"
         receivers:
           - name: "null"
           - name: "ntfy"
@@ -298,6 +311,14 @@ spec:
                 text: |-
                   {{ range .Alerts }}{{ if eq .Status "firing" }}:rotating_light: Firing{{ else }}:+1: Resolved{{ end }}: {{ .Annotations.summary }} ({{ .Labels.alertname }})
                   {{ end }}
+          # Index 4. Appended, never inserted: indexes 1-3 are addressed by
+          # the valuesFrom targetPaths at the top of this file. No credentials:
+          # the NetworkPolicy in apps/alert-agent admits only Alertmanager to
+          # this port.
+          - name: "alert-agent"
+            webhook_configs:
+              - url: "http://alert-agent.alert-agent.svc.cluster.local:8081/webhook/alertmanager"
+                send_resolved: true
       alertmanagerSpec:
         # Two replicas on two different nodes; see prometheusSpec for the
         # reason. The operator configures them as a cluster: they share
