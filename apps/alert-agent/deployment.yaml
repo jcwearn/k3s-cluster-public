@@ -27,6 +27,10 @@ spec:
         runAsNonRoot: true
         runAsUser: 65532
         runAsGroup: 65532
+        # Secret volume files are owned by root; fsGroup gives them the pod's
+        # group so the 0440 key below is readable by the controller and no one
+        # else.
+        fsGroup: 65532
         seccompProfile:
           type: RuntimeDefault
       initContainers:
@@ -175,7 +179,7 @@ spec:
         - name: github-app
           secret:
             secretName: alert-agent-github
-            defaultMode: 0400
+            defaultMode: 0440
             items:
               - key: private-key
                 path: private-key
