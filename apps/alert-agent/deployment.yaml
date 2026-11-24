@@ -7,8 +7,8 @@ metadata:
     reloader.stakater.com/auto: "true"
 spec:
   replicas: 1
-  # One controller at a time. From Phase 2 it owns the runner queue, and two
-  # replicas would each start a Job for the same incident.
+  # One controller at a time: it owns the runner queue. (The database also
+  # refuses a second running run, so two replicas would idle, not collide.)
   strategy:
     type: Recreate
   selector:
@@ -19,9 +19,10 @@ spec:
       labels:
         app: alert-agent
     spec:
-      # Phase 1 never talks to the API server. Phase 2 adds a ServiceAccount
-      # with exactly the RBAC it needs to create runner Jobs.
-      automountServiceAccountToken: false
+      # The controller creates runner Jobs and their per-run Secrets; see
+      # rbac.yaml for exactly what it may touch.
+      serviceAccountName: alert-agent
+      automountServiceAccountToken: true
       securityContext:
         runAsNonRoot: true
         runAsUser: 65532
@@ -32,7 +33,7 @@ spec:
         # Migrations run here rather than at controller startup, as in
         # job-track: same image, same embedded SQL, different subcommand.
         - name: migrate
-          image: ghcr.io/jcwearn/alert-agent:0.1.0@sha256:52a6ff7252e4dd6246d2381fbe8e9e0a29d440486b3967031037c6aae2372567
+          image: ghcr.io/jcwearn/alert-agent:0.3.0@sha256:46b3d2b639228bf0c568fcdf8d3e2fa2c4a6aa1c9fd967cc1a8ed60de58abf26
           imagePullPolicy: IfNotPresent
           args: ["migrate"]
           env:
@@ -68,7 +69,7 @@ spec:
               memory: 128Mi
       containers:
         - name: controller
-          image: ghcr.io/jcwearn/alert-agent:0.1.0@sha256:52a6ff7252e4dd6246d2381fbe8e9e0a29d440486b3967031037c6aae2372567
+          image: ghcr.io/jcwearn/alert-agent:0.3.0@sha256:46b3d2b639228bf0c568fcdf8d3e2fa2c4a6aa1c9fd967cc1a8ed60de58abf26
           imagePullPolicy: IfNotPresent
           args: ["controller"]
           ports:
@@ -76,6 +77,8 @@ spec:
               containerPort: 8080
             - name: webhook
               containerPort: 8081
+            - name: runner
+              containerPort: 8082
           env:
             - name: DB_HOST
               value: alert-agent-database-rw
@@ -97,6 +100,44 @@ spec:
             # The UI shows absolute times; render them in local time.
             - name: TZ
               value: America/New_York
+            # Phase 2: every new incident gets a read-only diagnosis. Set to
+            # "false" to stop starting runs; incidents are still recorded.
+            - name: AGENT_ENABLED
+              value: "true"
+            - name: PUBLIC_URL
+              value: https://alert-agent.${DOMAIN}
+            - name: RUN_MODEL
+              value: opus
+            - name: RUN_MAX_PER_HOUR
+              value: "6"
+            # Runner Jobs use this pod's own controller image, which the
+            # controller reads through the API by name -- so a Renovate bump of
+            # the image above moves the runners too.
+            - name: POD_NAME
+              valueFrom:
+                fieldRef:
+                  fieldPath: metadata.name
+            - name: POD_NAMESPACE
+              valueFrom:
+                fieldRef:
+                  fieldPath: metadata.namespace
+            - name: GITHUB_APP_ID
+              valueFrom:
+                secretKeyRef:
+                  name: alert-agent-github
+                  key: app-id
+            - name: GITHUB_INSTALLATION_ID
+              valueFrom:
+                secretKeyRef:
+                  name: alert-agent-github
+                  key: installation-id
+            - name: GITHUB_PRIVATE_KEY_FILE
+              value: /etc/alert-agent/github/private-key
+            - name: SLACK_WEBHOOK_URL
+              valueFrom:
+                secretKeyRef:
+                  name: alert-agent-notify
+                  key: SLACK_WEBHOOK_URL
           # Liveness never touches the database: a restart does not fix an
           # outage there. Readiness does, taking the pod out of the Service --
           # and Alertmanager retries deliveries it could not make.
@@ -112,6 +153,10 @@ spec:
               port: http
             initialDelaySeconds: 2
             periodSeconds: 10
+          volumeMounts:
+            - name: github-app
+              mountPath: /etc/alert-agent/github
+              readOnly: true
           securityContext:
             allowPrivilegeEscalation: false
             readOnlyRootFilesystem: true
@@ -124,3 +169,13 @@ spec:
             limits:
               cpu: 500m
               memory: 256Mi
+      volumes:
+        # Only the private key, as a file: the App ID and installation ID
+        # come in as env above. The runner Jobs never mount this Secret.
+        - name: github-app
+          secret:
+            secretName: alert-agent-github
+            defaultMode: 0400
+            items:
+              - key: private-key
+                path: private-key

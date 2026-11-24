@@ -5,10 +5,12 @@ resources:
   - httproute.yaml
   - namespace.yaml
   - networkpolicy.yaml
+  - notify-secrets.sops.yaml
   - objectstore.yaml
   - podmonitor.yaml
   - postgres-backup-secrets.sops.yaml
   - postgresql.yaml
+  - rbac.yaml
   - scheduledbackup.yaml
   - secrets.sops.yaml
   - service.yaml

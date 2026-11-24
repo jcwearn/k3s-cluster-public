@@ -1,6 +1,7 @@
 # ClusterIP only. The UI is reached at alert-agent.${DOMAIN} through the
 # gateway, which is tailnet-only (see apps/job-track/service.yaml). The webhook
-# port is for Alertmanager in-cluster and is never routed.
+# port (Alertmanager) and the runner port (runner Jobs) are in-cluster only
+# and never routed.
 apiVersion: v1
 kind: Service
 metadata:
@@ -17,4 +18,8 @@ spec:
     - name: webhook
       port: 8081
       targetPort: webhook
+      protocol: TCP
+    - name: runner
+      port: 8082
+      targetPort: runner
       protocol: TCP

@@ -1,0 +1,127 @@
+# Two identities, deliberately unequal.
+#
+# alert-agent (the controller) may manage runner Jobs and their per-run
+# Secrets in this namespace, read its own pod, and nothing else. It never reads cluster state:
+# that is the runner's job.
+#
+# alert-agent-runner is the identity Claude's kubectl runs as. It can read
+# almost everything in the cluster and write nothing, and it cannot read
+# Secrets anywhere -- not even its own run's. This, not the tool allowlist in
+# the runner, is what bounds a confused or prompt-injected agent.
+#
+# Widen either on a Forbidden, not in anticipation (same rule as
+# apps/ansible/rbac.yaml).
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: alert-agent
+  namespace: alert-agent
+automountServiceAccountToken: false
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: alert-agent-controller
+  namespace: alert-agent
+rules:
+  - apiGroups: ["batch"]
+    resources: ["jobs"]
+    verbs: ["create", "get", "list", "watch", "delete"]
+  # Per-run Secrets (run token, read-only GitHub token). create cannot be
+  # limited by name; the controller already mounts this namespace's other
+  # Secrets, so this grants it nothing new to read.
+  - apiGroups: [""]
+    resources: ["secrets"]
+    verbs: ["create", "get", "update", "delete"]
+  # Its own pod, once at startup, to learn the image runner Jobs should use.
+  - apiGroups: [""]
+    resources: ["pods"]
+    verbs: ["get"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: alert-agent-controller
+  namespace: alert-agent
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: alert-agent-controller
+subjects:
+  - kind: ServiceAccount
+    name: alert-agent
+    namespace: alert-agent
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: alert-agent-runner
+  namespace: alert-agent
+automountServiceAccountToken: false
+---
+# The built-in view role: namespaced workloads, pods/log, events, configmaps,
+# services -- and, by design, no Secrets.
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: alert-agent-runner-view
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: view
+subjects:
+  - kind: ServiceAccount
+    name: alert-agent-runner
+    namespace: alert-agent
+---
+# What view leaves out that a diagnosis needs: cluster-scoped objects, node
+# and pod metrics, and the CRDs this cluster runs on. Read-only throughout.
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: alert-agent-runner-read
+rules:
+  - apiGroups: [""]
+    resources: ["nodes", "persistentvolumes", "namespaces"]
+    verbs: ["get", "list", "watch"]
+  - apiGroups: ["storage.k8s.io"]
+    resources: ["storageclasses", "csidrivers", "volumeattachments"]
+    verbs: ["get", "list", "watch"]
+  - apiGroups: ["metrics.k8s.io"]
+    resources: ["nodes", "pods"]
+    verbs: ["get", "list"]
+  - apiGroups: ["apiextensions.k8s.io"]
+    resources: ["customresourcedefinitions"]
+    verbs: ["get", "list"]
+  - apiGroups:
+      - source.toolkit.fluxcd.io
+      - kustomize.toolkit.fluxcd.io
+      - helm.toolkit.fluxcd.io
+      - notification.toolkit.fluxcd.io
+      - fluxcd.controlplane.io
+      - postgresql.cnpg.io
+      - barmancloud.cnpg.io
+      - cert-manager.io
+      - acme.cert-manager.io
+      - monitoring.coreos.com
+      - gateway.networking.k8s.io
+      - gateway.envoyproxy.io
+      - externaldns.k8s.io
+      - tailscale.com
+      - k3s.cattle.io
+      - upgrade.cattle.io
+    resources: ["*"]
+    verbs: ["get", "list", "watch"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: alert-agent-runner-read
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: alert-agent-runner-read
+subjects:
+  - kind: ServiceAccount
+    name: alert-agent-runner
+    namespace: alert-agent

@@ -46,14 +46,19 @@ spec:
           protocol: TCP
 ---
 # Who may reach the controller. The webhook port admits Alertmanager only: a
-# delivery there opens an incident, and from Phase 2 an incident starts an
-# agent run, so nothing else in the cluster may forge one. The UI port admits
-# the gateway's Envoy pods and Prometheus (for /metrics).
+# delivery there opens an incident and starts an agent run, so nothing else in
+# the cluster may forge one. The runner port admits only runner pods from this
+# namespace (and each request still needs its run's bearer token). The UI port
+# admits the gateway's Envoy pods and Prometheus (for /metrics).
 apiVersion: networking.k8s.io/v1
 kind: NetworkPolicy
 metadata:
   name: alert-agent
   namespace: alert-agent
+  annotations:
+    # Runner pods are created at runtime by the controller, not by a manifest
+    # the linter can see.
+    ignore-check.kube-linter.io/dangling-networkpolicypeer-podselector: "runner pods are Jobs the controller creates at runtime"
 spec:
   podSelector:
     matchLabels:
@@ -70,6 +75,13 @@ spec:
               app.kubernetes.io/name: alertmanager
       ports:
         - port: 8081
+          protocol: TCP
+    - from:
+        - podSelector:
+            matchLabels:
+              app.kubernetes.io/component: runner
+      ports:
+        - port: 8082
           protocol: TCP
     - from:
         - namespaceSelector:
