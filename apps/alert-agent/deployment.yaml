@@ -1,0 +1,126 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: alert-agent
+  namespace: alert-agent
+  annotations:
+    reloader.stakater.com/auto: "true"
+spec:
+  replicas: 1
+  # One controller at a time. From Phase 2 it owns the runner queue, and two
+  # replicas would each start a Job for the same incident.
+  strategy:
+    type: Recreate
+  selector:
+    matchLabels:
+      app: alert-agent
+  template:
+    metadata:
+      labels:
+        app: alert-agent
+    spec:
+      # Phase 1 never talks to the API server. Phase 2 adds a ServiceAccount
+      # with exactly the RBAC it needs to create runner Jobs.
+      automountServiceAccountToken: false
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 65532
+        runAsGroup: 65532
+        seccompProfile:
+          type: RuntimeDefault
+      initContainers:
+        # Migrations run here rather than at controller startup, as in
+        # job-track: same image, same embedded SQL, different subcommand.
+        - name: migrate
+          image: ghcr.io/jcwearn/alert-agent:0.1.0@sha256:52a6ff7252e4dd6246d2381fbe8e9e0a29d440486b3967031037c6aae2372567
+          imagePullPolicy: IfNotPresent
+          args: ["migrate"]
+          env:
+            - name: DB_HOST
+              value: alert-agent-database-rw
+            # The operator-generated app Secret; see postgresql.yaml.
+            - name: DB_NAME
+              valueFrom:
+                secretKeyRef:
+                  name: alert-agent-database-app
+                  key: dbname
+            - name: DB_USER
+              valueFrom:
+                secretKeyRef:
+                  name: alert-agent-database-app
+                  key: username
+            - name: DB_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: alert-agent-database-app
+                  key: password
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop: ["ALL"]
+          resources:
+            requests:
+              cpu: 10m
+              memory: 32Mi
+            limits:
+              cpu: 500m
+              memory: 128Mi
+      containers:
+        - name: controller
+          image: ghcr.io/jcwearn/alert-agent:0.1.0@sha256:52a6ff7252e4dd6246d2381fbe8e9e0a29d440486b3967031037c6aae2372567
+          imagePullPolicy: IfNotPresent
+          args: ["controller"]
+          ports:
+            - name: http
+              containerPort: 8080
+            - name: webhook
+              containerPort: 8081
+          env:
+            - name: DB_HOST
+              value: alert-agent-database-rw
+            - name: DB_NAME
+              valueFrom:
+                secretKeyRef:
+                  name: alert-agent-database-app
+                  key: dbname
+            - name: DB_USER
+              valueFrom:
+                secretKeyRef:
+                  name: alert-agent-database-app
+                  key: username
+            - name: DB_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: alert-agent-database-app
+                  key: password
+            # The UI shows absolute times; render them in local time.
+            - name: TZ
+              value: America/New_York
+          # Liveness never touches the database: a restart does not fix an
+          # outage there. Readiness does, taking the pod out of the Service --
+          # and Alertmanager retries deliveries it could not make.
+          livenessProbe:
+            httpGet:
+              path: /healthz
+              port: http
+            initialDelaySeconds: 5
+            periodSeconds: 20
+          readinessProbe:
+            httpGet:
+              path: /readyz
+              port: http
+            initialDelaySeconds: 2
+            periodSeconds: 10
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop: ["ALL"]
+          resources:
+            requests:
+              cpu: 10m
+              memory: 32Mi
+            limits:
+              cpu: 500m
+              memory: 256Mi

@@ -1,0 +1,33 @@
+apiVersion: postgresql.cnpg.io/v1
+kind: Cluster
+metadata:
+  name: alert-agent-database
+  namespace: alert-agent
+spec:
+  # Same shape as job-track's: a primary and a replica on different nodes,
+  # switchover on spec changes, no PDB so a drain fails over instead of
+  # hanging. See apps/job-track/postgresql.yaml for the incidents behind each.
+  instances: 2
+  affinity:
+    podAntiAffinityType: required
+  primaryUpdateMethod: switchover
+  enablePDB: false
+  imageName: ghcr.io/cloudnative-pg/postgresql:16
+  plugins:
+    - name: barman-cloud.cloudnative-pg.io
+      isWALArchiver: true
+      parameters:
+        barmanObjectName: alert-agent-database-backups
+  storage:
+    # Incidents, raw webhook payloads and (from Phase 2) full agent
+    # transcripts. Transcripts are the bulk; 5Gi is years of them, and the
+    # class allows expansion.
+    size: 5Gi
+    storageClass: truenas-nfs-postgres
+  # No bootstrap secret: the operator generates alert-agent-database-app with
+  # username, password and dbname, which the Deployment reads directly. The
+  # agent's own database never needs a password a human chose.
+  bootstrap:
+    initdb:
+      database: alertagent
+      owner: alertagent

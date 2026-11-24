@@ -15,6 +15,7 @@ configMapGenerator:
     namespace: mkdocs
     files:
       - data/docs/apps/index.md
+      - data/docs/apps/alert-agent.md
       - data/docs/apps/ansible.md
       - data/docs/apps/homeassistant.md
       - data/docs/apps/homepage.md

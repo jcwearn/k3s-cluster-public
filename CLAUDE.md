@@ -33,6 +33,7 @@ infrastructure/          # Cluster infrastructure components
   └── tailscale-operator/ # Private VPN network overlay
 
 apps/                    # User-facing applications
+  ├── alert-agent/       # Alert triage agent (Claude Code)
   ├── ansible/           # Ansible Runner CronJobs (infra automation)
   ├── ebooks/            # E-book library (Calibre-Web + Calibre)
   ├── headlamp/          # Kubernetes dashboard

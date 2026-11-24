@@ -50,6 +50,7 @@ of the cluster.
 ```text
 .
 ├── apps/
+│   ├── alert-agent/        # Alert triage agent (Claude Code)
 │   ├── ansible/            # Ansible Runner CronJobs (infra automation)
 │   ├── ebooks/             # E-book library (Calibre-Web + Calibre)
 │   ├── headlamp/           # Kubernetes dashboard
@@ -123,6 +124,7 @@ FluxCD watches `clusters/prod/` and recursively applies everything under `apps/`
 
 | App | Type | Notes |
 |-----|------|-------|
+| **alert-agent** | Deployment + CNPG | Alert triage agent |
 | **Ansible Runner** | CronJob | Automated infrastructure management |
 | **Ebooks** | Deployment + PVC | Calibre-Web + Calibre e-book library |
 | **Headlamp** | Deployment | Kubernetes dashboard |

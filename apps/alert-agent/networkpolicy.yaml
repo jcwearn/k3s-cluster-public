@@ -1,0 +1,83 @@
+# Who may open a connection to the database pods. Same four callers as
+# apps/job-track/networkpolicy.yaml, which explains each and why kubelet
+# probes need no rule.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: alert-agent-database
+  namespace: alert-agent
+  annotations:
+    ignore-check.kube-linter.io/dangling-networkpolicy: "selects pods the CNPG operator creates from the Cluster object"
+    ignore-check.kube-linter.io/dangling-networkpolicypeer-podselector: "replication peer is the CNPG operator's own instance pods"
+spec:
+  podSelector:
+    matchLabels:
+      cnpg.io/cluster: alert-agent-database
+  policyTypes:
+    - Ingress
+  ingress:
+    - from:
+        - podSelector:
+            matchLabels:
+              app: alert-agent
+      ports:
+        - port: 5432
+          protocol: TCP
+    - from:
+        - podSelector:
+            matchLabels:
+              cnpg.io/cluster: alert-agent-database
+      ports:
+        - port: 5432
+          protocol: TCP
+    - from:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: prometheus
+      ports:
+        - port: 9187
+          protocol: TCP
+    - from:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: cnpg-system
+      ports:
+        - port: 8000
+          protocol: TCP
+---
+# Who may reach the controller. The webhook port admits Alertmanager only: a
+# delivery there opens an incident, and from Phase 2 an incident starts an
+# agent run, so nothing else in the cluster may forge one. The UI port admits
+# the gateway's Envoy pods and Prometheus (for /metrics).
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: alert-agent
+  namespace: alert-agent
+spec:
+  podSelector:
+    matchLabels:
+      app: alert-agent
+  policyTypes:
+    - Ingress
+  ingress:
+    - from:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: prometheus
+          podSelector:
+            matchLabels:
+              app.kubernetes.io/name: alertmanager
+      ports:
+        - port: 8081
+          protocol: TCP
+    - from:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: envoy-gateway-system
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: prometheus
+      ports:
+        - port: 8080
+          protocol: TCP

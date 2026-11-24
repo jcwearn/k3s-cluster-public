@@ -7,6 +7,7 @@ data:
   ${DOMAIN}.override: |
     # Route all ${DOMAIN} subdomains through Envoy Gateway for TLS termination
     # Apps
+    rewrite name alert-agent.${DOMAIN} envoy-proxy.envoy-gateway-system.svc.cluster.local
     rewrite name books.${DOMAIN} envoy-proxy.envoy-gateway-system.svc.cluster.local
     rewrite name clock.${DOMAIN} envoy-proxy.envoy-gateway-system.svc.cluster.local
     rewrite name dash.${DOMAIN} envoy-proxy.envoy-gateway-system.svc.cluster.local

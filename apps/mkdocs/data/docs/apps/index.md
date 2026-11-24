@@ -6,6 +6,7 @@ of the stack.
 
 | App | Purpose | Docs |
 |-----|---------|------|
+| **alert-agent** | Alert triage agent: records incidents; fixes or opens PRs in later phases. | [Read more](alert-agent.md) |
 | **Ansible** | Automated server updates via CronJob-driven Ansible playbooks. | [Read more](ansible.md) |
 | **Home Assistant** | Home-automation hub (runs off-cluster, proxied via Ingress). | [Read more](homeassistant.md) |
 | **Homepage** | Service dashboard & link hub. | [Read more](homepage.md) |

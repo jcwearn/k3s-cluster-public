@@ -1,0 +1,18 @@
+# Nightly base backup; WAL is archived continuously between them. 02:15 UTC
+# keeps it clear of the other clusters' 02:00, 02:30 and 02:45 slots. Not
+# immediate: true -- see apps/job-track/scheduledbackup.yaml for why the first
+# backup is taken by hand.
+apiVersion: postgresql.cnpg.io/v1
+kind: ScheduledBackup
+metadata:
+  name: alert-agent-database-daily
+  namespace: alert-agent
+spec:
+  # Go cron format: seconds first.
+  schedule: "0 15 2 * * *"
+  backupOwnerReference: self
+  cluster:
+    name: alert-agent-database
+  method: plugin
+  pluginConfiguration:
+    name: barman-cloud.cloudnative-pg.io

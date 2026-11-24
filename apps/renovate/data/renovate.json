@@ -1,5 +1,11 @@
 {
     "repositories": [
+        {
+            "repository": "jcwearn/alert-agent",
+            "allowedCommands": [
+                "^go tool templ generate$"
+            ]
+        },
         "jcwearn/ansible-runner",
         "jcwearn/anupamaandjackson",
         "jcwearn/borderline",
