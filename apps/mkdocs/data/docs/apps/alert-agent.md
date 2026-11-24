@@ -22,7 +22,7 @@ prefix with `alerts` (Alertmanager); the app, namespace and repo keep the
 
 ## Status
 
-Phase 3 is live: every new incident gets a **diagnosis** by Claude (Opus, on
+Phase 3.5 is live: every new incident gets a **diagnosis** by Claude (Opus, on
 the Claude subscription). The report goes to Slack and, with the full
 transcript, to the UI. When the fix is a manifest change, the agent can also
 **propose a pull request** against this repo for a human to review. **Nothing
@@ -35,11 +35,13 @@ To stop runs without losing incidents, set `AGENT_ENABLED` to `"false"` in
 
 ## Agent runs
 
-1. A new firing incident queues a run. Repeat deliveries for the same
-   incident do not.
+1. A new firing incident queues a run, **held** for `RUN_HOLD` (60s).
+   Incidents that open in the same namespace during the hold join that run
+   instead of getting their own (see [Consolidation](#consolidation)). Repeat
+   deliveries for the same incident queue nothing.
 2. The controller starts **one run at a time**, at most `RUN_MAX_PER_HOUR`
-   (6) per hour. A queued run whose incident resolves before it starts is
-   skipped. Every run spends the subscription's usage.
+   (6) per hour. A queued run all of whose incidents resolve or are merged
+   before it starts is skipped. Every run spends the subscription's usage.
 3. Each run is a Job, `alert-agent-run-<id>`, with a per-run Secret holding a
    random bearer token and a GitHub token **narrowed to `contents:read` on this
    repo**. The Job owns the Secret, and both are deleted a day after it ends.
@@ -109,12 +111,56 @@ review", so diagnoses never push.
 Each run's Claude session file is stored (`run_sessions`) so a later phase can
 resume the conversation on a pending PR.
 
+## Consolidation
+
+The agent's route groups by `alertname` and `namespace`, so one failing pod
+can open several incidents at once (`KubernetesContainerOomKiller`,
+`KubePodCrashLooping`, `KubePodNotReady`, ...). Three layers keep that to one
+diagnosis and at most one PR:
+
+1. **Hold.** A run waits `RUN_HOLD` before it can start, and incidents that
+   open in the same namespace meanwhile join it. The run diagnoses its first
+   (primary) incident and decides what each other member is. Members it
+   neither merges nor hands off get a run of their own afterwards.
+2. **Context and tools.** Every run sees the incidents still firing or opened
+   within `RECENT_WINDOW` (30m), with the summary of their diagnosis, and the
+   agent's open PRs with the files they change. Two controller tools act on
+   that, each written to the audit trail before it runs:
+    * `merge_incident(into_id, reason, confidence)` folds a **duplicate**
+      (same failing object, same root cause) into the incident that owns the
+      problem. The controller accepts it only with `confidence: high` and
+      within **one namespace**; otherwise it tells the agent to link instead.
+      A run that merges its own incident stops with a short `## Merged`
+      report and posts nothing to Slack.
+    * `link_incident(other_id, reason)` records a **related** incident (a
+      shared node, an upstream dependency) that is a different problem.
+3. **Backstop.** `propose_pr` refuses a merged incident (its parent owns the
+   fix) and any change to a file an open agent PR already changes, naming
+   that PR.
+
+Alerts fired by the same cause but minutes apart (the OOM rule fires about
+five minutes before the `Kube*` rules) are not caught by the hold; the later
+run sees the earlier incident and its PR, and merges into it.
+
+A merged incident keeps its own alerts, runs and history, and each alert still
+resolves on its own. Merges are one level deep: merging into a merged incident
+lands on its parent.
+
+**From the UI**, each incident page has a **Related** card: *Merge into…*
+and *Link to…* with a picker of the last day's incidents, *Unmerge* on a
+merged incident, and *Unlink* on each link. A human may merge across
+namespaces. The page's **Activity** table is the audit trail: every tool
+call, merge, link, unmerge and unlink that names the incident, with who did
+it (the agent's run, or a human in the UI) and the outcome. The home page
+folds merged incidents under their parent and shows links as chips. Form
+posts from another site are refused.
+
 ## How alerts arrive
 
 The `alert-agent` route is the last one in the Alertmanager config, after ntfy
 and Slack, so the agent sees exactly what the humans saw and can never delay or
 swallow a page. It groups by `alertname` and `namespace`, so one group is one
-incident. Alerts from the `alert-agent` namespace are excluded, so the agent
+incident; [Consolidation](#consolidation) folds incidents that are one problem. Alerts from the `alert-agent` namespace are excluded, so the agent
 never triages itself.
 
 The receiver is index 4 in the `receivers` list. Indexes 1–3 are addressed by
@@ -167,3 +213,4 @@ receivers must be appended, never inserted.
 | `alert_agent_incidents_total{event}` | Incidents `opened` and `resolved` |
 | `alert_agent_runs_total{status}` | Runs `queued`, and finished `succeeded` or `failed` |
 | `alert_agent_pull_requests_total{event}` | `propose_pr` outcomes (`opened`, `rejected`, `failed`), and PRs later `merged` or `closed` |
+| `alert_agent_consolidations_total{kind,actor}` | Incident `merge`, `link`, `unmerge` and `unlink`, by `agent` or `ui` |

@@ -37,7 +37,7 @@ spec:
         # Migrations run here rather than at controller startup, as in
         # job-track: same image, same embedded SQL, different subcommand.
         - name: migrate
-          image: ghcr.io/jcwearn/alert-agent:0.7.0@sha256:8367ca1ef2d3c28b0e94416118f4aa1549499607b127edff50b82b0018ea12a3
+          image: ghcr.io/jcwearn/alert-agent:0.8.0@sha256:0c8bda59285204f8539aaff42b400145a76804f293dd6bc1303c818f2d8d6425
           imagePullPolicy: IfNotPresent
           args: ["migrate"]
           env:
@@ -73,7 +73,7 @@ spec:
               memory: 128Mi
       containers:
         - name: controller
-          image: ghcr.io/jcwearn/alert-agent:0.7.0@sha256:8367ca1ef2d3c28b0e94416118f4aa1549499607b127edff50b82b0018ea12a3
+          image: ghcr.io/jcwearn/alert-agent:0.8.0@sha256:0c8bda59285204f8539aaff42b400145a76804f293dd6bc1303c818f2d8d6425
           imagePullPolicy: IfNotPresent
           args: ["controller"]
           ports:
@@ -114,6 +114,15 @@ spec:
               value: opus
             - name: RUN_MAX_PER_HOUR
               value: "6"
+            # Phase 3.5: a new incident's run waits this long, and incidents
+            # opening in the same namespace meanwhile join it, so a burst of
+            # alerts about one problem costs one run.
+            - name: RUN_HOLD
+              value: 60s
+            # How far back a run's context lists other incidents (to merge or
+            # link with), and how old a resolved one may be to take a merge.
+            - name: RECENT_WINDOW
+              value: 30m
             # Phase 3: runners may propose a PR with propose_pr. The controller
             # applies the patch to main, runs the repo's .githooks on it and
             # pushes agent/<incident-id>; it never merges.
