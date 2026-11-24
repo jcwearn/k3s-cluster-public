@@ -48,13 +48,17 @@ To stop runs without losing incidents, set `AGENT_ENABLED` to `"false"` in
 * **RBAC.** Claude's `kubectl` runs as `alert-agent-runner`: the built-in
   `view` role plus read on nodes, PVs, metrics and this cluster's CRDs. It can
   write nothing and **cannot read Secrets** anywhere.
-* **Tool allowlist.** It runs in `dontAsk` mode, which denies anything not
-  listed: read-only `kubectl` and `flux` subcommands, `curl` to the in-cluster
-  Prometheus and Loki only, `git log/show/diff`, `scripts/render.sh` and text
-  utilities. Edits, writes, web fetch and web search are denied.
+* **No shell.** The agent's cluster tools are read-only MCP tools served by
+  `alert-agent mcp` inside the runner pod: `kube_get` (any resource, CRDs
+  included; Secrets refused), `kube_events`, `kube_logs`, Prometheus instant
+  and range queries, Loki, and `git_log`/`git_show` on the checkout.
+  `Read`/`Grep`/`Glob` are confined to the checkout. Bash, edits, web fetch and
+  web search are denied, and `dontAsk` mode refuses anything else.
 * **Environment.** `claude` starts with an allowlisted environment, so the run
-  token and GitHub token never reach it. `CLAUDE_CODE_SUBPROCESS_ENV_SCRUB=1`
-  also strips its own OAuth token from the commands it runs.
+  token and GitHub token never reach it. Its own OAuth token stays out of
+  reach because there is no shell to run `env` and `Read` cannot leave the
+  checkout to reach `/proc`. (`CLAUDE_CODE_SUBPROCESS_ENV_SCRUB` would need
+  bubblewrap, which the restricted runner pod cannot run.)
 * **Prompt.** Alert text and logs are framed as untrusted data. The report
   classifies the fix as *autonomous*, *pr* or *human* for the phases that act
   on it.

@@ -37,7 +37,7 @@ spec:
         # Migrations run here rather than at controller startup, as in
         # job-track: same image, same embedded SQL, different subcommand.
         - name: migrate
-          image: ghcr.io/jcwearn/alert-agent:0.3.0@sha256:46b3d2b639228bf0c568fcdf8d3e2fa2c4a6aa1c9fd967cc1a8ed60de58abf26
+          image: ghcr.io/jcwearn/alert-agent:0.4.0@sha256:881d2b45c1a33b22d17be4381b5af6ff070d9be9ed3a5e4810f31261250cb435
           imagePullPolicy: IfNotPresent
           args: ["migrate"]
           env:
@@ -73,7 +73,7 @@ spec:
               memory: 128Mi
       containers:
         - name: controller
-          image: ghcr.io/jcwearn/alert-agent:0.3.0@sha256:46b3d2b639228bf0c568fcdf8d3e2fa2c4a6aa1c9fd967cc1a8ed60de58abf26
+          image: ghcr.io/jcwearn/alert-agent:0.4.0@sha256:881d2b45c1a33b22d17be4381b5af6ff070d9be9ed3a5e4810f31261250cb435
           imagePullPolicy: IfNotPresent
           args: ["controller"]
           ports:
@@ -106,13 +106,8 @@ spec:
               value: America/New_York
             # Phase 2: every new incident gets a read-only diagnosis. Set to
             # "false" to stop starting runs; incidents are still recorded.
-            #
-            # Paused: CLAUDE_CODE_SUBPROCESS_ENV_SCRUB needs bubblewrap, which
-            # the restricted runner pod cannot run, so every run fails at
-            # start. Re-enabled when runners use MCP read tools instead of
-            # Bash (docs/plans/alert-agent).
             - name: AGENT_ENABLED
-              value: "false"
+              value: "true"
             - name: PUBLIC_URL
               value: https://alert-agent.${DOMAIN}
             - name: RUN_MODEL
