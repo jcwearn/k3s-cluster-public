@@ -103,10 +103,11 @@ Limits: one PR per incident and three `propose_pr` attempts per run. Every
 call is written to the `actions` table before it runs, with its result after.
 
 The controller polls open PRs every two minutes. The home page lists them
-under **Awaiting review** with their CI state. Each PR gets **one ntfy push**
-on the `medic` topic once its checks settle (or after 15 minutes), with the CI
-result; the Slack diagnosis links the PR too. ntfy is reserved for "needs your
-review", so diagnoses never push.
+under **Awaiting review** with their CI state. Each PR gets **one review
+notice** once its checks settle (or after 15 minutes), with the CI result: a
+push on the ntfy `medic` topic and a message in Slack. If one channel fails,
+the other still gets it. The Slack diagnosis links the PR too. ntfy carries
+only review notices, so diagnoses never push.
 
 Each run's Claude session file is stored (`run_sessions`) so a later phase can
 resume the conversation on a pending PR.
@@ -191,8 +192,8 @@ receivers must be appended, never inserted.
 * **`secrets.sops.yaml`** holds the Claude subscription token (mounted by
   runner Jobs) and the GitHub App credentials (mounted only by the
   controller, which mints narrowed tokens from them).
-  `notify-secrets.sops.yaml` holds the Slack webhook for reports and the ntfy
-  token for review pushes (a copy of the one in `apps/ntfy`).
+  `notify-secrets.sops.yaml` holds the Slack webhook for reports and review
+  notices, and the ntfy token for review pushes (a copy of the one in `apps/ntfy`).
 * **Runner image.** Runners use the controller pod's own image, which the
   controller looks up at startup. One Renovate bump moves both.
 * **Backups** run nightly at 02:15 UTC to R2, with continuous WAL archiving.

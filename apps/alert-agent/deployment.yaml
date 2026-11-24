@@ -37,7 +37,7 @@ spec:
         # Migrations run here rather than at controller startup, as in
         # job-track: same image, same embedded SQL, different subcommand.
         - name: migrate
-          image: ghcr.io/jcwearn/alert-agent:0.8.0@sha256:0c8bda59285204f8539aaff42b400145a76804f293dd6bc1303c818f2d8d6425
+          image: ghcr.io/jcwearn/alert-agent:0.8.1@sha256:50f4eeb81d186f20ac549853af17432f686a39d7cadc0675fc0eaae4948e14aa
           imagePullPolicy: IfNotPresent
           args: ["migrate"]
           env:
@@ -73,7 +73,7 @@ spec:
               memory: 128Mi
       containers:
         - name: controller
-          image: ghcr.io/jcwearn/alert-agent:0.8.0@sha256:0c8bda59285204f8539aaff42b400145a76804f293dd6bc1303c818f2d8d6425
+          image: ghcr.io/jcwearn/alert-agent:0.8.1@sha256:50f4eeb81d186f20ac549853af17432f686a39d7cadc0675fc0eaae4948e14aa
           imagePullPolicy: IfNotPresent
           args: ["controller"]
           ports:
@@ -133,7 +133,8 @@ spec:
             # here.
             - name: PUBLIC_GATE
               value: ${DOMAIN},${TAILNET}
-            # "Needs your review" pushes; diagnoses stay on Slack.
+            # "Needs your review" pushes (also posted to Slack); diagnoses go
+            # to Slack only.
             - name: NTFY_URL
               value: http://ntfy-svc.ntfy.svc.cluster.local:4080
             - name: NTFY_TOPIC
