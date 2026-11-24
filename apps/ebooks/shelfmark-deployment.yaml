@@ -86,6 +86,9 @@ spec:
           volumeMounts:
             - name: tun-device
               mountPath: /dev/net/tun
+            - name: gluetun-liveness
+              mountPath: /liveness
+              readOnly: true
           resources:
             requests:
               memory: "128Mi"
@@ -96,10 +99,12 @@ spec:
           # gluetun's own check, the one its image's HEALTHCHECK runs; it fails
           # while the tunnel is down. The pod shares its network namespace, so a
           # failing readiness here pulls shelfmark out of the Service too, which is
-          # right: without the tunnel it cannot do its job.
+          # right: without the tunnel it cannot do its job. Liveness wraps the same
+          # check and also fails when gluetun is stuck at its CPU limit after a
+          # VPN outage; see data/gluetun-liveness.sh.
           livenessProbe:
             exec:
-              command: ["/gluetun-entrypoint", "healthcheck"]
+              command: ["/bin/sh", "/liveness/gluetun-liveness.sh"]
             periodSeconds: 60
             timeoutSeconds: 5
           readinessProbe:
@@ -121,3 +126,6 @@ spec:
           hostPath:
             path: /dev/net/tun
             type: CharDevice
+        - name: gluetun-liveness
+          configMap:
+            name: gluetun-liveness

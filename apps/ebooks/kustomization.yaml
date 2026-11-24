@@ -10,3 +10,8 @@ resources:
   - calibre-web-deployment.yaml
   - calibre-web-service.yaml
   - calibre-web-httproute.yaml
+configMapGenerator:
+  - name: gluetun-liveness
+    namespace: ebooks
+    files:
+      - data/gluetun-liveness.sh
