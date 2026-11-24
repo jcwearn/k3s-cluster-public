@@ -50,5 +50,6 @@ spec:
         cpu: 10m
         memory: 64Mi
       limits:
-        cpu: 200m
+        # A ceiling, not a budget: WAL archiving bursts to 200m and was throttled.
+        cpu: "1"
         memory: 256Mi
