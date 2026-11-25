@@ -22,12 +22,13 @@ prefix with `alerts` (Alertmanager); the app, namespace and repo keep the
 
 ## Status
 
-Phase 3.5 is live: every new incident gets a **diagnosis** by Claude (Opus, on
-the Claude subscription). The report goes to Slack and, with the full
-transcript, to the UI. When the fix is a manifest change, the agent can also
-**propose a pull request** against this repo for a human to review. **Nothing
-in the cluster is changed** in response to an alert, and the agent cannot
-merge.
+Phase 4 (chat in the UI) is live: every new incident gets a **diagnosis** by
+Claude (Opus, on the Claude subscription). The report goes to Slack and, with
+the full transcript, to the UI. When the fix is a manifest change, the agent
+can also **propose a pull request** against this repo for a human to review,
+and you can [chat with it](#chat) about that PR from the incident page.
+**Nothing in the cluster is changed** in response to an alert, and the agent
+cannot merge.
 
 To stop runs without losing incidents, set `AGENT_ENABLED` to `"false"` in
 `apps/alert-agent/deployment.yaml`. To keep diagnoses but stop PRs, set
@@ -109,8 +110,47 @@ push on the ntfy `medic` topic and a message in Slack. If one channel fails,
 the other still gets it. The Slack diagnosis links the PR too. ntfy carries
 only review notices, so diagnoses never push.
 
-Each run's Claude session file is stored (`run_sessions`) so a later phase can
-resume the conversation on a pending PR.
+Each run's Claude session file is stored (`run_sessions`), which is what lets
+a [chat](#chat) resume the conversation on a pending PR.
+
+## Chat
+
+An incident with an agent PR has a **Chat with the agent** panel. Ask why it
+made a change, or ask for a different one: the agent continues **the same
+Claude session** that opened the PR, so it answers from its own
+investigation.
+
+1. Each message becomes a **chat turn**: a run of kind `chat`, labelled in the
+   run list, with its own transcript. Chat turns go ahead of queued alert runs
+   (a running one is never interrupted) and still run after the alert has
+   resolved. A turn waiting for its PR when the PR is merged or closed is
+   skipped.
+2. Messages sent while a turn is still waiting join it, so a few quick
+   messages cost one turn.
+3. The runner restores the session file to
+   `$HOME/.claude/projects/-work-repo/<session-id>.jsonl`, clones the PR
+   branch `agent/<incident-id>` into `/work/repo`, and runs
+   `claude -p --resume <session-id>` with the messages. The session id stays
+   the same, and the next turn resumes from this one's upload.
+4. A requested change goes through **`update_pr(title, patch)`**, served by
+   the controller like `propose_pr`, with the same path checks, the same
+   `.githooks` and a controller-written commit message. It is committed on the
+   PR branch's head and the branch is only **fast-forwarded**: a commit
+   anyone else pushed meanwhile is never overwritten (the turn is told the
+   branch moved). The PR's file list is refreshed, so the overlap guard stays
+   correct. At most three calls per turn. Chat turns have no `propose_pr`,
+   merge or link tools.
+5. The turn's final message is the **reply** in the panel, with a line per
+   commit it pushed (written by the controller from the audit trail, not by
+   the agent). A running turn streams its steps into the panel.
+
+Limits: `CHAT_MAX_PER_PR_HOUR` (4) turns per PR per hour, plus the global
+`RUN_MAX_PER_HOUR`. A message over either cap is refused at once ("Not
+processed … try again after HH:MM") rather than queued. Chat turns send no
+Slack or ntfy notification.
+
+PR comments as a second way in (an allowlisted login comments on the PR, the
+agent replies there) arrive in the next release.
 
 ## Consolidation
 
