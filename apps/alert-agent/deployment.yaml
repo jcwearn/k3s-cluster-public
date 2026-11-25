@@ -37,7 +37,7 @@ spec:
         # Migrations run here rather than at controller startup, as in
         # job-track: same image, same embedded SQL, different subcommand.
         - name: migrate
-          image: ghcr.io/jcwearn/alert-agent:0.10.0@sha256:9539e951d0aba5f930df4866ab4846cedcb56e6d45abe045912f5f19b67282de
+          image: ghcr.io/jcwearn/alert-agent:0.10.1@sha256:4c51365529474ff1e22ea66f486d5450a9774f086a4fc35173630e88fcc92764
           imagePullPolicy: IfNotPresent
           args: ["migrate"]
           env:
@@ -73,7 +73,7 @@ spec:
               memory: 128Mi
       containers:
         - name: controller
-          image: ghcr.io/jcwearn/alert-agent:0.10.0@sha256:9539e951d0aba5f930df4866ab4846cedcb56e6d45abe045912f5f19b67282de
+          image: ghcr.io/jcwearn/alert-agent:0.10.1@sha256:4c51365529474ff1e22ea66f486d5450a9774f086a4fc35173630e88fcc92764
           imagePullPolicy: IfNotPresent
           args: ["controller"]
           ports:
