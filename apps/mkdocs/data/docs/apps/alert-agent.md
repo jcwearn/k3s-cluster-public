@@ -133,13 +133,16 @@ investigation.
    branch `agent/<incident-id>` into `/work/repo`, and runs
    `claude -p --resume <session-id>` with the messages. The session id stays
    the same, and the next turn resumes from this one's upload.
-4. A requested change goes through **`update_pr(title, patch)`**, served by
+4. A requested change goes through **`update_pr(title, patch, pr_title)`**, served by
    the controller like `propose_pr`, with the same path checks, the same
    `.githooks` and a controller-written commit message. It is committed on the
    PR branch's head and the branch is only **fast-forwarded**: a commit
    anyone else pushed meanwhile is never overwritten (the turn is told the
    branch moved). The PR's file list is refreshed, so the overlap guard stays
-   correct. At most three calls per turn. Chat turns have no `propose_pr`,
+   correct. When the change makes the PR's title wrong, the optional
+   `pr_title` (checked like the commit title) renames the PR once the commit
+   lands, since a squash merge publishes the title. The description is left
+   as written. At most three calls per turn. Chat turns have no `propose_pr`,
    merge or link tools.
 5. The turn's final message is the **reply** in the panel, with a line per
    commit it pushed (written by the controller from the audit trail, not by
