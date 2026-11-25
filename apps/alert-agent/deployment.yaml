@@ -37,7 +37,7 @@ spec:
         # Migrations run here rather than at controller startup, as in
         # job-track: same image, same embedded SQL, different subcommand.
         - name: migrate
-          image: ghcr.io/jcwearn/alert-agent:0.9.0@sha256:de0bc694fdd5421f27cafb9df39a1b61d2a3e853cdc1cebd01f71c0cabbb162e
+          image: ghcr.io/jcwearn/alert-agent:0.10.0@sha256:9539e951d0aba5f930df4866ab4846cedcb56e6d45abe045912f5f19b67282de
           imagePullPolicy: IfNotPresent
           args: ["migrate"]
           env:
@@ -73,7 +73,7 @@ spec:
               memory: 128Mi
       containers:
         - name: controller
-          image: ghcr.io/jcwearn/alert-agent:0.9.0@sha256:de0bc694fdd5421f27cafb9df39a1b61d2a3e853cdc1cebd01f71c0cabbb162e
+          image: ghcr.io/jcwearn/alert-agent:0.10.0@sha256:9539e951d0aba5f930df4866ab4846cedcb56e6d45abe045912f5f19b67282de
           imagePullPolicy: IfNotPresent
           args: ["controller"]
           ports:
@@ -128,6 +128,12 @@ spec:
             # over either cap is answered "not processed", not queued.
             - name: CHAT_MAX_PER_PR_HOUR
               value: "4"
+            # Phase 4: comments on agent PRs by these GitHub logins become
+            # chat turns, answered by the App in the PR. Everyone else, bots
+            # and the App itself are ignored. Polled every 30s
+            # (COMMENT_POLL_INTERVAL).
+            - name: CHAT_ALLOWED_LOGINS
+              value: jcwearn
             # Phase 3: runners may propose a PR with propose_pr. The controller
             # applies the patch to main, runs the repo's .githooks on it and
             # pushes agent/<incident-id>; it never merges.

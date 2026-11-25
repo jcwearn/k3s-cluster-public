@@ -22,7 +22,7 @@ prefix with `alerts` (Alertmanager); the app, namespace and repo keep the
 
 ## Status
 
-Phase 4 (chat in the UI) is live: every new incident gets a **diagnosis** by
+Phase 4 (chat in the UI and in PR comments) is live: every new incident gets a **diagnosis** by
 Claude (Opus, on the Claude subscription). The report goes to Slack and, with
 the full transcript, to the UI. When the fix is a manifest change, the agent
 can also **propose a pull request** against this repo for a human to review,
@@ -149,8 +149,33 @@ Limits: `CHAT_MAX_PER_PR_HOUR` (4) turns per PR per hour, plus the global
 processed … try again after HH:MM") rather than queued. Chat turns send no
 Slack or ntfy notification.
 
-PR comments as a second way in (an allowlisted login comments on the PR, the
-agent replies there) arrive in the next release.
+### PR comments
+
+A comment on an open agent PR is a second way into the same conversation.
+There is no webhook (GitHub cannot reach the cluster), so the controller
+polls every 30s (`COMMENT_POLL_INTERVAL`).
+
+* **Who counts:** only people listed in `CHAT_ALLOWED_LOGINS` (`jcwearn`).
+  The App's own comments, other bots and everyone else are ignored and
+  counted in `alert_agent_pr_comments_total{outcome="ignored"}`, so the agent
+  never answers itself.
+* **What counts:** conversation comments, line comments and review bodies.
+  Comments found in one pass, or while a turn waits, share that turn with any
+  UI messages. Each comment is recorded once by its GitHub id, so a restart
+  never answers twice; edits to older comments are ignored.
+* **Acknowledge, then reply:** a queued comment gets 👀 (a review body cannot
+  take a reaction). When the turn ends, the App posts the reply: in the thread
+  when the turn's comments are all one line comment's thread, otherwise in
+  the conversation, quoting each comment. The reply has the commit lines and a
+  link to the turn's transcript. Turns with only UI messages stay in the UI.
+* **Limits:** a comment over either turn limit gets a short "Not processed"
+  reply instead of 👀.
+* **Tokens:** `issues` and `pull_requests` read to poll, write to react and
+  reply. The App has the Issues permission for this; conversation comments
+  are issue endpoints.
+
+Comments are not replayed to the public mirror; commit messages from
+`update_pr` are, which is why the controller writes them.
 
 ## Consolidation
 
