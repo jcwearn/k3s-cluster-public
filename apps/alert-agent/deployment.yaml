@@ -37,7 +37,7 @@ spec:
         # Migrations run here rather than at controller startup, as in
         # job-track: same image, same embedded SQL, different subcommand.
         - name: migrate
-          image: ghcr.io/jcwearn/alert-agent:0.10.1@sha256:4c51365529474ff1e22ea66f486d5450a9774f086a4fc35173630e88fcc92764
+          image: ghcr.io/jcwearn/alert-agent:0.11.0@sha256:8a983d4452add25aecc30a99a320625e4d561c40149d6482805039c5bdd89714
           imagePullPolicy: IfNotPresent
           args: ["migrate"]
           env:
@@ -73,7 +73,7 @@ spec:
               memory: 128Mi
       containers:
         - name: controller
-          image: ghcr.io/jcwearn/alert-agent:0.10.1@sha256:4c51365529474ff1e22ea66f486d5450a9774f086a4fc35173630e88fcc92764
+          image: ghcr.io/jcwearn/alert-agent:0.11.0@sha256:8a983d4452add25aecc30a99a320625e4d561c40149d6482805039c5bdd89714
           imagePullPolicy: IfNotPresent
           args: ["controller"]
           ports:
@@ -112,8 +112,10 @@ spec:
               value: https://medic.${DOMAIN}
             - name: RUN_MODEL
               value: opus
+            # Alert runs (diagnoses) started per hour. Chat turns have their
+            # own budget below and never count against this one.
             - name: RUN_MAX_PER_HOUR
-              value: "6"
+              value: "12"
             # Phase 3.5: a new incident's run waits this long, and incidents
             # opening in the same namespace meanwhile join it, so a burst of
             # alerts about one problem costs one run.
@@ -124,10 +126,13 @@ spec:
             - name: RECENT_WINDOW
               value: 30m
             # Phase 4: chat turns (a reviewer's message about an agent PR) one
-            # PR may start per hour, on top of RUN_MAX_PER_HOUR. A message
-            # over either cap is answered "not processed", not queued.
+            # PR may start per hour, within CHAT_MAX_PER_HOUR. A message over
+            # either cap is answered "not processed", not queued.
             - name: CHAT_MAX_PER_PR_HOUR
               value: "4"
+            # Chat turns across all PRs per hour.
+            - name: CHAT_MAX_PER_HOUR
+              value: "12"
             # Phase 4: comments on agent PRs by these GitHub logins become
             # chat turns, answered by the App in the PR. Everyone else, bots
             # and the App itself are ignored. Polled every 30s

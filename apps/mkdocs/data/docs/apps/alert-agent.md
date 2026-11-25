@@ -41,8 +41,9 @@ To stop runs without losing incidents, set `AGENT_ENABLED` to `"false"` in
    instead of getting their own (see [Consolidation](#consolidation)). Repeat
    deliveries for the same incident queue nothing.
 2. The controller starts **one run at a time**, at most `RUN_MAX_PER_HOUR`
-   (6) per hour. A queued run all of whose incidents resolve or are merged
-   before it starts is skipped. Every run spends the subscription's usage.
+   (12) alert runs per hour; [chat](#chat) turns have their own budget. A
+   queued run all of whose incidents resolve or are merged before it starts
+   is skipped. Every run spends the subscription's usage.
 3. Each run is a Job, `alert-agent-run-<id>`, with a per-run Secret holding a
    random bearer token and a GitHub token **narrowed to `contents:read` on this
    repo**. The Job owns the Secret, and both are deleted a day after it ends.
@@ -144,9 +145,12 @@ investigation.
    commit it pushed (written by the controller from the audit trail, not by
    the agent). A running turn streams its steps into the panel.
 
-Limits: `CHAT_MAX_PER_PR_HOUR` (4) turns per PR per hour, plus the global
-`RUN_MAX_PER_HOUR`. A message over either cap is refused at once ("Not
-processed … try again after HH:MM") rather than queued. Chat turns send no
+Limits: `CHAT_MAX_PER_PR_HOUR` (4) turns per PR per hour, and
+`CHAT_MAX_PER_HOUR` (12) across all PRs. A message over either cap is refused
+at once ("Not processed … try again after HH:MM") rather than queued. Chat
+turns do not count against `RUN_MAX_PER_HOUR`, and when that cap is full the
+controller still starts them, so a long review never holds back an alert's
+diagnosis (one run still goes at a time). Chat turns send no
 Slack or ntfy notification.
 
 ### PR comments
