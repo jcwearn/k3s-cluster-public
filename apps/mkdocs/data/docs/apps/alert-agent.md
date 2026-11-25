@@ -116,49 +116,84 @@ a [chat](#chat) resume the conversation on a pending PR.
 
 ## Chat
 
-An incident with an agent PR has a **Chat with the agent** panel. Ask why it
-made a change, or ask for a different one: the agent continues **the same
-Claude session** that opened the PR, so it answers from its own
-investigation.
+Every page has a **chat button** in the bottom-right corner. It opens a
+window (a card on desktop, with a full-screen toggle; full screen on a phone)
+for talking to the agent. A conversation is a **thread**:
+
+* **An incident's thread.** There is one per incident; a merged incident's is
+  its parent's. It continues **the agent's own Claude session** for the
+  incident: the run that opened its PR, else its latest diagnosis. Ask why it
+  made a change, ask for a different one, or, with no PR yet, ask for a fix
+  (`propose_pr`, one PR per incident as for alert runs). PR comments join this
+  same thread. An incident page's **Chat about this incident** button opens
+  it.
+* **General threads** are about the cluster as a whole ("how is the
+  cluster?"). Each starts its own session, and its first message names it.
+
+The window stays on its thread as you move around the UI, and every message
+records the page it was sent from. The controller turns that path into a
+description from its own records (an incident, a run, the home page) for
+the agent. On an incident page while another thread is open, a bar offers to
+switch to that incident's thread. The title opens a menu of recent threads
+and **New conversation**. A thread is created by its first message, not by
+opening the window.
+
+What the agent can do depends on the thread:
+
+| Thread | Read the cluster and incidents | Merge / link incidents | `propose_pr` | `update_pr` |
+|---|---|---|---|---|
+| General | yes | yes | no | no |
+| Incident, no PR | yes | yes | yes | no |
+| Incident, PR open | yes | yes | no | yes |
+| Incident, PR merged or closed | yes | yes | no | no |
+
+Merging and linking from chat work on any incident, since you are directing
+it (the alert-run rules about confidence, namespace and window do not apply),
+but only when you ask or agree. Each needs a reason and is audited as the
+turn's run. `list_incidents` and `get_incident` let any thread read the
+agent's incidents, not only the cluster.
 
 1. Each message becomes a **chat turn**: a run of kind `chat`, labelled in the
    run list, with its own transcript. Chat turns go ahead of queued alert runs
    (a running one is never interrupted) and still run after the alert has
-   resolved. A turn waiting for its PR when the PR is merged or closed is
-   skipped.
+   resolved.
 2. Messages sent while a turn is still waiting join it, so a few quick
-   messages cost one turn.
-3. The runner restores the session file to
-   `$HOME/.claude/projects/-work-repo/<session-id>.jsonl`, clones the PR
-   branch `agent/<incident-id>` into `/work/repo`, and runs
-   `claude -p --resume <session-id>` with the messages. The session id stays
-   the same, and the next turn resumes from this one's upload.
-4. A requested change goes through **`update_pr(title, patch, pr_title)`**, served by
-   the controller like `propose_pr`, with the same path checks, the same
-   `.githooks` and a controller-written commit message. It is committed on the
-   PR branch's head and the branch is only **fast-forwarded**: a commit
-   anyone else pushed meanwhile is never overwritten (the turn is told the
-   branch moved). The PR's file list is refreshed, so the overlap guard stays
-   correct. When the change makes the PR's title wrong, the optional
-   `pr_title` (checked like the commit title) renames the PR once the commit
-   lands, since a squash merge publishes the title. The description is left
-   as written. At most three calls per turn. Chat turns have no `propose_pr`,
-   merge or link tools.
-5. The turn's final message is the **reply** in the panel, with a line per
-   commit it pushed (written by the controller from the audit trail, not by
-   the agent). A running turn streams its steps into the panel.
+   messages cost one turn. One waiting turn per thread.
+3. The runner restores the thread's session file to
+   `$HOME/.claude/projects/-work-repo/<session-id>.jsonl` and runs
+   `claude -p --resume <session-id>`; a thread with no stored session yet
+   starts it with `--session-id` (an incident's first turn gets the incident
+   brief). The checkout is the PR branch `agent/<incident-id>` while the PR is
+   open, else `main`.
+4. A requested change to an open PR goes through
+   **`update_pr(title, patch, pr_title)`**, served by the controller like
+   `propose_pr`, with the same path checks, the same `.githooks` and a
+   controller-written commit message. It is committed on the PR branch's head
+   and the branch is only **fast-forwarded**: a commit anyone else pushed
+   meanwhile is never overwritten (the turn is told the branch moved). The
+   PR's file list is refreshed, so the overlap guard stays correct. When the
+   change makes the PR's title wrong, the optional `pr_title` renames the PR
+   once the commit lands, since a squash merge publishes the title. At most
+   three calls per turn.
+5. The turn's final message is the **reply**, with a line per commit it
+   pushed (written by the controller from the audit trail, not by the agent).
+   A running turn streams its steps into the window over SSE.
 
-Limits: `CHAT_MAX_PER_PR_HOUR` (4) turns per PR per hour, and
-`CHAT_MAX_PER_HOUR` (12) across all PRs. A message over either cap is refused
-at once ("Not processed … try again after HH:MM") rather than queued. Chat
-turns do not count against `RUN_MAX_PER_HOUR`, and when that cap is full the
-controller still starts them, so a long review never holds back an alert's
-diagnosis (one run still goes at a time). Chat turns send no
-Slack or ntfy notification.
+Limits: `CHAT_MAX_PER_THREAD_HOUR` (4) turns per thread per hour, and
+`CHAT_MAX_PER_HOUR` (12) across all threads. A message over either cap is
+refused at once ("Not processed … try again after HH:MM") rather than queued.
+Chat turns do not count against `RUN_MAX_PER_HOUR`, and when that cap is full
+the controller still starts them, so a long review never holds back an
+alert's diagnosis (one run still goes at a time). Chat turns send no Slack or
+ntfy notification.
+
+UI changes are reviewed from screenshots: `alert-agent ui-preview` serves the
+UI over made-up data on localhost, and `scripts/ui-screenshots.sh` in the
+alert-agent repo captures every state with headless Chrome.
 
 ### PR comments
 
-A comment on an open agent PR is a second way into the same conversation.
+A comment on an open agent PR is a second way into its incident's thread.
 There is no webhook (GitHub cannot reach the cluster), so the controller
 polls every 30s (`COMMENT_POLL_INTERVAL`).
 
