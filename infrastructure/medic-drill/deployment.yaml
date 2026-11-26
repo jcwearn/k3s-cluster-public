@@ -1,0 +1,68 @@
+# Crash loops on a stale lock file about 15 minutes after each pod starts
+# (data/keeper.py). Deleting the pod fixes it for the next 15 minutes, which
+# is long enough for the first alert to resolve, so the recurrence opens a
+# new incident.
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: lock-keeper
+  namespace: medic-drill
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: lock-keeper
+  template:
+    metadata:
+      labels:
+        app: lock-keeper
+    spec:
+      automountServiceAccountToken: false
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 65534
+        runAsGroup: 65534
+        fsGroup: 65534
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+        - name: lock-keeper
+          image: python:3.15-alpine@sha256:0f9552bb28711333da16915ec146f5e6bb44a7fdac9ced15dc17c2e0206346dd
+          imagePullPolicy: IfNotPresent
+          command: ["python", "-u", "/app/keeper.py"]
+          env:
+            - name: CRASH_AFTER
+              value: "900"
+          livenessProbe:
+            exec:
+              command: ["true"]
+            periodSeconds: 30
+          readinessProbe:
+            exec:
+              command: ["true"]
+            periodSeconds: 10
+          volumeMounts:
+            - name: app
+              mountPath: /app
+              readOnly: true
+            - name: state
+              mountPath: /state
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop: ["ALL"]
+          resources:
+            requests:
+              cpu: 10m
+              memory: 32Mi
+            limits:
+              cpu: 100m
+              memory: 64Mi
+      volumes:
+        - name: app
+          configMap:
+            name: lock-keeper
+        - name: state
+          emptyDir:
+            sizeLimit: 1Mi
