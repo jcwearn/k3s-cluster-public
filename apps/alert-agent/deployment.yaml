@@ -156,9 +156,8 @@ spec:
             # also bound in some infrastructure namespaces (and ansible, whose
             # Jobs run playbooks against the hosts); there it needs an
             # approval. flux_reconcile is autonomous wherever RBAC allows it.
-            # medic-drill is the Phase 5 drill's and goes with it.
             - name: ACTION_AUTONOMOUS_NAMESPACES
-              value: ebooks,headlamp,hivemind,homepage,immich,it-tools,jellyfin,job-track,mazanoke,mkdocs,n8n,ntfy,paperless-ngx,renovate,stirling-pdf,world-clock,medic-drill
+              value: ebooks,headlamp,hivemind,homepage,immich,it-tools,jellyfin,job-track,mazanoke,mkdocs,n8n,ntfy,paperless-ngx,renovate,stirling-pdf,world-clock
             # A workload, or an alert in a namespace, that had any action in
             # this window gets no autonomous one: a recurrence escalates.
             - name: ACTION_COOLDOWN
