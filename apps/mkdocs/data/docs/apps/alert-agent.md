@@ -357,6 +357,38 @@ receivers must be appended, never inserted.
   before the agent existed) is recorded with no incident attached.
 * If the database is down, the webhook answers 500 and Alertmanager retries.
 
+### The incident list
+
+The home page lists incidents 50 **families** at a time. A family is an
+incident plus the incidents merged into it, and it never splits across pages.
+"Older" and "Newer" page by the family's first incident: when it opened, then
+its number. Every row shows the incident number (`#N`). **Awaiting approval**
+and **Awaiting review** stay above the list and are never filtered.
+
+The filters are a plain form, so a filtered view is a link you can share:
+
+| Parameter | Meaning |
+|---|---|
+| `range` | `24h`, `7d` or `30d`: opened within that window |
+| `from`, `to` | Dates (`2026-11-01`) in the controller's time zone (`TZ`). `to` includes its whole day. Either one overrides `range`. |
+| `status` | `firing` or `resolved` |
+| `ns`, `sev` | Namespace and severity, exact. The menus list every value seen. |
+| `q` | Alert name contains this text, case-insensitive |
+| `before`, `after` | The pager's position. Set by the Older and Newer links. |
+
+A filter matches a family **as a whole**, and the whole family is shown:
+
+- `status` is the family's status, the same one the row's badge shows: firing
+  while any member fires.
+- `ns`, `sev` and `q` match when the first incident or any merged incident
+  matches all of them. A books incident with a merged gateway symptom
+  appears under `ns=gateway`.
+- The dates apply to the family's first incident.
+
+An invalid value is ignored, and the page names it. For example,
+`/?status=firing&ns=books&range=7d` shows books families with anything still
+firing, opened in the last week.
+
 ## Architecture
 
 * **Ports.** `8080` serves the UI, `/healthz`, `/readyz` and `/metrics`.
