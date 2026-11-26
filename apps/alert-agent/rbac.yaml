@@ -1,8 +1,9 @@
-# Two identities, deliberately unequal.
+# Three identities, deliberately unequal.
 #
 # alert-agent (the controller) may manage runner Jobs and their per-run
-# Secrets in this namespace, read its own pod, and nothing else. It never reads cluster state:
-# that is the runner's job.
+# Secrets in this namespace, read its own pod, and impersonate the actor
+# (at the end of this file). It never reads cluster state: that is the
+# runner's job.
 #
 # alert-agent-runner is the identity Claude's kubectl runs as. It can read
 # almost everything in the cluster and write nothing, and it cannot read
@@ -37,6 +38,12 @@ rules:
   - apiGroups: [""]
     resources: ["pods"]
     verbs: ["get"]
+  # Phase 5: act as alert-agent-actor (below), and as nothing else. The
+  # controller's own identity gains no cluster write.
+  - apiGroups: [""]
+    resources: ["serviceaccounts"]
+    verbs: ["impersonate"]
+    resourceNames: ["alert-agent-actor"]
 ---
 apiVersion: rbac.authorization.k8s.io/v1
 kind: RoleBinding
@@ -124,4 +131,514 @@ roleRef:
 subjects:
   - kind: ServiceAccount
     name: alert-agent-runner
+    namespace: alert-agent
+---
+# The actor: the identity the controller acts as when it changes the cluster
+# (Phase 5's delete_pod, rollout_restart, rerun_cronjob, flux_reconcile). No
+# pod runs as it. The controller impersonates it per action, so the API audit
+# log names both, and Claude never holds either credential.
+#
+# Where it may act is decided here, namespace by namespace; what it may change
+# is narrowed further by actor-policy.yaml (RBAC cannot limit a patch to one
+# annotation). Whether an action may run without a human is the controller's
+# call (ACTION_AUTONOMOUS_NAMESPACES in deployment.yaml):
+#
+#   autonomous      the apps/ workload namespaces below
+#   approval-only   ansible and the infrastructure namespaces below: bound alike,
+#                   but a workload action there needs an Approve in the UI
+#                   (flux_reconcile stays autonomous)
+#   never           everything not bound here -- kube-system, flux-system
+#                   workloads, alert-agent itself, cnpg-system (the
+#                   databases' operator) and prometheus (the agent's own
+#                   input; restarting it would hide alerts, not fix them)
+#
+# Widen on a Forbidden, not in anticipation.
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: alert-agent-actor
+  namespace: alert-agent
+automountServiceAccountToken: false
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: alert-agent-actor
+rules:
+  # delete_pod, after resolving the pod's owner (ReplicaSet -> Deployment).
+  - apiGroups: [""]
+    resources: ["pods"]
+    verbs: ["get", "list", "delete"]
+  - apiGroups: ["apps"]
+    resources: ["replicasets"]
+    verbs: ["get"]
+  # rollout_restart: a patch of the restartedAt annotation, and nothing else
+  # (enforced by actor-policy.yaml).
+  - apiGroups: ["apps"]
+    resources: ["deployments", "statefulsets", "daemonsets"]
+    verbs: ["get", "patch"]
+  # rerun_cronjob: a Job from the CronJob's template, owned by the CronJob.
+  - apiGroups: ["batch"]
+    resources: ["cronjobs"]
+    verbs: ["get"]
+  - apiGroups: ["batch"]
+    resources: ["jobs"]
+    verbs: ["get", "list", "create"]
+  # flux_reconcile on a HelmRelease in its own namespace: the requestedAt
+  # annotation only.
+  - apiGroups: ["helm.toolkit.fluxcd.io"]
+    resources: ["helmreleases"]
+    verbs: ["get", "patch"]
+---
+# ansible is approval-only although it is an app: its Jobs run playbooks
+# against the hosts, so re-running one is not a pod-level fix.
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: alert-agent-actor
+  namespace: ansible
+  labels:
+    alert-agent/actor-tier: approval
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: alert-agent-actor
+subjects:
+  - kind: ServiceAccount
+    name: alert-agent-actor
+    namespace: alert-agent
+---
+# Autonomous tier: the other apps/ namespaces with workloads.
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: alert-agent-actor
+  namespace: ebooks
+  labels:
+    alert-agent/actor-tier: autonomous
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: alert-agent-actor
+subjects:
+  - kind: ServiceAccount
+    name: alert-agent-actor
+    namespace: alert-agent
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: alert-agent-actor
+  namespace: headlamp
+  labels:
+    alert-agent/actor-tier: autonomous
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: alert-agent-actor
+subjects:
+  - kind: ServiceAccount
+    name: alert-agent-actor
+    namespace: alert-agent
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: alert-agent-actor
+  namespace: hivemind
+  labels:
+    alert-agent/actor-tier: autonomous
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: alert-agent-actor
+subjects:
+  - kind: ServiceAccount
+    name: alert-agent-actor
+    namespace: alert-agent
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: alert-agent-actor
+  namespace: homepage
+  labels:
+    alert-agent/actor-tier: autonomous
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: alert-agent-actor
+subjects:
+  - kind: ServiceAccount
+    name: alert-agent-actor
+    namespace: alert-agent
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: alert-agent-actor
+  namespace: immich
+  labels:
+    alert-agent/actor-tier: autonomous
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: alert-agent-actor
+subjects:
+  - kind: ServiceAccount
+    name: alert-agent-actor
+    namespace: alert-agent
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: alert-agent-actor
+  namespace: it-tools
+  labels:
+    alert-agent/actor-tier: autonomous
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: alert-agent-actor
+subjects:
+  - kind: ServiceAccount
+    name: alert-agent-actor
+    namespace: alert-agent
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: alert-agent-actor
+  namespace: jellyfin
+  labels:
+    alert-agent/actor-tier: autonomous
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: alert-agent-actor
+subjects:
+  - kind: ServiceAccount
+    name: alert-agent-actor
+    namespace: alert-agent
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: alert-agent-actor
+  namespace: job-track
+  labels:
+    alert-agent/actor-tier: autonomous
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: alert-agent-actor
+subjects:
+  - kind: ServiceAccount
+    name: alert-agent-actor
+    namespace: alert-agent
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: alert-agent-actor
+  namespace: mazanoke
+  labels:
+    alert-agent/actor-tier: autonomous
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: alert-agent-actor
+subjects:
+  - kind: ServiceAccount
+    name: alert-agent-actor
+    namespace: alert-agent
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: alert-agent-actor
+  namespace: mkdocs
+  labels:
+    alert-agent/actor-tier: autonomous
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: alert-agent-actor
+subjects:
+  - kind: ServiceAccount
+    name: alert-agent-actor
+    namespace: alert-agent
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: alert-agent-actor
+  namespace: n8n
+  labels:
+    alert-agent/actor-tier: autonomous
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: alert-agent-actor
+subjects:
+  - kind: ServiceAccount
+    name: alert-agent-actor
+    namespace: alert-agent
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: alert-agent-actor
+  namespace: ntfy
+  labels:
+    alert-agent/actor-tier: autonomous
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: alert-agent-actor
+subjects:
+  - kind: ServiceAccount
+    name: alert-agent-actor
+    namespace: alert-agent
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: alert-agent-actor
+  namespace: paperless-ngx
+  labels:
+    alert-agent/actor-tier: autonomous
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: alert-agent-actor
+subjects:
+  - kind: ServiceAccount
+    name: alert-agent-actor
+    namespace: alert-agent
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: alert-agent-actor
+  namespace: renovate
+  labels:
+    alert-agent/actor-tier: autonomous
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: alert-agent-actor
+subjects:
+  - kind: ServiceAccount
+    name: alert-agent-actor
+    namespace: alert-agent
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: alert-agent-actor
+  namespace: stirling-pdf
+  labels:
+    alert-agent/actor-tier: autonomous
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: alert-agent-actor
+subjects:
+  - kind: ServiceAccount
+    name: alert-agent-actor
+    namespace: alert-agent
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: alert-agent-actor
+  namespace: world-clock
+  labels:
+    alert-agent/actor-tier: autonomous
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: alert-agent-actor
+subjects:
+  - kind: ServiceAccount
+    name: alert-agent-actor
+    namespace: alert-agent
+---
+# Approval-only tier: infrastructure the agent may touch only after an
+# Approve in the UI (flux_reconcile excepted).
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: alert-agent-actor
+  namespace: alloy
+  labels:
+    alert-agent/actor-tier: approval
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: alert-agent-actor
+subjects:
+  - kind: ServiceAccount
+    name: alert-agent-actor
+    namespace: alert-agent
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: alert-agent-actor
+  namespace: cert-manager
+  labels:
+    alert-agent/actor-tier: approval
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: alert-agent-actor
+subjects:
+  - kind: ServiceAccount
+    name: alert-agent-actor
+    namespace: alert-agent
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: alert-agent-actor
+  namespace: csi-driver-nfs
+  labels:
+    alert-agent/actor-tier: approval
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: alert-agent-actor
+subjects:
+  - kind: ServiceAccount
+    name: alert-agent-actor
+    namespace: alert-agent
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: alert-agent-actor
+  namespace: descheduler
+  labels:
+    alert-agent/actor-tier: approval
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: alert-agent-actor
+subjects:
+  - kind: ServiceAccount
+    name: alert-agent-actor
+    namespace: alert-agent
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: alert-agent-actor
+  namespace: envoy-gateway-system
+  labels:
+    alert-agent/actor-tier: approval
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: alert-agent-actor
+subjects:
+  - kind: ServiceAccount
+    name: alert-agent-actor
+    namespace: alert-agent
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: alert-agent-actor
+  namespace: external-dns
+  labels:
+    alert-agent/actor-tier: approval
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: alert-agent-actor
+subjects:
+  - kind: ServiceAccount
+    name: alert-agent-actor
+    namespace: alert-agent
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: alert-agent-actor
+  namespace: loki
+  labels:
+    alert-agent/actor-tier: approval
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: alert-agent-actor
+subjects:
+  - kind: ServiceAccount
+    name: alert-agent-actor
+    namespace: alert-agent
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: alert-agent-actor
+  namespace: reloader
+  labels:
+    alert-agent/actor-tier: approval
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: alert-agent-actor
+subjects:
+  - kind: ServiceAccount
+    name: alert-agent-actor
+    namespace: alert-agent
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: alert-agent-actor
+  namespace: tailscale
+  labels:
+    alert-agent/actor-tier: approval
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: alert-agent-actor
+subjects:
+  - kind: ServiceAccount
+    name: alert-agent-actor
+    namespace: alert-agent
+---
+# flux_reconcile on Kustomizations, sources and flux-operator's HelmRelease.
+# Flux objects only: no rights on the Flux controllers themselves.
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: alert-agent-actor-flux
+  namespace: flux-system
+rules:
+  - apiGroups: ["kustomize.toolkit.fluxcd.io"]
+    resources: ["kustomizations"]
+    verbs: ["get", "patch"]
+  - apiGroups: ["helm.toolkit.fluxcd.io"]
+    resources: ["helmreleases"]
+    verbs: ["get", "patch"]
+  - apiGroups: ["source.toolkit.fluxcd.io"]
+    resources: ["gitrepositories", "helmrepositories", "ocirepositories"]
+    verbs: ["get", "patch"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: alert-agent-actor-flux
+  namespace: flux-system
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: alert-agent-actor-flux
+subjects:
+  - kind: ServiceAccount
+    name: alert-agent-actor
     namespace: alert-agent

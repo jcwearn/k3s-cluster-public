@@ -1,0 +1,107 @@
+# What the actor (rbac.yaml) may change, narrower than RBAC can say. RBAC
+# grants `patch` on Deployments, which would allow a new image; this policy
+# allows only the change each Phase 5 action makes:
+#
+#   rollout_restart  the pod template's restartedAt annotation, nothing else
+#   flux_reconcile   the reconcile.fluxcd.io/requestedAt annotation, nothing else
+#   delete_pod       only a pod a controller will replace
+#   rerun_cronjob    only a Job owned by a CronJob
+#
+# It matches the actor's requests only (matchConditions), so nothing else in
+# the cluster is evaluated, and a CEL error fails closed for the actor alone.
+# Server-side dry runs are checked too, which is how request_approval proves
+# an action would be admitted before asking a human.
+apiVersion: admissionregistration.k8s.io/v1
+kind: ValidatingAdmissionPolicy
+metadata:
+  name: alert-agent-actor
+spec:
+  failurePolicy: Fail
+  matchConstraints:
+    resourceRules:
+      - apiGroups: ["apps"]
+        apiVersions: ["*"]
+        operations: ["UPDATE"]
+        resources: ["deployments", "statefulsets", "daemonsets"]
+      - apiGroups: ["helm.toolkit.fluxcd.io", "kustomize.toolkit.fluxcd.io", "source.toolkit.fluxcd.io"]
+        apiVersions: ["*"]
+        operations: ["UPDATE"]
+        resources: ["helmreleases", "kustomizations", "gitrepositories", "helmrepositories", "ocirepositories"]
+      - apiGroups: [""]
+        apiVersions: ["*"]
+        operations: ["DELETE"]
+        resources: ["pods"]
+      - apiGroups: ["batch"]
+        apiVersions: ["*"]
+        operations: ["CREATE"]
+        resources: ["jobs"]
+  matchConditions:
+    - name: actor-only
+      expression: "request.userInfo.username == 'system:serviceaccount:alert-agent:alert-agent-actor'"
+  variables:
+    - name: isWorkload
+      expression: "request.resource.group == 'apps'"
+    - name: isFlux
+      expression: "request.resource.group.endsWith('.toolkit.fluxcd.io')"
+    - name: newAnn
+      expression: "has(object.metadata.annotations) ? object.metadata.annotations : {}"
+    - name: oldAnn
+      expression: "has(oldObject.metadata.annotations) ? oldObject.metadata.annotations : {}"
+    - name: newLabels
+      expression: "has(object.metadata.labels) ? object.metadata.labels : {}"
+    - name: oldLabels
+      expression: "has(oldObject.metadata.labels) ? oldObject.metadata.labels : {}"
+    - name: newTmplAnn
+      expression: "has(object.spec.template.metadata.annotations) ? object.spec.template.metadata.annotations : {}"
+    - name: oldTmplAnn
+      expression: "has(oldObject.spec.template.metadata.annotations) ? oldObject.spec.template.metadata.annotations : {}"
+    - name: newTmplLabels
+      expression: "has(object.spec.template.metadata.labels) ? object.spec.template.metadata.labels : {}"
+    - name: oldTmplLabels
+      expression: "has(oldObject.spec.template.metadata.labels) ? oldObject.spec.template.metadata.labels : {}"
+  validations:
+    # rollout_restart
+    - expression: "!variables.isWorkload || (object.spec.template.spec == oldObject.spec.template.spec && variables.newTmplLabels == variables.oldTmplLabels)"
+      message: "the actor may not change a workload's pod spec or pod labels"
+    - expression: >-
+        !variables.isWorkload ||
+        (variables.newTmplAnn.all(k, k == 'kubectl.kubernetes.io/restartedAt' || (k in variables.oldTmplAnn && variables.oldTmplAnn[k] == variables.newTmplAnn[k])) &&
+         variables.oldTmplAnn.all(k, k == 'kubectl.kubernetes.io/restartedAt' || k in variables.newTmplAnn))
+      message: "the actor may change only the pod template's kubectl.kubernetes.io/restartedAt annotation"
+    - expression: >-
+        !variables.isWorkload ||
+        ((has(object.spec.replicas) ? object.spec.replicas : -1) == (has(oldObject.spec.replicas) ? oldObject.spec.replicas : -1) &&
+         (has(object.spec.paused) && object.spec.paused) == (has(oldObject.spec.paused) && oldObject.spec.paused) &&
+         object.spec.selector == oldObject.spec.selector)
+      message: "the actor may not scale, pause or reselect a workload"
+    - expression: "!variables.isWorkload || (variables.newAnn == variables.oldAnn && variables.newLabels == variables.oldLabels)"
+      message: "the actor may not change a workload's labels or annotations"
+    # flux_reconcile
+    - expression: "!variables.isFlux || (object.spec == oldObject.spec && variables.newLabels == variables.oldLabels)"
+      message: "the actor may not change a Flux object's spec or labels"
+    - expression: >-
+        !variables.isFlux ||
+        (variables.newAnn.all(k, k == 'reconcile.fluxcd.io/requestedAt' || (k in variables.oldAnn && variables.oldAnn[k] == variables.newAnn[k])) &&
+         variables.oldAnn.all(k, k == 'reconcile.fluxcd.io/requestedAt' || k in variables.newAnn))
+      message: "the actor may change only a Flux object's reconcile.fluxcd.io/requestedAt annotation"
+    # delete_pod
+    - expression: >-
+        request.resource.resource != 'pods' ||
+        (has(oldObject.metadata.ownerReferences) &&
+         oldObject.metadata.ownerReferences.exists(r, has(r.controller) && r.controller &&
+           r.kind in ['ReplicaSet', 'StatefulSet', 'DaemonSet', 'Job']))
+      message: "the actor may delete only a pod owned by a ReplicaSet, StatefulSet, DaemonSet or Job"
+    # rerun_cronjob
+    - expression: >-
+        request.resource.resource != 'jobs' ||
+        (has(object.metadata.ownerReferences) &&
+         object.metadata.ownerReferences.exists(r, has(r.controller) && r.controller && r.kind == 'CronJob'))
+      message: "the actor may create only a Job owned by a CronJob"
+---
+apiVersion: admissionregistration.k8s.io/v1
+kind: ValidatingAdmissionPolicyBinding
+metadata:
+  name: alert-agent-actor
+spec:
+  policyName: alert-agent-actor
+  validationActions: ["Deny"]
