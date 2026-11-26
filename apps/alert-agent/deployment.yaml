@@ -37,7 +37,7 @@ spec:
         # Migrations run here rather than at controller startup, as in
         # job-track: same image, same embedded SQL, different subcommand.
         - name: migrate
-          image: ghcr.io/jcwearn/alert-agent:0.14.2@sha256:be054178291c1ec5b51082ab32b2feac0faf65b80765c3563a086e78b97186ae
+          image: ghcr.io/jcwearn/alert-agent:0.16.1@sha256:6290545367ec1de4fc741fe8791541273ec4e28d39ce43fd4461343d7d39d73d
           imagePullPolicy: IfNotPresent
           args: ["migrate"]
           env:
@@ -73,7 +73,7 @@ spec:
               memory: 128Mi
       containers:
         - name: controller
-          image: ghcr.io/jcwearn/alert-agent:0.14.2@sha256:be054178291c1ec5b51082ab32b2feac0faf65b80765c3563a086e78b97186ae
+          image: ghcr.io/jcwearn/alert-agent:0.16.1@sha256:6290545367ec1de4fc741fe8791541273ec4e28d39ce43fd4461343d7d39d73d
           imagePullPolicy: IfNotPresent
           args: ["controller"]
           ports:
@@ -144,6 +144,32 @@ spec:
             # pushes agent/<incident-id>; it never merges.
             - name: PR_ENABLED
               value: "true"
+            # Phase 5: an alert run may take one reversible cluster action
+            # (delete_pod, rollout_restart, rerun_cronjob, flux_reconcile),
+            # which the controller performs as alert-agent-actor (rbac.yaml,
+            # narrowed by actor-policy.yaml), and asks for approval in the UI
+            # when its guardrails hold it back. "false" turns both off; the
+            # UI's pause switch stops only the autonomous ones.
+            - name: ACTIONS_ENABLED
+              value: "true"
+            # Where a workload action may run without a human. The actor is
+            # also bound in some infrastructure namespaces (and ansible, whose
+            # Jobs run playbooks against the hosts); there it needs an
+            # approval. flux_reconcile is autonomous wherever RBAC allows it.
+            # medic-drill is the Phase 5 drill's and goes with it.
+            - name: ACTION_AUTONOMOUS_NAMESPACES
+              value: ebooks,headlamp,hivemind,homepage,immich,it-tools,jellyfin,job-track,mazanoke,mkdocs,n8n,ntfy,paperless-ngx,renovate,stirling-pdf,world-clock,medic-drill
+            # A workload, or an alert in a namespace, that had any action in
+            # this window gets no autonomous one: a recurrence escalates.
+            - name: ACTION_COOLDOWN
+              value: 6h
+            # Autonomous actions across the cluster per hour.
+            - name: ACTION_MAX_PER_HOUR
+              value: "3"
+            # How long an approval request waits; it also expires when its
+            # incident resolves.
+            - name: APPROVAL_TTL
+              value: 2h
             # Exact strings the hooks must refuse in a proposed commit (their
             # .publicgate-local). Flux substitutes them, so neither is written
             # here.

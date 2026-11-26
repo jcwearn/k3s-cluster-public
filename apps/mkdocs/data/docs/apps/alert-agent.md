@@ -22,17 +22,21 @@ prefix with `alerts` (Alertmanager); the app, namespace and repo keep the
 
 ## Status
 
-Phase 4 (chat in the UI and in PR comments) is live: every new incident gets a **diagnosis** by
+Phase 5 (actions and approvals) is live: every new incident gets a **diagnosis** by
 Claude (Opus, on the Claude subscription). The report goes to Slack and, with
 the full transcript, to the UI. When the fix is a manifest change, the agent
 can also **propose a pull request** against this repo for a human to review,
-and you can [chat with it](#chat) about that PR from the incident page.
-**Nothing in the cluster is changed** in response to an alert, and the agent
-cannot merge.
+and you can [chat with it](#chat) about that PR from the incident page. When
+a small reversible action fixes it (delete a pod, restart a rollout, re-run a
+CronJob, ask Flux to reconcile), the agent may **take one action** itself, or
+**ask you to approve** it; see [Actions and approvals](#actions-and-approvals).
+The agent cannot merge.
 
 To stop runs without losing incidents, set `AGENT_ENABLED` to `"false"` in
 `apps/alert-agent/deployment.yaml`. To keep diagnoses but stop PRs, set
-`PR_ENABLED` to `"false"`.
+`PR_ENABLED` to `"false"`. To stop autonomous actions at once, use the
+**Pause** switch on the UI's home page; to turn actions and approvals off
+entirely, set `ACTIONS_ENABLED` to `"false"`.
 
 ## Agent runs
 
@@ -57,7 +61,9 @@ To stop runs without losing incidents, set `AGENT_ENABLED` to `"false"` in
 
 * **RBAC.** Claude's `kubectl` runs as `alert-agent-runner`: the built-in
   `view` role plus read on nodes, PVs, metrics and this cluster's CRDs. It can
-  write nothing and **cannot read Secrets** anywhere.
+  write nothing and **cannot read Secrets** anywhere. Cluster actions are made
+  by the controller as a third identity, `alert-agent-actor`, which Claude
+  never holds (see [Actions and approvals](#actions-and-approvals)).
 * **No shell.** The agent's cluster tools are read-only MCP tools served by
   `alert-agent mcp` inside the runner pod: `kube_get` (any resource, CRDs
   included; Secrets refused), `kube_events`, `kube_logs`, Prometheus instant
@@ -114,7 +120,73 @@ only review notices, so diagnoses never push.
 Each run's Claude session file is stored (`run_sessions`), which is what lets
 a [chat](#chat) resume the conversation on a pending PR.
 
-## Chat
+## Actions and approvals
+
+An alert run may take **one** reversible action on the cluster, through four
+controller tools:
+
+| Tool | What it does | Refused when |
+|---|---|---|
+| `delete_pod` | Deletes one pod so its controller replaces it (a fresh emptyDir, a new process) | the pod has no ReplicaSet, StatefulSet, DaemonSet or Job owner: bare pods, CNPG instances and other operator-managed pods |
+| `rollout_restart` | Sets the pod template's `restartedAt` annotation on a Deployment, StatefulSet or DaemonSet | |
+| `rerun_cronjob` | Creates a Job from a CronJob's template, owned by the CronJob, named `<cronjob>-medic-<incident>` | one of its Jobs is still running, or it was already re-run for this incident |
+| `flux_reconcile` | Sets `reconcile.fluxcd.io/requestedAt` on a Kustomization, HelmRelease or source | the object is suspended |
+
+**Who acts.** The controller performs the call by impersonating the
+`alert-agent-actor` ServiceAccount (`apps/alert-agent/rbac.yaml`); no pod runs
+as it, and the controller's own identity can only impersonate it. The API
+server's audit log names both. Where the actor may act is decided by
+RoleBindings, namespace by namespace:
+
+* **Autonomous:** the apps namespaces listed in `ACTION_AUTONOMOUS_NAMESPACES`.
+* **Approval-only:** `ansible` (its Jobs run playbooks against the hosts) and
+  alloy, loki, cert-manager, external-dns, tailscale, descheduler, reloader,
+  csi-driver-nfs and envoy-gateway-system. A workload action there needs an
+  approval; `flux_reconcile` does not.
+* **Never:** everything else, including kube-system, the Flux controllers,
+  `alert-agent`, `cnpg-system` and `prometheus` (the agent's own input:
+  restarting it would hide alerts, not fix them). In `flux-system` the actor
+  may only patch Flux objects.
+
+RBAC cannot limit a patch to one annotation, so a ValidatingAdmissionPolicy
+(`actor-policy.yaml`), matched on the actor's username, allows only the change
+each tool makes: the `restartedAt` annotation on workloads, `requestedAt` on
+Flux objects, deletes of controller-owned pods, and Jobs owned by a CronJob.
+
+**Before it acts,** the controller checks the request with a server-side dry
+run as the actor (RBAC, existence, the admission policy), then the
+guardrails, in the same transaction that records the action:
+
+1. The namespace's tier (above).
+2. The **pause switch** on the home page.
+3. **One action per incident**, merged incidents included.
+4. A **cooldown** (`ACTION_COOLDOWN`, 6h): no autonomous action on a workload,
+   or for an alert in a namespace, that had any action within it. An alert that
+   fires again opens a new incident, so this is what turns a recurrence into an
+   escalation instead of a retry.
+5. An **hourly cap** (`ACTION_MAX_PER_HOUR`, 3).
+
+Every call is written to the incident's **Activity** before it runs, marked
+*autonomous* or *approved*, with the pod or object it touched, its workload,
+the agent's reason, and afterwards the exact API call and its outcome (for a
+delete, the pod's UID). Refusals are recorded too. The run's Slack diagnosis
+lists them from the same record, and each run sees the actions taken in its
+namespace or for its alert within the cooldown.
+
+**Approvals.** When the guardrails hold an action back, the agent can call
+`request_approval` with the same arguments and its reasoning. The controller
+dry-runs it, records it, and notifies ntfy (`medic`) and Slack. The request
+shows on the home page under **Awaiting approval**, on the incident page, and
+in the incident's chat thread, with **Approve** and **Reject**. Approving runs
+the action at once as the actor, skipping the guardrails (a human decided)
+but not RBAC or the admission policy; a decision is recorded once, so a
+second click does nothing. A request expires after `APPROVAL_TTL` (2h) or when
+its incident resolves; a newer request for the same incident replaces it.
+Chat turns on an incident can ask for approval but never act.
+
+**Pause.** The home page's switch stops autonomous actions immediately; a
+banner on every page says so. Runs still diagnose and may ask for approval.
+
 
 Every page has a **chat button** in the bottom-right corner. It opens a
 window (a card on desktop, with a full-screen toggle; full screen on a phone)
@@ -322,3 +394,5 @@ receivers must be appended, never inserted.
 | `alert_agent_runs_total{status}` | Runs `queued`, and finished `succeeded` or `failed` |
 | `alert_agent_pull_requests_total{event}` | `propose_pr` outcomes (`opened`, `rejected`, `failed`), and PRs later `merged` or `closed` |
 | `alert_agent_consolidations_total{kind,actor}` | Incident `merge`, `link`, `unmerge` and `unlink`, by `agent` or `ui` |
+| `alert_agent_actions_total{tool,mode,outcome}` | Cluster actions by tool, `autonomous` or `approved`, and `succeeded`, `rejected` or `failed` |
+| `alert_agent_approvals_total{event}` | Approval requests `requested`, `approved`, `rejected`, `expired`, `superseded` |
