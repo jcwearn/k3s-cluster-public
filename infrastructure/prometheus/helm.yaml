@@ -1765,3 +1765,130 @@ spec:
                 annotations:
                   summary: "No journal lines from {{ $labels.node }} in 45 minutes"
                   description: "{{ $labels.node }} has stopped shipping its journal to Loki. On the host: systemctl status alloy; journalctl -u alloy -n 50; tailscale status. In the cluster: kubectl -n alloy logs deploy/alloy-receiver -c alloy."
+      alert-agent:
+        groups:
+          # The triage agent watching itself (apps/alert-agent). Every rule sets
+          # namespace: alert-agent, including the absent() one, which has no
+          # labels of its own: the Alertmanager route sends that namespace to
+          # ntfy and Slack but never to the agent, so it never triages itself.
+          # Runbook: the alert-agent page in mkdocs.
+          - name: alert-agent-group
+            rules:
+              - alert: AlertAgentDown
+                expr: absent(up{job="alert-agent/alert-agent"} == 1)
+                for: 5m
+                labels:
+                  severity: critical
+                  namespace: alert-agent
+                annotations:
+                  summary: "The alert triage agent is down"
+                  description: "Prometheus has not scraped the alert-agent controller for 5 minutes. Alerts still reach ntfy and Slack, but nothing records or triages them."
+                  runbook_url: "https://docs.${DOMAIN}/apps/alert-agent/#alertagentdown"
+              # Errors are the controller failing to store a delivery (the
+              # database); Alertmanager retries, but an incident may be late.
+              - alert: AlertAgentWebhookErrors
+                expr: sum(increase(alert_agent_webhooks_total{outcome="error"}[15m])) > 0
+                labels:
+                  severity: warning
+                  namespace: alert-agent
+                annotations:
+                  summary: "The alert triage agent is failing to record alerts"
+                  description: "{{ $value | printf \"%.0f\" }} Alertmanager deliveries failed in the last 15 minutes, usually the database."
+                  runbook_url: "https://docs.${DOMAIN}/apps/alert-agent/#alertagentwebhookerrors"
+              # The runner exits 0 after reporting a failure, so KubeJobFailed
+              # never sees a failed run. Auth and usage-limit failures are
+              # deferred and have their own alerts; this is everything else.
+              - alert: AlertAgentRunsFailing
+                expr: sum(increase(alert_agent_run_failures_total{reason="other"}[1h])) >= 2
+                labels:
+                  severity: warning
+                  namespace: alert-agent
+                annotations:
+                  summary: "Alert triage runs are failing"
+                  description: "{{ $value | printf \"%.0f\" }} agent runs failed in the last hour. The run pages in the UI show why."
+                  runbook_url: "https://docs.${DOMAIN}/apps/alert-agent/#alertagentrunsfailing"
+              - alert: AlertAgentClaudeAuthFailing
+                expr: max(alert_agent_claude_blocked{reason="auth"}) == 1
+                for: 5m
+                labels:
+                  severity: critical
+                  namespace: alert-agent
+                annotations:
+                  summary: "Claude rejects the alert triage agent's token"
+                  description: "Every run fails authentication, so no alert is triaged. Rotate the token."
+                  runbook_url: "https://docs.${DOMAIN}/apps/alert-agent/#token-rotation"
+              # The controller's own notice reports the start of a usage-limit
+              # block; this is for one that does not clear on its own.
+              - alert: AlertAgentUsageLimited
+                expr: max(alert_agent_claude_blocked{reason="usage_limit"}) == 1
+                for: 3h
+                labels:
+                  severity: warning
+                  namespace: alert-agent
+                annotations:
+                  summary: "The alert triage agent has been at the Claude usage limit for 3 hours"
+                  description: "Runs are deferred and retried hourly. Interactive Claude use draws on the same limit."
+                  runbook_url: "https://docs.${DOMAIN}/apps/alert-agent/#alertagentusagelimited"
+              # A run waiting an hour is not the hourly cap, which drains a
+              # queue within the hour; it is a dispatcher that stopped. A block
+              # explains a wait, and has its own alerts.
+              - alert: AlertAgentQueueStuck
+                expr: max(alert_agent_oldest_queued_run_age_seconds) > 3600 unless on () max(alert_agent_claude_blocked) == 1
+                for: 15m
+                labels:
+                  severity: warning
+                  namespace: alert-agent
+                annotations:
+                  summary: "Alert triage runs are not starting"
+                  description: "The oldest queued run has waited {{ $value | humanizeDuration }} without a Claude block to explain it."
+                  runbook_url: "https://docs.${DOMAIN}/apps/alert-agent/#alertagentqueuestuck"
+              - alert: AlertAgentActionsFailing
+                expr: sum by (tool) (increase(alert_agent_actions_total{outcome="failed"}[1h])) > 0
+                labels:
+                  severity: warning
+                  namespace: alert-agent
+                annotations:
+                  summary: "An alert triage action failed ({{ $labels.tool }})"
+                  description: "{{ $labels.tool }} passed the guardrails and the dry run but failed against the API. The incident's Activity shows the error."
+                  runbook_url: "https://docs.${DOMAIN}/apps/alert-agent/#alertagentactionsfailing"
+              # One refusal is the guardrails working. Three in an hour is the
+              # agent pushing against them.
+              - alert: AlertAgentGuardrailsRefusing
+                expr: sum(increase(alert_agent_actions_total{outcome="rejected"}[1h])) >= 3
+                labels:
+                  severity: warning
+                  namespace: alert-agent
+                annotations:
+                  summary: "The alert triage agent keeps hitting its guardrails"
+                  description: "{{ $value | printf \"%.0f\" }} actions were refused in the last hour."
+                  runbook_url: "https://docs.${DOMAIN}/apps/alert-agent/#alertagentguardrailsrefusing"
+              - alert: AlertAgentApprovalExpired
+                expr: sum(increase(alert_agent_approvals_total{event="expired"}[1h])) > 0
+                labels:
+                  severity: warning
+                  namespace: alert-agent
+                annotations:
+                  summary: "An alert triage approval expired unanswered"
+                  description: "The agent asked to run an action and nobody approved or rejected it in time. Check the incident if it is still firing."
+                  runbook_url: "https://docs.${DOMAIN}/apps/alert-agent/#alertagentapprovalexpired"
+              # claude setup-token mints a one-year token. 335 days leaves 30.
+              - alert: AlertAgentClaudeTokenExpiring
+                expr: time() - max(alert_agent_claude_token_created_timestamp_seconds > 0) > 335 * 86400
+                labels:
+                  severity: warning
+                  namespace: alert-agent
+                annotations:
+                  summary: "The alert triage agent's Claude token expires within 30 days"
+                  description: "The token was created {{ $value | humanizeDuration }} ago and lasts one year."
+                  runbook_url: "https://docs.${DOMAIN}/apps/alert-agent/#token-rotation"
+              # Without the date the reminder above cannot fire.
+              - alert: AlertAgentClaudeTokenDateMissing
+                expr: max(alert_agent_claude_token_created_timestamp_seconds) == 0
+                for: 1h
+                labels:
+                  severity: warning
+                  namespace: alert-agent
+                annotations:
+                  summary: "The alert triage agent cannot read its token's creation date"
+                  description: "The alert-agent/token-created annotation on the alert-agent-claude Secret is missing or not a date, so the expiry reminder cannot fire."
+                  runbook_url: "https://docs.${DOMAIN}/apps/alert-agent/#token-rotation"

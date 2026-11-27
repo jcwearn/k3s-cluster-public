@@ -22,7 +22,7 @@ prefix with `alerts` (Alertmanager); the app, namespace and repo keep the
 
 ## Status
 
-Phase 5 (actions and approvals) is live: every new incident gets a **diagnosis** by
+Phase 6 (self-monitoring) is live: every new incident gets a **diagnosis** by
 Claude (Opus, on the Claude subscription). The report goes to Slack and, with
 the full transcript, to the UI. When the fix is a manifest change, the agent
 can also **propose a pull request** against this repo for a human to review,
@@ -30,7 +30,8 @@ and you can [chat with it](#chat) about that PR from the incident page. When
 a small reversible action fixes it (delete a pod, restart a rollout, re-run a
 CronJob, ask Flux to reconcile), the agent may **take one action** itself, or
 **ask you to approve** it; see [Actions and approvals](#actions-and-approvals).
-The agent cannot merge.
+The agent cannot merge. It watches itself too: see [Runbook](#runbook) for
+its alerts.
 
 To stop runs without losing incidents, set `AGENT_ENABLED` to `"false"` in
 `apps/alert-agent/deployment.yaml`. To keep diagnoses but stop PRs, set
@@ -56,6 +57,12 @@ entirely, set `ACTIONS_ENABLED` to `"false"`.
    result. The token is revoked when the run ends.
 5. A runner that dies without reporting is marked failed. That covers a
    deadline (`RUN_TIMEOUT`, 20m), a crash, or a Job that disappears.
+6. A run that fails because Claude **refused the token** or the
+   **subscription's usage limit** is reached is **deferred**, not lost. Its
+   incidents get a new run, held until a retry time (30m for the token, 1h
+   for the limit). Nothing starts until then, chat turns included, and ntfy
+   and Slack get one notice. The next successful run clears the block. A chat
+   turn that hits it is answered with the reason instead.
 
 ### What bounds the agent
 
@@ -69,7 +76,10 @@ entirely, set `ACTIONS_ENABLED` to `"false"`.
   included; Secrets refused), `kube_events`, `kube_logs`, Prometheus instant
   and range queries, Loki, and `git_log`/`git_show` on the checkout.
   `Read`/`Grep`/`Glob` are confined to the checkout. Bash, edits, web fetch and
-  web search are denied, and `dontAsk` mode refuses anything else.
+  web search are denied, and `dontAsk` mode refuses anything else. `claude`
+  also runs with `--restricted`, which removes the code-running tools,
+  confines every file tool to the checkout and ignores settings files in the
+  checkout, underneath those rules.
 * **Environment.** `claude` starts with an allowlisted environment, so the run
   token and GitHub token never reach it. Its own OAuth token stays out of
   reach because there is no shell to run `env` and `Read` cannot leave the
@@ -428,3 +438,103 @@ firing, opened in the last week.
 | `alert_agent_consolidations_total{kind,actor}` | Incident `merge`, `link`, `unmerge` and `unlink`, by `agent` or `ui` |
 | `alert_agent_actions_total{tool,mode,outcome}` | Cluster actions by tool, `autonomous` or `approved`, and `succeeded`, `rejected` or `failed` |
 | `alert_agent_approvals_total{event}` | Approval requests `requested`, `approved`, `rejected`, `expired`, `superseded` |
+| `alert_agent_run_failures_total{reason}` | Failed runs: `auth` and `usage_limit` (deferred), `other` |
+| `alert_agent_claude_blocked{reason}` | 1 while Claude refuses every run, by `auth` or `usage_limit` |
+| `alert_agent_runs_queued{kind}` | Runs waiting, `diagnose` or `chat`, held and deferred ones included |
+| `alert_agent_oldest_queued_run_age_seconds` | Age of the oldest waiting run; 0 when none |
+| `alert_agent_claude_token_created_timestamp_seconds` | The token Secret's `alert-agent/token-created` date; 0 if missing |
+
+## Runbook
+
+Rules in the `alert-agent` group of `infrastructure/prometheus/helm.yaml`.
+They carry `namespace: alert-agent`, so they reach ntfy and Slack but never
+the agent itself. Each alert links here.
+
+### Pausing the agent
+
+| To stop | Do |
+|---------|----|
+| Autonomous actions, now | **Pause** on the UI's home page (approvals still work) |
+| All actions and approvals | `ACTIONS_ENABLED: "false"` in `apps/alert-agent/deployment.yaml` |
+| PRs | `PR_ENABLED: "false"` |
+| Every run (incidents are still recorded) | `AGENT_ENABLED: "false"` |
+| Even recording | Remove the `alert-agent` route from Alertmanager in `infrastructure/prometheus/helm.yaml` |
+
+Each file change is a commit and a merge; Flux applies it within 10 minutes,
+or run `flux reconcile kustomization apps --with-source`.
+
+### Token rotation
+
+The runners use a one-year token from `claude setup-token`. The
+`AlertAgentClaudeTokenExpiring` alert fires 30 days before it runs out.
+
+1. On the Mac, run `claude setup-token` and copy the token it prints.
+2. `sops apps/alert-agent/secrets.sops.yaml`. In the editor, replace
+   `CLAUDE_CODE_OAUTH_TOKEN` **and** set the `alert-agent/token-created`
+   annotation to today's date (`YYYY-MM-DD`). Never create or copy this file
+   any other way (see CLAUDE.md on SOPS).
+3. Commit, open a PR, merge.
+
+Runner Jobs read the Secret when they start, so the next run uses the new
+token; the controller rereads the date within 10 minutes. After an
+`AlertAgentClaudeAuthFailing`, the block lifts at its retry time (up to 30
+minutes) and the deferred runs go then.
+
+### AlertAgentDown
+
+Prometheus cannot scrape the controller. Alerts still reach ntfy and Slack;
+nothing records them. Check `kubectl -n alert-agent get pods` and the pod's
+events. The controller waits for its database, so a down `alert-agent-database`
+keeps it from starting.
+
+### AlertAgentWebhookErrors
+
+The controller could not store Alertmanager deliveries, almost always the
+database (`kubectl -n alert-agent get cluster alert-agent-database`).
+Alertmanager retries, so incidents arrive late rather than never.
+
+### AlertAgentRunsFailing
+
+Two or more runs failed in an hour for a reason other than the token or the
+limit: a timeout, a runner crash, a GitHub token error. The run page in the UI
+shows the error and the transcript. `kubectl -n alert-agent logs deploy/alert-agent`
+logs every `run failed` with its reason.
+
+### AlertAgentClaudeAuthFailing
+
+Claude rejects the token: it expired, or it was revoked. Runs are deferred, not
+lost. Rotate it ([Token rotation](#token-rotation)).
+
+### AlertAgentUsageLimited
+
+Runs have been deferred for 3 hours at the subscription's limit. Interactive
+Claude sessions draw on the same limit. Nothing is lost: deferred runs retry
+hourly, and a run whose alerts resolved meanwhile is skipped. To save the
+limit, pause runs with `AGENT_ENABLED: "false"`.
+
+### AlertAgentQueueStuck
+
+A run has waited over an hour with no block to explain it. The hourly cap
+drains a queue within the hour, so the dispatcher has stopped: look for
+`dispatch` errors in the controller log, and for a run stuck `running` whose
+Job is gone (it is failed after a minute). A restart of the controller is
+safe.
+
+### AlertAgentActionsFailing
+
+An action passed the guardrails and the dry run, then failed against the API
+(a race with another change, or an API error). The incident's Activity has the
+error. The guardrails count it, so the agent will not retry it within the
+cooldown.
+
+### AlertAgentGuardrailsRefusing
+
+Three or more actions refused in an hour: the agent is retrying something the
+cooldown or the hourly cap holds back. Read the refused rows in the
+incidents' Activity; if the agent is wrong, **Pause** it.
+
+### AlertAgentApprovalExpired
+
+The agent asked to run an action and nobody answered within `APPROVAL_TTL`
+(2h). If the incident still fires, act on it yourself or ask the agent again
+in its chat.

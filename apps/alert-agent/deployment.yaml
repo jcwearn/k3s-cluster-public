@@ -37,7 +37,7 @@ spec:
         # Migrations run here rather than at controller startup, as in
         # job-track: same image, same embedded SQL, different subcommand.
         - name: migrate
-          image: ghcr.io/jcwearn/alert-agent:0.17.3@sha256:32c93a25895b7075b034486993702c90c4fb805c333019147327ec9cc9a4b616
+          image: ghcr.io/jcwearn/alert-agent:0.18.0@sha256:d262d5c051ab814bfde339f97fcc16eb399fe80543231f99ec6fee2bc66d80eb
           imagePullPolicy: IfNotPresent
           args: ["migrate"]
           env:
@@ -73,7 +73,7 @@ spec:
               memory: 128Mi
       containers:
         - name: controller
-          image: ghcr.io/jcwearn/alert-agent:0.17.3@sha256:32c93a25895b7075b034486993702c90c4fb805c333019147327ec9cc9a4b616
+          image: ghcr.io/jcwearn/alert-agent:0.18.0@sha256:d262d5c051ab814bfde339f97fcc16eb399fe80543231f99ec6fee2bc66d80eb
           imagePullPolicy: IfNotPresent
           args: ["controller"]
           ports:
@@ -110,6 +110,9 @@ spec:
               value: "true"
             - name: PUBLIC_URL
               value: https://medic.${DOMAIN}
+            # Phase 6: linked from the "Claude refuses every run" notice.
+            - name: RUNBOOK_URL
+              value: https://docs.${DOMAIN}/apps/alert-agent/#runbook
             - name: RUN_MODEL
               value: opus
             # Alert runs (diagnoses) started per hour. Chat turns have their
