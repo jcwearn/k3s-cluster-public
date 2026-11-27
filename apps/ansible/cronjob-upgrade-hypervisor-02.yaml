@@ -49,7 +49,7 @@ spec:
                         values: ["k3s-02"]
           containers:
             - name: ansible
-              image: ghcr.io/jcwearn/ansible-runner:0.1.75@sha256:55abd7529610768f65b6621f9ef8086dfcd93fdab6a29df8d1021ad9d5ccd4fe
+              image: ghcr.io/jcwearn/ansible-runner:0.1.77@sha256:b35e7d4280607244c9a47a1c2e1fca068b1e0b064cf57073f3d632105679999f
               imagePullPolicy: IfNotPresent
               securityContext:
                 runAsUser: 0
