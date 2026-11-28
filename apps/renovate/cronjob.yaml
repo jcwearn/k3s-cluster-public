@@ -87,7 +87,7 @@ spec:
                     - ALL
           containers:
             - name: renovate-bot
-              image: renovate/renovate:45.3.0-full@sha256:5bfc849189912ada9af38365cf6ea8955f941d3a173d007234fa0be88b0acc5e
+              image: renovate/renovate:45.3.2-full@sha256:6fde98271ba942ed3fae592267f3affd7fcab4b132fdc84511b4cdf3027011cf
               command: ["/bin/sh", "-c"]
               args:
                 - >
